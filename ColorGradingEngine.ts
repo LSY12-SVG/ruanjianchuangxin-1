@@ -53,15 +53,65 @@ export class ColorGradingEngine {
 
   convertProfileToImageFilters(profile: ColorProfile): ImageFilterParams {
     return {
-      brightness: 1 + profile.exposure / 100,
-      contrast: 1 + profile.contrast / 100,
-      saturation: 1 + profile.saturation / 100,
-      hue: profile.hsl.h / 100,
-      temperature: profile.temperature / 100,
-      sepia: 0,
-      sharpen: profile.clarity / 100,
-      blur: 0,
+      brightness: this.mapExposure(profile.exposure),
+      contrast: this.mapContrast(profile.contrast),
+      saturation: this.mapSaturation(profile.saturation),
+      hue: this.mapHue(profile.hsl.h),
+      temperature: this.mapTemperature(profile.temperature),
+      sepia: this.mapSepia(profile),
+      sharpen: this.mapClarity(profile.clarity),
+      blur: this.mapBlur(profile),
     };
+  }
+
+  private mapExposure(exposure: number): number {
+    if (exposure === 0) return 1.0;
+    const normalized = Math.max(-100, Math.min(100, exposure));
+    return 1 + (normalized / 100) * 0.4;
+  }
+
+  private mapContrast(contrast: number): number {
+    if (contrast === 0) return 1.0;
+    const normalized = Math.max(-100, Math.min(100, contrast));
+    return 1 + (normalized / 100) * 0.5;
+  }
+
+  private mapSaturation(saturation: number): number {
+    if (saturation === 0) return 1.0;
+    const normalized = Math.max(-100, Math.min(100, saturation));
+    return 1 + (normalized / 100) * 0.6;
+  }
+
+  private mapHue(hue: number): number {
+    if (hue === 0) return 0;
+    const normalized = Math.max(-100, Math.min(100, hue));
+    return (normalized / 100) * 0.3;
+  }
+
+  private mapTemperature(temperature: number): number {
+    if (temperature === 0) return 0;
+    const normalized = Math.max(-100, Math.min(100, temperature));
+    return (normalized / 100) * 0.5;
+  }
+
+  private mapSepia(profile: ColorProfile): number {
+    if (profile.temperature > 50 && profile.saturation < -20) {
+      return 0.15;
+    }
+    return 0;
+  }
+
+  private mapClarity(clarity: number): number {
+    if (clarity === 0) return 0;
+    const normalized = Math.max(-100, Math.min(100, clarity));
+    return Math.max(0, (normalized / 100) * 0.3);
+  }
+
+  private mapBlur(profile: ColorProfile): number {
+    if (profile.dehaze < -30) {
+      return 0.5;
+    }
+    return 0;
   }
 
   getProfileDescription(profile: ColorProfile): string {

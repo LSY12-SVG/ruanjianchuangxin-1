@@ -89,7 +89,7 @@ export class NLPService {
       for (const [direction, keywords] of Object.entries(directions)) {
         for (const keyword of keywords) {
           if (text.includes(keyword)) {
-            const value = direction === 'increase' ? 1.2 : 0.8;
+            const value = direction === 'increase' ? 30 : -30;
             (params as any)[param] = value;
             break;
           }
@@ -113,67 +113,67 @@ export class NLPService {
     const params: ColorParams = {};
 
     if (styles.includes('warm')) {
-      params.temperature = 1.3;
-      params.saturation = 1.1;
-      params.brightness = 1.05;
+      params.temperature = 40;
+      params.saturation = 15;
+      params.brightness = 10;
     }
 
     if (styles.includes('cool')) {
-      params.temperature = 0.7;
-      params.saturation = 0.9;
-      params.tint = 1.1;
+      params.temperature = -40;
+      params.saturation = -10;
+      params.tint = 15;
     }
 
     if (styles.includes('vintage')) {
-      params.contrast = 1.2;
-      params.saturation = 0.8;
-      params.exposure = 0.9;
-      params.vibrance = 0.7;
+      params.contrast = 20;
+      params.saturation = -25;
+      params.exposure = -10;
+      params.vibrance = -20;
     }
 
     if (styles.includes('blackWhite')) {
-      params.saturation = 0;
-      params.contrast = 1.1;
+      params.saturation = -100;
+      params.contrast = 15;
     }
 
     if (styles.includes('fresh')) {
-      params.brightness = 1.1;
-      params.contrast = 1.05;
-      params.saturation = 1.15;
-      params.exposure = 1.05;
+      params.brightness = 15;
+      params.contrast = 10;
+      params.saturation = 20;
+      params.exposure = 10;
     }
 
     if (styles.includes('dreamy')) {
-      params.brightness = 1.05;
-      params.saturation = 0.9;
-      params.contrast = 0.9;
-      params.tint = 1.2;
-      params.hue = 1.05;
+      params.brightness = 8;
+      params.saturation = -15;
+      params.contrast = -15;
+      params.tint = 20;
+      params.hue = 10;
     }
 
     if (styles.includes('dramatic')) {
-      params.contrast = 1.4;
-      params.saturation = 1.2;
-      params.shadows = 0.8;
-      params.highlights = 1.1;
+      params.contrast = 40;
+      params.saturation = 25;
+      params.shadows = -20;
+      params.highlights = 15;
     }
 
     if (styles.includes('soft')) {
-      params.contrast = 0.85;
-      params.saturation = 0.9;
-      params.brightness = 1.05;
+      params.contrast = -20;
+      params.saturation = -15;
+      params.brightness = 8;
     }
 
     if (styles.includes('vibrant')) {
-      params.saturation = 1.4;
-      params.vibrance = 1.3;
-      params.contrast = 1.1;
+      params.saturation = 40;
+      params.vibrance = 35;
+      params.contrast = 20;
     }
 
     if (styles.includes('muted')) {
-      params.saturation = 0.6;
-      params.contrast = 0.9;
-      params.vibrance = 0.7;
+      params.saturation = -40;
+      params.contrast = -15;
+      params.vibrance = -30;
     }
 
     return params;
@@ -241,27 +241,27 @@ export class NLPService {
   generateDescription(params: ColorParams): string {
     const descriptions: string[] = [];
 
-    if (params.temperature && params.temperature > 1.1) {
+    if (params.temperature && params.temperature > 20) {
       descriptions.push('暖色调');
-    } else if (params.temperature && params.temperature < 0.9) {
+    } else if (params.temperature && params.temperature < -20) {
       descriptions.push('冷色调');
     }
 
-    if (params.contrast && params.contrast > 1.1) {
+    if (params.contrast && params.contrast > 20) {
       descriptions.push('高对比度');
-    } else if (params.contrast && params.contrast < 0.9) {
+    } else if (params.contrast && params.contrast < -20) {
       descriptions.push('低对比度');
     }
 
-    if (params.saturation && params.saturation > 1.1) {
+    if (params.saturation && params.saturation > 20) {
       descriptions.push('高饱和度');
-    } else if (params.saturation && params.saturation < 0.9) {
+    } else if (params.saturation && params.saturation < -20) {
       descriptions.push('低饱和度');
     }
 
-    if (params.brightness && params.brightness > 1.1) {
+    if (params.brightness && params.brightness > 15) {
       descriptions.push('更明亮');
-    } else if (params.brightness && params.brightness < 0.9) {
+    } else if (params.brightness && params.brightness < -15) {
       descriptions.push('更暗淡');
     }
 
