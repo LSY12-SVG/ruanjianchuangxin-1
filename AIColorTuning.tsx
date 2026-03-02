@@ -371,13 +371,7 @@ export default function AIColorTuning({ onBack }: AIColorTuningProps) {
                 ) : (
                   <ColorGradingView
                     imageUri={processedImage || ''}
-                    params={{
-                      exposure: currentProfile.exposure,
-                      contrast: currentProfile.contrast,
-                      saturation: currentProfile.saturation,
-                      temperature: currentProfile.temperature,
-                      tint: currentProfile.tint,
-                    }}
+                    profile={currentProfile}
                     style={styles.resultImage}
                   />
                 )}
