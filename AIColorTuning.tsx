@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import NLPService from './NLPService';
 import ColorGradingEngine from './ColorGradingEngine';
 import { ColorProfile, PRESETS } from './ColorProfile';
 import ColorGradingView from './ColorGradingView';
+import { SILICONFLOW_API_KEY, SILICONFLOW_MODEL } from './config/siliconflow';
 
 interface AIColorTuningProps {
   onBack: () => void;
@@ -31,9 +32,14 @@ export default function AIColorTuning({ onBack }: AIColorTuningProps) {
   const [showComparison, setShowComparison] = useState(false);
   const [processingDescription, setProcessingDescription] = useState('');
   const [showAdvancedPanel, setShowAdvancedPanel] = useState(false);
+  const [useSiliconFlow, setUseSiliconFlow] = useState(true);
 
   const nlpService = NLPService.getInstance();
   const engine = ColorGradingEngine.getInstance();
+
+  useEffect(() => {
+    NLPService.initSiliconFlow(SILICONFLOW_API_KEY);
+  }, []);
 
   const requestCameraPermission = async () => {
     if (Platform.OS === 'android') {
@@ -146,16 +152,32 @@ export default function AIColorTuning({ onBack }: AIColorTuningProps) {
     setProcessingDescription(engine.getProfileDescription(preset.profile));
   };
 
-  const handleAnalyzeText = () => {
+  const handleAnalyzeText = async () => {
     if (!description.trim()) return;
     
-    const analysis = nlpService.analyzeText(description);
-    setDetectedStyles(analysis.detectedStyles);
+    setIsProcessing(true);
     
-    const newProfile = { ...currentProfile };
-    Object.assign(newProfile, analysis.params);
-    setCurrentProfile(newProfile);
-    setProcessingDescription(engine.getProfileDescription(newProfile));
+    try {
+      let analysis;
+      
+      if (useSiliconFlow) {
+        analysis = await nlpService.analyzeWithSiliconFlow(description, SILICONFLOW_MODEL);
+      } else {
+        analysis = nlpService.analyzeText(description);
+      }
+      
+      setDetectedStyles(analysis.detectedStyles);
+      
+      const newProfile = { ...currentProfile };
+      Object.assign(newProfile, analysis.params);
+      setCurrentProfile(newProfile);
+      setProcessingDescription(engine.getProfileDescription(newProfile));
+    } catch (error) {
+      console.error('Analysis error:', error);
+      Alert.alert('错误', error instanceof Error ? error.message : '分析失败，请重试');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const updateProfileParam = (key: keyof ColorProfile, value: number) => {
@@ -178,6 +200,14 @@ export default function AIColorTuning({ onBack }: AIColorTuningProps) {
         >
           <Text style={styles.advancedButtonText}>
             {showAdvancedPanel ? '收起' : '高级'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.apiSwitchButton}
+          onPress={() => setUseSiliconFlow(!useSiliconFlow)}
+        >
+          <Text style={styles.apiSwitchButtonText}>
+            {useSiliconFlow ? 'AI分析' : '本地分析'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -456,14 +486,20 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
   },
-  advancedButton: {
+  advancedButtonText: {
     backgroundColor: 'rgba(255, 215, 0, 0.2)',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 15,
   },
-  advancedButtonText: {
-    color: '#FFD700',
+  apiSwitchButton: {
+    backgroundColor: 'rgba(0, 150, 255, 0.2)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
+  },
+  apiSwitchButtonText: {
+    color: '#4CAF50',
     fontSize: 14,
     fontWeight: 'bold',
   },

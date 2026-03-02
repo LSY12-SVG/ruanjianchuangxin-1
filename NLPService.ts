@@ -1,4 +1,5 @@
 import axios from 'axios';
+import SiliconFlowService from './SiliconFlowService';
 
 export interface ColorParams {
   brightness?: number;
@@ -53,6 +54,7 @@ const PARAM_KEYWORDS = {
 
 export class NLPService {
   private static instance: NLPService;
+  private siliconFlowService: SiliconFlowService | null = null;
 
   constructor() {
     if (NLPService.instance) {
@@ -66,6 +68,10 @@ export class NLPService {
       NLPService.instance = new NLPService();
     }
     return NLPService.instance;
+  }
+
+  initSiliconFlow(apiKey: string) {
+    this.siliconFlowService = SiliconFlowService.getInstance(apiKey);
   }
 
   analyzeText(text: string): StyleAnalysis {
@@ -177,6 +183,28 @@ export class NLPService {
     }
 
     return params;
+  }
+
+  async analyzeWithSiliconFlow(
+    text: string,
+    model: string = 'Qwen/Qwen2.5-7B-Instruct'
+  ): Promise<StyleAnalysis> {
+    if (!this.siliconFlowService) {
+      throw new Error('SiliconFlow service not initialized. Please call initSiliconFlow(apiKey) first.');
+    }
+
+    try {
+      const result = await this.siliconFlowService.analyzeColorDescription(text, model);
+      
+      return {
+        detectedStyles: result.detectedStyles,
+        confidence: result.confidence,
+        params: result.params,
+      };
+    } catch (error) {
+      console.error('SiliconFlow API error:', error);
+      throw error;
+    }
   }
 
   async analyzeWithHuggingFace(text: string): Promise<StyleAnalysis> {
