@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import ColorGradingScreen from './ColorGradingScreen';
 
 type TabType = 'home' | 'camera' | 'assistant' | 'profile';
 
@@ -18,6 +19,12 @@ interface CameraScreenProps {
 }
 
 const CameraScreen: React.FC<CameraScreenProps> = ({activeTab, onTabChange}) => {
+  const [showColorGrading, setShowColorGrading] = useState(false);
+
+  if (showColorGrading) {
+    return <ColorGradingScreen activeTab={activeTab} onTabChange={onTabChange} />;
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -39,7 +46,7 @@ const CameraScreen: React.FC<CameraScreenProps> = ({activeTab, onTabChange}) => 
             </View>
           </View>
 
-          <TouchableOpacity style={styles.mainCard} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.mainCard} onPress={() => setShowColorGrading(true)} activeOpacity={0.8}>
             <View style={styles.mainCardContent}>
               <Icon name="color-palette-outline" size={40} color="#fff" />
               <Text style={styles.mainCardTitle}>AI 智能调色</Text>
