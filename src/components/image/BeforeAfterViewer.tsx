@@ -3,17 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   PanResponder,
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import type {FilterStyle} from '../../utils/imageUtils';
+import {FilteredImageView} from './FilteredImageView';
+import type {ColorGradingParams} from '../../types/colorGrading';
 
 interface BeforeAfterViewerProps {
   imageUri: string;
-  filterStyle: FilterStyle;
+  params: ColorGradingParams;
   showComparison: boolean;
   onToggleComparison: () => void;
 }
@@ -22,7 +22,7 @@ const {width: SCREEN_WIDTH} = Dimensions.get('window');
 
 export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
   imageUri,
-  filterStyle,
+  params,
   showComparison,
   onToggleComparison,
 }) => {
@@ -56,10 +56,10 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
   if (!showComparison) {
     return (
       <View style={styles.singleContainer}>
-        <Image
-          source={{uri: imageUri}}
-          style={[styles.fullImage, filterStyle]}
-          resizeMode="contain"
+        <FilteredImageView
+          uri={imageUri}
+          params={params}
+          isBefore={false}
         />
       </View>
     );
@@ -75,10 +75,10 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
           {width: sliderPosition, overflow: 'hidden'},
         ]}
       >
-        <Image
-          source={{uri: imageUri}}
-          style={[styles.fullImage, {position: 'absolute'}]}
-          resizeMode="contain"
+        <FilteredImageView
+          uri={imageUri}
+          params={params}
+          isBefore={true}
         />
         <View style={styles.label}>
           <Text style={styles.labelText}>原图</Text>
@@ -96,17 +96,10 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
           },
         ]}
       >
-        <Image
-          source={{uri: imageUri}}
-          style={[
-            styles.fullImage,
-            filterStyle,
-            {
-              position: 'absolute',
-              left: sliderPosition,
-            },
-          ]}
-          resizeMode="contain"
+        <FilteredImageView
+          uri={imageUri}
+          params={params}
+          isBefore={false}
         />
         <View style={[styles.label, styles.rightLabel]}>
           <Text style={styles.labelText}>调色后</Text>

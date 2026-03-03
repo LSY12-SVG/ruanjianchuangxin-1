@@ -23,7 +23,7 @@ import {
   type ColorPreset,
 } from '../types/colorGrading';
 import {useImagePicker} from '../hooks/useImagePicker';
-import {applyColorGradingToStyle, saveImageToGallery} from '../utils/imageUtils';
+import {applyColorGradingToStyle} from '../utils/imageUtils';
 
 type TabType = 'home' | 'camera' | 'assistant' | 'profile';
 
@@ -87,11 +87,6 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
     console.log('触发 AI 智能调色', params);
   };
 
-  // 计算滤镜样式
-  const filterStyle = useMemo(() => {
-    return applyColorGradingToStyle(params);
-  }, [params]);
-
   // 保存图片
   const handleSave = useCallback(async () => {
     if (!selectedImage?.success || !viewRef.current) {
@@ -100,17 +95,8 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
     }
 
     try {
-      const uri = await captureRef(viewRef, {
-        format: 'png',
-        quality: 0.9,
-      });
-
-      const success = await saveImageToGallery(uri);
-      if (success) {
-        Alert.alert('成功', '图片已保存到相册');
-      } else {
-        Alert.alert('失败', '保存图片失败');
-      }
+      // TODO: 使用原生图片处理实现真实的调色保存
+      Alert.alert('提示', '图片保存功能开发中，当前仅用于演示预览效果');
     } catch (error) {
       console.error('保存图片失败:', error);
       Alert.alert('失败', '保存图片时出错');
@@ -172,7 +158,7 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
               {/* 图片预览与对比 */}
               <BeforeAfterViewer
                 imageUri={selectedImage.uri}
-                filterStyle={filterStyle}
+                params={params}
                 showComparison={showComparison}
                 onToggleComparison={toggleComparison}
               />
