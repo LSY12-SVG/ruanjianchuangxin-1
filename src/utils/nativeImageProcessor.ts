@@ -118,7 +118,7 @@ export const composeColorMatrices = (matrices: ColorMatrix[]): ColorMatrix => {
 
 /**
  * 使用 Skia 处理图片
- * @param imageUri 图片 URI
+ * @param imageUri 图片 URI (file:// 或 http://)
  * @param params 调色参数
  * @returns 处理后的图片 Base64
  */
@@ -127,8 +127,27 @@ export const processImageWithSkia = async (
   params: ColorGradingParams
 ): Promise<string> => {
   try {
-    // 加载原始图片
-    const imageData = await fetch(imageUri).then(res => res.arrayBuffer());
+    // 处理本地文件路径
+    let imageData: ArrayBuffer;
+    
+    if (imageUri.startsWith('file://')) {
+      // 本地文件，使用 fetch 的 blob 方式
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', imageUri);
+        xhr.responseType = 'blob';
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = () => reject(new Error('Failed to load local file'));
+        xhr.send();
+      });
+      
+      imageData = await blob.arrayBuffer();
+    } else {
+      // 网络图片
+      const response = await fetch(imageUri);
+      imageData = await response.arrayBuffer();
+    }
+    
     const skImage = Skia.MakeImageFromEncoded(new Uint8Array(imageData));
     
     if (!skImage) {
