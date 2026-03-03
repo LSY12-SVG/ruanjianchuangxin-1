@@ -1,170 +1,156 @@
-import React, {memo} from 'react';
+import React, {useEffect, useState, memo} from 'react';
 import {
   View,
   Image,
   StyleSheet,
-  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import type {ColorGradingParams} from '../../types/colorGrading';
+import {processImageWithSkia} from '../../utils/nativeImageProcessor';
 
 interface FilteredImageViewProps {
   uri: string;
   params: ColorGradingParams;
   style?: any;
   isBefore?: boolean;
+  quality?: 'draft' | 'standard' | 'high';
 }
 
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
-
 /**
- * 使用多层叠加的方式模拟调色效果
- * 注意：这是简化实现，真实效果需要原生模块支持
+ * 使用 Skia 真实处理图片的组件
  */
 export const FilteredImageView: React.FC<FilteredImageViewProps> = memo(({
   uri,
   params,
   style,
   isBefore = false,
+  quality = 'standard',
 }) => {
-  // 如果是"之前"或者没有调整，直接显示原图
-  if (isBefore || !hasAdjustments(params)) {
+  const [processedUri, setProcessedUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // 如果是"之前"视图，直接显示原图
+    if (isBefore) {
+      setProcessedUri(uri);
+      setError(null);
+      return;
+    }
+
+    const processImage = async () => {
+      // 如果没有调整参数，直接显示原图
+      if (!hasAdjustments(params)) {
+        setProcessedUri(uri);
+        setError(null);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const processed = await processImageWithSkia(uri, params);
+        setProcessedUri(processed);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : '处理图片失败';
+        console.error('Failed to process image:', err);
+        setError(errorMsg);
+        setProcessedUri(uri); // fallback 到原图
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (uri) {
+      processImage();
+    }
+  }, [uri, params, isBefore]);
+
+  // 显示加载状态
+  if (loading) {
     return (
-      <Image
-        source={{uri}}
-        style={[styles.image, style]}
-        resizeMode="contain"
-      />
+      <View style={[styles.container, style, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#6C63FF" />
+      </View>
     );
   }
 
-  // 计算叠加层的样式
-  const overlayColor = calculateOverlayColor(params);
-  const overlayOpacity = calculateOverlayOpacity(params);
+  // 显示错误状态
+  if (error) {
+    return (
+      <View style={[styles.container, style, styles.errorContainer]}>
+        <Image
+          source={{uri}}
+          style={styles.image}
+          resizeMode="contain"
+        />
+        <View style={styles.errorOverlay}>
+          <View style={styles.errorBadge}>
+            <View style={styles.errorIcon} />
+          </View>
+        </View>
+      </View>
+    );
+  }
 
+  // 显示处理后的图片
   return (
     <View style={styles.container}>
-      {/* 底层：原图 */}
       <Image
-        source={{uri}}
+        source={{uri: processedUri || uri}}
         style={[styles.image, style]}
         resizeMode="contain"
       />
-      
-      {/* 叠加层：模拟颜色调整 */}
-      {overlayOpacity > 0 && (
-        <View
-          style={[
-            styles.overlay,
-            style,
-            {
-              backgroundColor: overlayColor,
-              opacity: overlayOpacity,
-            },
-          ]}
-        />
-      )}
-      
-      {/* 亮度调整层 */}
-      {params.basic.brightness !== 0 && (
-        <View
-          style={[
-            styles.brightnessLayer,
-            style,
-            {
-              backgroundColor: params.basic.brightness > 0 ? '#FFFFFF' : '#000000',
-              opacity: Math.abs(params.basic.brightness) / 200,
-            },
-          ]}
-        />
-      )}
-      
-      {/* 对比度调整层（简化实现） */}
-      {params.basic.contrast !== 0 && (
-        <View
-          style={[
-            styles.contrastLayer,
-            style,
-            {
-              backgroundColor: params.basic.contrast > 0 ? '#000000' : '#808080',
-              opacity: Math.abs(params.basic.contrast) / 400,
-            },
-          ]}
-        />
-      )}
     </View>
   );
 });
 
+/**
+ * 检查是否有调整参数
+ */
 function hasAdjustments(params: ColorGradingParams): boolean {
-  // 检查是否有任何调整
   const basicValues = Object.values(params.basic);
   const colorBalanceValues = Object.values(params.colorBalance);
   
   return basicValues.some(v => v !== 0) || colorBalanceValues.some(v => v !== 0);
 }
 
-function calculateOverlayColor(params: ColorGradingParams): string {
-  // 根据色温计算叠加颜色
-  const temp = params.colorBalance.temperature;
-  
-  if (temp > 0) {
-    // 暖色调：橙色/黄色
-    const intensity = Math.min(Math.abs(temp), 100) / 100;
-    return `rgba(255, ${180 - intensity * 80}, ${100 - intensity * 50}, 0.1)`;
-  } else if (temp < 0) {
-    // 冷色调：蓝色
-    const intensity = Math.min(Math.abs(temp), 100) / 100;
-    return `rgba(${100 - intensity * 50}, ${150 - intensity * 50}, 255, 0.1)`;
-  }
-  
-  return 'transparent';
-}
-
-function calculateOverlayOpacity(params: ColorGradingParams): number {
-  let opacity = 0;
-  
-  // 根据饱和度计算
-  if (params.colorBalance.saturation !== 0) {
-    opacity += Math.abs(params.colorBalance.saturation) / 200;
-  }
-  
-  // 根据色彩增强计算
-  if (params.colorBalance.vibrance !== 0) {
-    opacity += Math.abs(params.colorBalance.vibrance) / 200;
-  }
-  
-  return Math.min(opacity, 0.3);
-}
-
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
+    overflow: 'hidden',
   },
   image: {
     width: '100%',
     height: '100%',
   },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.1)',
   },
-  brightnessLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    pointerEvents: 'none',
+  errorContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  contrastLayer: {
+  errorOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    pointerEvents: 'none',
+    top: 12,
+    right: 12,
+  },
+  errorBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 107, 107, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorIcon: {
+    width: 16,
+    height: 2,
+    backgroundColor: '#fff',
+    borderRadius: 1,
   },
 });

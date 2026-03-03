@@ -23,7 +23,7 @@ import {
   type ColorPreset,
 } from '../types/colorGrading';
 import {useImagePicker} from '../hooks/useImagePicker';
-import {applyColorGradingToStyle} from '../utils/imageUtils';
+import {processImageWithSkia, saveImageToTempFile} from '../utils/nativeImageProcessor';
 
 type TabType = 'home' | 'camera' | 'assistant' | 'profile';
 
@@ -39,6 +39,7 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
   const [params, setParams] = useState<ColorGradingParams>(defaultColorGradingParams);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('preset_original');
   const [showComparison, setShowComparison] = useState(true);
+  const [loading, setLoading] = useState(false);
   const viewRef = useRef<View>(null);
 
   // 使用图片选择 Hook
@@ -89,19 +90,33 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
 
   // 保存图片
   const handleSave = useCallback(async () => {
-    if (!selectedImage?.success || !viewRef.current) {
+    if (!selectedImage?.success || !selectedImage.uri) {
       Alert.alert('提示', '请先选择一张图片');
       return;
     }
 
     try {
-      // TODO: 使用原生图片处理实现真实的调色保存
-      Alert.alert('提示', '图片保存功能开发中，当前仅用于演示预览效果');
+      setLoading(true);
+      
+      // 使用 Skia 处理图片
+      const processedBase64 = await processImageWithSkia(selectedImage.uri, params);
+      
+      // 保存到临时文件
+      const tempPath = await saveImageToTempFile(processedBase64);
+      
+      // TODO: 使用 CameraRoll 保存到相册
+      Alert.alert(
+        '保存成功',
+        '图片已处理完成！（完整保存功能开发中）',
+        [{text: '确定'}]
+      );
     } catch (error) {
       console.error('保存图片失败:', error);
-      Alert.alert('失败', '保存图片时出错');
+      Alert.alert('失败', '保存图片时出错，请重试');
+    } finally {
+      setLoading(false);
     }
-  }, [selectedImage]);
+  }, [selectedImage, params]);
 
   // 显示对比开关
   const toggleComparison = () => {
