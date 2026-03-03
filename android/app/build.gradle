@@ -84,6 +84,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        
+        // react-native-vector-icons 字体配置
+        resValue "string", "build_config_package", "com.visiongenieapp"
     }
     signingConfigs {
         debug {
