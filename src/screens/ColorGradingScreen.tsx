@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useRef} from 'react';
 import {
   View,
   Text,
@@ -6,19 +6,24 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Image,
+  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import {captureRef} from 'react-native-view-shot';
 import {BasicLightModule} from '../components/colorGrading/BasicLightModule';
 import {ColorBalanceModule} from '../components/colorGrading/ColorBalanceModule';
 import {PresetSelector} from '../components/colorGrading/PresetSelector';
+import {ImagePickerComponent} from '../components/image/ImagePickerComponent';
+import {BeforeAfterViewer} from '../components/image/BeforeAfterViewer';
 import {
   defaultColorGradingParams,
   BUILTIN_PRESETS,
   type ColorGradingParams,
   type ColorPreset,
 } from '../types/colorGrading';
+import {useImagePicker} from '../hooks/useImagePicker';
+import {applyColorGradingToStyle, saveImageToGallery} from '../utils/imageUtils';
 
 type TabType = 'home' | 'camera' | 'assistant' | 'profile';
 
@@ -33,14 +38,38 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
 }) => {
   const [params, setParams] = useState<ColorGradingParams>(defaultColorGradingParams);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('preset_original');
+  const [showComparison, setShowComparison] = useState(true);
+  const viewRef = useRef<View>(null);
+
+  // 使用图片选择 Hook
+  const {
+    selectedImage,
+    isLoading,
+    pickFromGallery,
+    pickFromCamera,
+    clearImage,
+  } = useImagePicker({
+    onImageSelected: (result) => {
+      console.log('图片已选择:', result);
+    },
+    onImageError: (error) => {
+      Alert.alert('错误', error);
+    },
+  });
 
   const handleBasicChange = useCallback((basic: ColorGradingParams['basic']) => {
     setParams(prev => ({...prev, basic}));
-  }, []);
+    if (selectedPresetId !== 'preset_original') {
+      setSelectedPresetId('preset_original');
+    }
+  }, [selectedPresetId]);
 
   const handleColorBalanceChange = useCallback((colorBalance: ColorGradingParams['colorBalance']) => {
     setParams(prev => ({...prev, colorBalance}));
-  }, []);
+    if (selectedPresetId !== 'preset_original') {
+      setSelectedPresetId('preset_original');
+    }
+  }, [selectedPresetId]);
 
   const handleSelectPreset = useCallback((preset: ColorPreset) => {
     setSelectedPresetId(preset.id);
@@ -54,7 +83,43 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
 
   const handleApplyAI = () => {
     // TODO: AI 智能调色入口
+    Alert.alert('AI 智能调色', '该功能即将上线，敬请期待！');
     console.log('触发 AI 智能调色', params);
+  };
+
+  // 计算滤镜样式
+  const filterStyle = useMemo(() => {
+    return applyColorGradingToStyle(params);
+  }, [params]);
+
+  // 保存图片
+  const handleSave = useCallback(async () => {
+    if (!selectedImage?.success || !viewRef.current) {
+      Alert.alert('提示', '请先选择一张图片');
+      return;
+    }
+
+    try {
+      const uri = await captureRef(viewRef, {
+        format: 'png',
+        quality: 0.9,
+      });
+
+      const success = await saveImageToGallery(uri);
+      if (success) {
+        Alert.alert('成功', '图片已保存到相册');
+      } else {
+        Alert.alert('失败', '保存图片失败');
+      }
+    } catch (error) {
+      console.error('保存图片失败:', error);
+      Alert.alert('失败', '保存图片时出错');
+    }
+  }, [selectedImage]);
+
+  // 显示对比开关
+  const toggleComparison = () => {
+    setShowComparison(!showComparison);
   };
 
   return (
@@ -80,58 +145,87 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
             </View>
           </View>
 
-          {/* 功能卡片入口 */}
-          <TouchableOpacity style={styles.featureCard} activeOpacity={0.8}>
+          {/* AI 智能调色入口卡片 */}
+          <TouchableOpacity style={styles.featureCard} onPress={handleApplyAI} activeOpacity={0.8}>
             <View style={styles.featureCardContent}>
               <Icon name="color-palette-outline" size={40} color="#fff" />
               <Text style={styles.featureCardTitle}>AI 智能调色</Text>
             </View>
-            <TouchableOpacity onPress={handleApplyAI} style={styles.aiButton}>
+            <View style={styles.aiButton}>
               <Icon name="sparkles" size={20} color="#fff" />
               <Text style={styles.aiButtonText}>智能优化</Text>
-            </TouchableOpacity>
+            </View>
           </TouchableOpacity>
 
-          {/* 预设选择器 */}
-          <Text style={styles.sectionTitle}>滤镜预设</Text>
-          <PresetSelector
-            presets={BUILTIN_PRESETS}
-            selectedPresetId={selectedPresetId}
-            onSelectPreset={handleSelectPreset}
+          {/* 图片选择组件 */}
+          <ImagePickerComponent
+            selectedImage={selectedImage}
+            isLoading={isLoading}
+            onPickFromGallery={pickFromGallery}
+            onPickFromCamera={pickFromCamera}
+            onClearImage={clearImage}
           />
 
-          {/* 参数调整模块 */}
-          <Text style={styles.sectionTitle}>专业调整</Text>
-          
-          <BasicLightModule
-            params={params.basic}
-            onChange={handleBasicChange}
-          />
+          {/* 如果已选择图片，显示预览和调色控件 */}
+          {selectedImage?.success && selectedImage.uri && (
+            <>
+              {/* 图片预览与对比 */}
+              <BeforeAfterViewer
+                imageUri={selectedImage.uri}
+                filterStyle={filterStyle}
+                showComparison={showComparison}
+                onToggleComparison={toggleComparison}
+              />
 
-          <ColorBalanceModule
-            params={params.colorBalance}
-            onChange={handleColorBalanceChange}
-          />
+              {/* 预设选择器 */}
+              <Text style={styles.sectionTitle}>滤镜预设</Text>
+              <PresetSelector
+                presets={BUILTIN_PRESETS}
+                selectedPresetId={selectedPresetId}
+                onSelectPreset={handleSelectPreset}
+              />
+
+              {/* 参数调整模块 */}
+              <Text style={styles.sectionTitle}>专业调整</Text>
+              
+              <BasicLightModule
+                params={params.basic}
+                onChange={handleBasicChange}
+              />
+
+              <ColorBalanceModule
+                params={params.colorBalance}
+                onChange={handleColorBalanceChange}
+              />
+            </>
+          )}
 
           {/* 底部占位 */}
           <View style={styles.bottomPadding} />
         </ScrollView>
 
         {/* 底部操作栏 */}
-        <View style={styles.bottomActionBar}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleResetAll}>
-            <Icon name="refresh-outline" size={20} color="#666" />
-            <Text style={styles.actionButtonText}>重置</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="download-outline" size={20} color="#666" />
-            <Text style={styles.actionButtonText}>保存</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionButton, styles.compareButton]}>
-            <Icon name="eye-outline" size={20} color="#666" />
-            <Text style={styles.actionButtonText}>对比</Text>
-          </TouchableOpacity>
-        </View>
+        {selectedImage?.success && (
+          <View style={styles.bottomActionBar}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleResetAll}>
+              <Icon name="refresh-outline" size={20} color="#666" />
+              <Text style={styles.actionButtonText}>重置</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={handleSave}>
+              <Icon name="download-outline" size={20} color="#666" />
+              <Text style={styles.actionButtonText}>保存</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.compareButton]} 
+              onPress={toggleComparison}
+            >
+              <Icon name="layers-outline" size={20} color={showComparison ? '#6C63FF' : '#666'} />
+              <Text style={[styles.actionButtonText, {color: showComparison ? '#6C63FF' : '#666'}]}>
+                {showComparison ? '对比中' : '对比'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* 底部导航栏 */}
         <View style={styles.bottomNav}>
@@ -206,7 +300,7 @@ const styles = StyleSheet.create({
   featureCard: {
     backgroundColor: '#FF6B6B',
     marginHorizontal: 20,
-    marginTop: 10,
+    marginTop: 20,
     borderRadius: 24,
     padding: 24,
     flexDirection: 'row',
