@@ -30,16 +30,16 @@ export const applyColorGradingToStyle = (
     filters.push(`contrast(${contrast})`);
   }
 
-  if (params.basic.saturation !== 0) {
-    // 饱和度调整
-    const saturation = 1 + params.basic.saturation / 100;
-    filters.push(`saturate(${saturation})`);
-  }
-
   if (params.basic.exposure !== 0) {
     // 曝光度（使用 brightness 近似）
     const exposure = 1 + params.basic.exposure / 2;
     filters.push(`brightness(${exposure})`);
+  }
+
+  // 饱和度调整（在 colorBalance 中）
+  if (params.colorBalance.saturation !== 0) {
+    const saturation = 1 + params.colorBalance.saturation / 100;
+    filters.push(`saturate(${saturation})`);
   }
 
   // 色温调整（使用 sepia 和 hue-rotate 近似）
@@ -106,8 +106,8 @@ export const getImageDimensions = async (
     const Image = require('react-native').Image;
     Image.getSize(
       uri,
-      (width, height) => resolve({width, height}),
-      (error) => reject(error)
+      (width: number, height: number) => resolve({width, height}),
+      (error: Error) => reject(error)
     );
   });
 };

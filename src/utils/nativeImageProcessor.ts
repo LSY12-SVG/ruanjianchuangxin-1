@@ -1,4 +1,5 @@
 import {Skia, SkImage, SkSurface, ImageFormat, ColorMatrix} from '@shopify/react-native-skia';
+import {decode as atob} from 'base-64';
 import type {ColorGradingParams} from '../types/colorGrading';
 
 /**
@@ -118,62 +119,103 @@ export const composeColorMatrices = (matrices: ColorMatrix[]): ColorMatrix => {
 
 /**
  * 使用 Skia 处理图片
- * @param imageUri 图片 URI (file:// 或 http://)
+ * @param imageUri 图片 URI (file:// 或 http://) 或 base64 数据
  * @param params 调色参数
+ * @param base64Data 可选的 base64 图片数据（如果提供则优先使用）
  * @returns 处理后的图片 Base64
  */
 export const processImageWithSkia = async (
   imageUri: string,
-  params: ColorGradingParams
+  params: ColorGradingParams,
+  base64Data?: string
 ): Promise<string> => {
+  // 调试：检查 Skia 是否正确注册 - 放在 try 外面确保一定会执行
+  console.log('=== Skia Debug Start ===');
+  console.log('Skia:', Skia);
+  console.log('Skia.Surface:', Skia.Surface);
+  console.log('Skia.Surface.MakeOffscreen:', Skia.Surface?.MakeOffscreen);
+  console.log('Skia.Image:', Skia.Image);
+  console.log('Skia.Image.MakeImageFromEncoded:', Skia.Image?.MakeImageFromEncoded);
+  console.log('Skia.Data:', Skia.Data);
+  console.log('Skia.Data.fromBytes:', Skia.Data?.fromBytes);
+  console.log('=== Skia Debug End ===');
+  
   try {
-    // 处理本地文件路径
-    let imageData: ArrayBuffer;
+    let skImage: SkImage | null = null;
     
-    if (imageUri.startsWith('file://')) {
-      // 本地文件，使用 fetch 的 blob 方式
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('GET', imageUri);
-        xhr.responseType = 'blob';
-        xhr.onload = () => resolve(xhr.response);
-        xhr.onerror = () => reject(new Error('Failed to load local file'));
-        xhr.send();
+    // 如果提供了 base64 数据，优先使用
+    if (base64Data && base64Data.length > 0) {
+      console.log('base64Data length:', base64Data.length);
+      
+      // 移除可能的前缀
+      const base64String = base64Data.replace(/^data:image\/\w+;base64,/, '');
+      console.log('Clean base64 length:', base64String.length);
+      
+      // 使用 base-64 polyfill
+      const binaryString = atob(base64String);
+      console.log('Binary string length:', binaryString.length);
+      
+      const bytes = Uint8Array.from(binaryString, c => c.charCodeAt(0));
+      console.log('Uint8Array length:', bytes.length);
+      console.log('First 20 bytes:', Array.from(bytes.slice(0, 20)));
+      
+      // ✅ 正确写法：先转换为 Skia.Data
+      console.log('Creating Skia.Data.fromBytes...');
+      const data = Skia.Data.fromBytes(bytes);
+      console.log('Skia.Data created:', data);
+      
+      // 使用 Skia.Image.MakeImageFromEncoded 解码
+      console.log('Calling Skia.Image.MakeImageFromEncoded(data)...');
+      skImage = Skia.Image.MakeImageFromEncoded(data);
+      console.log('Success! Image:', skImage);
+    } else if (imageUri.startsWith('file://')) {
+      // 本地文件
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(new Error('FileReader 读取失败'));
+        reader.readAsArrayBuffer(blob);
       });
       
-      imageData = await blob.arrayBuffer();
+      skImage = Skia.Image.MakeImageFromEncoded(new Uint8Array(arrayBuffer));
     } else {
       // 网络图片
       const response = await fetch(imageUri);
-      imageData = await response.arrayBuffer();
+      const buffer = await response.arrayBuffer();
+      skImage = Skia.Image.MakeImageFromEncoded(new Uint8Array(buffer));
     }
-    
-    const skImage = Skia.MakeImageFromEncoded(new Uint8Array(imageData));
     
     if (!skImage) {
       throw new Error('Failed to load image');
     }
     
-    // 创建离屏表面
-    const surface = Skia.Surface.MakeOffscreen(skImage.width(), skImage.height());
+    // 创建 surface（使用标准写法）
+    const surface = Skia.Surface.MakeOffscreen(
+      skImage.width(),
+      skImage.height()
+    );
+    
+    console.log('surface:', surface);
+    console.log('getCanvas method:', surface?.getCanvas);
+    
     if (!surface) {
-      throw new Error('Failed to create surface');
+      throw new Error('Surface creation failed');
     }
     
-    const canvas = surface.canvas();
+    // 使用 getCanvas() 而不是 canvas()
+    const canvas = surface.getCanvas();
     
-    // 组合所有颜色矩阵
+    // 收集颜色矩阵
     const matrices: ColorMatrix[] = [];
     
-    // 基础光影调整
     if (params.basic.brightness !== 0) {
       matrices.push(createBrightnessMatrix(params.basic.brightness));
     }
     if (params.basic.contrast !== 0) {
       matrices.push(createContrastMatrix(params.basic.contrast));
     }
-    
-    // 色彩平衡调整
     if (params.colorBalance.temperature !== 0) {
       matrices.push(createTemperatureMatrix(params.colorBalance.temperature));
     }
@@ -186,24 +228,24 @@ export const processImageWithSkia = async (
     
     // 如果没有调整，直接返回原图
     if (matrices.length === 0) {
-      const encodedImage = skImage.encodeToBase64(ImageFormat.PNG, 100);
+      const encodedImage = skImage.encodeToBase64();
       return `data:image/png;base64,${encodedImage}`;
     }
     
     // 组合矩阵
     const combinedMatrix = composeColorMatrices(matrices);
     
-    // 应用颜色矩阵滤镜
+    // 使用标准写法：Skia.ColorFilter.MakeMatrix
     const paint = Skia.Paint();
-    const colorFilter = Skia.ColorMatrixColorFilter.Make(combinedMatrix);
+    const colorFilter = Skia.ColorFilter.MakeMatrix(combinedMatrix);
     paint.setColorFilter(colorFilter);
     
     // 绘制处理后的图像
     canvas.drawImage(skImage, 0, 0, paint);
     
-    // 获取处理后的图像
-    const processedImage = surface.makeImageSnapshot();
-    const encodedImage = processedImage.encodeToBase64(ImageFormat.PNG, 90);
+    // 生成结果（使用标准写法）
+    const snapshot = surface.makeImageSnapshot();
+    const encodedImage = snapshot.encodeToBase64();
     
     return `data:image/png;base64,${encodedImage}`;
   } catch (error) {

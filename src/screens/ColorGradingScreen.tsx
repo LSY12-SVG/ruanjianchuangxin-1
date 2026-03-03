@@ -176,6 +176,7 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
                 params={params}
                 showComparison={showComparison}
                 onToggleComparison={toggleComparison}
+                base64Data={selectedImage.base64}
               />
 
               {/* 预设选择器 */}

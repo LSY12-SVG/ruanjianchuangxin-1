@@ -14,6 +14,7 @@ interface FilteredImageViewProps {
   style?: any;
   isBefore?: boolean;
   quality?: 'draft' | 'standard' | 'high';
+  base64Data?: string;
 }
 
 /**
@@ -25,6 +26,7 @@ export const FilteredImageView: React.FC<FilteredImageViewProps> = memo(({
   style,
   isBefore = false,
   quality = 'standard',
+  base64Data,
 }) => {
   const [processedUri, setProcessedUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,7 +52,7 @@ export const FilteredImageView: React.FC<FilteredImageViewProps> = memo(({
       setError(null);
       
       try {
-        const processed = await processImageWithSkia(uri, params);
+        const processed = await processImageWithSkia(uri, params, base64Data);
         setProcessedUri(processed);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : '处理图片失败';
@@ -65,7 +67,7 @@ export const FilteredImageView: React.FC<FilteredImageViewProps> = memo(({
     if (uri) {
       processImage();
     }
-  }, [uri, params, isBefore]);
+  }, [uri, params, isBefore, base64Data]);
 
   // 显示加载状态
   if (loading) {

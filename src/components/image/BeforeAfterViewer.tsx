@@ -11,20 +11,22 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import {FilteredImageView} from './FilteredImageView';
 import type {ColorGradingParams} from '../../types/colorGrading';
 
+const {width: SCREEN_WIDTH} = Dimensions.get('window');
+
 interface BeforeAfterViewerProps {
   imageUri: string;
   params: ColorGradingParams;
   showComparison: boolean;
   onToggleComparison: () => void;
+  base64Data?: string;
 }
-
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
 
 export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
   imageUri,
   params,
   showComparison,
   onToggleComparison,
+  base64Data,
 }) => {
   const [sliderPosition, setSliderPosition] = useState(SCREEN_WIDTH / 2);
   const [isDragging, setIsDragging] = useState(false);
@@ -60,6 +62,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
           uri={imageUri}
           params={params}
           isBefore={false}
+          base64Data={base64Data}
         />
       </View>
     );
@@ -79,6 +82,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
           uri={imageUri}
           params={params}
           isBefore={true}
+          base64Data={base64Data}
         />
         <View style={styles.label}>
           <Text style={styles.labelText}>原图</Text>
@@ -100,6 +104,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({
           uri={imageUri}
           params={params}
           isBefore={false}
+          base64Data={base64Data}
         />
         <View style={[styles.label, styles.rightLabel]}>
           <Text style={styles.labelText}>调色后</Text>
