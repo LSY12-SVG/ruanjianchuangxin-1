@@ -49,6 +49,22 @@ const HomeScreen: React.FC<HomeScreenProps> = ({activeTab, onTabChange}) => {
             </View>
           </TouchableOpacity>
 
+          {/* GPU 实时调色入口 */}
+          <TouchableOpacity 
+            style={styles.featureCard} 
+            activeOpacity={0.8}
+            onPress={() => onTabChange('assistant')}
+          >
+            <View style={styles.featureCardContent}>
+              <Icon name="color-palette-outline" size={40} color="#fff" />
+              <View style={styles.featureCardText}>
+                <Text style={styles.featureCardTitle}>GPU 实时调色</Text>
+                <Text style={styles.featureCardSubtitle}>5-15 倍性能提升，丝滑流畅</Text>
+              </View>
+            </View>
+            <Icon name="arrow-forward" size={24} color="#fff" />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.secondaryCard} activeOpacity={0.8}>
             <Text style={styles.secondaryCardTitle}>心情树洞</Text>
             <Text style={styles.secondaryCardSubtitle}>匿名倾诉，AI 暖心回应</Text>
@@ -155,6 +171,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 16,
+  },
+  featureCard: {
+    backgroundColor: 'rgba(108, 99, 255, 0.2)',
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: 'rgba(108, 99, 255, 0.3)',
+  },
+  featureCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  featureCardText: {
+    marginLeft: 12,
+  },
+  featureCardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  featureCardSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   secondaryCard: {
     backgroundColor: 'rgba(255,255,255,0.1)',

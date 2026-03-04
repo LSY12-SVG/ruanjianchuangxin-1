@@ -1,5 +1,5 @@
 import {useState, useCallback} from 'react';
-import {Platform, PermissionsAndroid, Alert} from 'react-native';
+import {Platform, PermissionsAndroid} from 'react-native';
 import {launchCamera, launchImageLibrary, type ImageLibraryOptions, type CameraOptions} from 'react-native-image-picker';
 
 export interface ImagePickerResult {
@@ -134,7 +134,7 @@ export const useImagePicker = ({
     // 先请求权限
     const hasPermission = await requestStoragePermission();
     if (!hasPermission) {
-      Alert.alert('权限不足', '无法访问相册，请在设置中授予存储权限');
+      console.warn('存储权限被拒绝');
       return {success: false, error: '存储权限被拒绝'};
     }
 
@@ -164,7 +164,7 @@ export const useImagePicker = ({
     // 先请求相机权限
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) {
-      Alert.alert('权限不足', '无法使用相机，请在设置中授予相机权限');
+      console.warn('相机权限被拒绝');
       return {success: false, error: '相机权限被拒绝'};
     }
 
