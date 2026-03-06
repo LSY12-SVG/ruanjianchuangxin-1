@@ -172,7 +172,7 @@ export class SiliconFlowService {
 
   // Tripo 3D Generation Methods
   
-  async create3DModelFromImage(imageUrl: string, format: string = 'glb'): Promise<string> {
+  async create3DModelFromImage(imageUrl: string, _format: string = 'glb'): Promise<string> {
      // NOTE: Since actual file upload logic in react-native requires FormData and file system access
      // This method assumes we might be sending a public URL or base64 if supported, 
      // or this logic needs to be adapted for react-native-fs / axios file upload.

@@ -1,5 +1,5 @@
 {
-  "name": "VisionGenieApp",
+  "name": "vision-genie-app",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -20,11 +20,10 @@
     "gl-react": "^4.0.1",
     "gl-react-dom": "^4.0.1",
     "gl-react-native": "^4.0.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.84.1",
     "react-native-gl-image-filters": "^0.5.0",
-    "react-native-image-crop-picker": "^0.51.1",
     "react-native-image-picker": "^8.2.1",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-safe-area-context": "^5.7.0",
@@ -48,8 +47,12 @@
     "eslint": "^8.19.0",
     "jest": "^29.6.3",
     "prettier": "2.8.8",
-    "react-test-renderer": "19.2.4",
+    "react-test-renderer": "19.2.3",
     "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-is": "19.2.3"
   },
   "engines": {
     "node": ">= 22.11.0"

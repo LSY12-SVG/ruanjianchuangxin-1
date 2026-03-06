@@ -39,7 +39,7 @@ export default function AIColorTuning({ onBack }: AIColorTuningProps) {
 
   useEffect(() => {
     nlpService.initSiliconFlow(SILICONFLOW_API_KEY);
-  }, []);
+  }, [nlpService]);
 
   const requestCameraPermission = async () => {
     if (Platform.OS === 'android') {

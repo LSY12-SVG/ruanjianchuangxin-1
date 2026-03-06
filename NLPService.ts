@@ -82,7 +82,7 @@ export class NLPService {
 
     for (const [style, keywords] of Object.entries(STYLE_KEYWORDS)) {
       for (const keyword of keywords) {
-        if (text.includes(keyword)) {
+        if (lowerText.includes(keyword.toLowerCase())) {
           if (!detectedStyles.includes(style)) {
             detectedStyles.push(style);
           }
@@ -94,7 +94,7 @@ export class NLPService {
     for (const [param, directions] of Object.entries(PARAM_KEYWORDS)) {
       for (const [direction, keywords] of Object.entries(directions)) {
         for (const keyword of keywords) {
-          if (text.includes(keyword)) {
+          if (lowerText.includes(keyword.toLowerCase())) {
             const value = direction === 'increase' ? 30 : -30;
             (params as any)[param] = value;
             break;
