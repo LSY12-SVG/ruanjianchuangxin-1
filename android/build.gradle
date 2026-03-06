@@ -1,3 +1,4 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
     ext {
         buildToolsVersion = "36.0.0"
@@ -8,6 +9,12 @@ buildscript {
         kotlinVersion = "2.1.20"
     }
     repositories {
+        // JitPack 放在靠前位置以解析 com.github.* 依赖（如 ucrop）
+        maven { url 'https://jitpack.io' }
+        // 优先从国内阿里云镜像下载插件
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/jcenter' }
         google()
         mavenCentral()
     }
@@ -15,6 +22,20 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+// 如果你之前没找到 allprojects，请确保这一段被完整添加在文件末尾
+allprojects {
+    repositories {
+        // JitPack 放在靠前位置以解析 com.github.* 依赖（如 ucrop）
+        maven { url 'https://jitpack.io' }
+        // 优先从国内阿里云镜像下载依赖库（如 React Native 核心包）
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/jcenter' }
+        google()
+        mavenCentral()
     }
 }
 
