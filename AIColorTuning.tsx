@@ -38,7 +38,7 @@ export default function AIColorTuning({ onBack }: AIColorTuningProps) {
   const engine = ColorGradingEngine.getInstance();
 
   useEffect(() => {
-    NLPService.initSiliconFlow(SILICONFLOW_API_KEY);
+    nlpService.initSiliconFlow(SILICONFLOW_API_KEY);
   }, []);
 
   const requestCameraPermission = async () => {
@@ -486,11 +486,16 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 2,
   },
-  advancedButtonText: {
+  advancedButton: {
     backgroundColor: 'rgba(255, 215, 0, 0.2)',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 15,
+  },
+  advancedButtonText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   apiSwitchButton: {
     backgroundColor: 'rgba(0, 150, 255, 0.2)',

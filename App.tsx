@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import AIColorTuning from './AIColorTuning';
+import ThreeDModeling from './ThreeDModeling';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [showAIColorTuning, setShowAIColorTuning] = useState(false);
+  const [showThreeDModeling, setShowThreeDModeling] = useState(false);
 
   const renderHomeScreen = () => (
     <View style={styles.container}>
@@ -46,7 +48,10 @@ export default function App() {
         </TouchableOpacity>
         
         <View style={styles.captureCardRow}>
-          <TouchableOpacity style={styles.captureCard2}>
+          <TouchableOpacity 
+            style={styles.captureCard2}
+            onPress={() => setShowThreeDModeling(true)}
+          >
             <Text style={styles.captureCardIcon}>📦</Text>
             <Text style={styles.captureCardTitle}>3D 建模</Text>
           </TouchableOpacity>
@@ -64,6 +69,8 @@ export default function App() {
     <View style={styles.container}>
       {showAIColorTuning ? (
         <AIColorTuning onBack={() => setShowAIColorTuning(false)} />
+      ) : showThreeDModeling ? (
+        <ThreeDModeling onBack={() => setShowThreeDModeling(false)} />
       ) : (
         <>
           {activeTab === 'home' && renderHomeScreen()}

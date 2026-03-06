@@ -1,5 +1,5 @@
 import axios from 'axios';
-import SiliconFlowService from './SiliconFlowService';
+import { SiliconFlowService } from './SiliconFlowService';
 
 export interface ColorParams {
   brightness?: number;
