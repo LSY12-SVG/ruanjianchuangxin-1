@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import type {ColorPreset} from '../../types/colorGrading';
+import type {ColorPreset} from '../../types/colorGrading.ts';
 
 interface PresetSelectorProps {
   presets: ColorPreset[];
@@ -61,22 +61,22 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({
 
 function getPresetColor(category: string): string {
   const colors: Record<string, string> = {
-    cinematic: '#FF6B6B',
-    portrait: '#FFA07A',
-    landscape: '#4ECDC4',
-    artistic: '#9B59B6',
-    vintage: '#D4A574',
-    custom: '#95A5A6',
+    cinematic: '#2f628a',
+    portrait: '#3c7399',
+    landscape: '#2f7f8a',
+    artistic: '#355c88',
+    vintage: '#4a6a86',
+    custom: '#476580',
   };
-  return colors[category] || '#95A5A6';
+  return colors[category] || '#476580';
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 4,
   },
   presetCard: {
     marginRight: 12,
@@ -93,6 +93,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(155, 207, 245, 0.28)',
   },
   presetName: {
     fontSize: 11,
@@ -108,7 +110,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: 'rgba(108, 99, 255, 0.9)',
+    backgroundColor: 'rgba(121, 201, 255, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -118,6 +120,6 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#6C63FF',
+    backgroundColor: '#79c9ff',
   },
 });

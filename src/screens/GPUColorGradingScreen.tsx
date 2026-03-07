@@ -1,119 +1,161 @@
-import React, {useState, useCallback, useMemo} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  Alert,
   ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import {Skia} from '@shopify/react-native-skia';
+import type {SkImage} from '@shopify/react-native-skia';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
-import { Skia, Image as SkiaImage } from '@shopify/react-native-skia';
-import type { SkImage } from '@shopify/react-native-skia';
 import {BasicLightModule} from '../components/colorGrading/BasicLightModule';
+import {ColorWheelsModule} from '../components/colorGrading/ColorWheelsModule';
 import {ColorBalanceModule} from '../components/colorGrading/ColorBalanceModule';
 import {PresetSelector} from '../components/colorGrading/PresetSelector';
-import {ImagePickerComponent} from '../components/image/ImagePickerComponent';
+import {ToneCurvesModule} from '../components/colorGrading/ToneCurvesModule';
 import {GPUBeforeAfterViewer} from '../components/image/GPUBeforeAfterViewer';
+import {ImagePickerComponent} from '../components/image/ImagePickerComponent';
+import {useImagePicker} from '../hooks/useImagePicker';
 import {
-  defaultColorGradingParams,
   BUILTIN_PRESETS,
+  defaultColorGradingParams,
   type ColorGradingParams,
   type ColorPreset,
-} from '../types/colorGrading';
-import {useImagePicker} from '../hooks/useImagePicker';
+} from '../types/colorGrading.ts';
+import {useVoiceColorGrading} from '../voice/useVoiceColorGrading';
+import {buildVoiceImageContext} from '../voice/imageContext';
 
-type TabType = 'home' | 'camera' | 'assistant' | 'profile';
+const COLORS = {
+  bgStart: '#061426',
+  bgMid: '#0A2741',
+  bgEnd: '#071B30',
+  card: 'rgba(10, 38, 62, 0.92)',
+  cardSoft: 'rgba(14, 46, 74, 0.84)',
+  border: 'rgba(142, 193, 236, 0.26)',
+  textMain: '#e8f3ff',
+  textSub: '#a8c8e8',
+  textMute: '#84abd0',
+  primary: '#79C9FF',
+  primaryStrong: '#9AD8FF',
+  danger: '#ffb5b5',
+  warning: '#ffd6a2',
+} as const;
 
-interface ColorGradingScreenProps {
-  activeTab: TabType;
-  onTabChange: (tab: TabType) => void;
-}
-
-const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
-  activeTab,
-  onTabChange,
-}) => {
+const GPUColorGradingScreen: React.FC = () => {
   const [params, setParams] = useState<ColorGradingParams>(defaultColorGradingParams);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('preset_original');
   const [showComparison, setShowComparison] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [shaderAvailable, setShaderAvailable] = useState(true);
+  const [showVoiceDebug, setShowVoiceDebug] = useState(false);
 
-  // 使用图片选择 Hook
-  const {
-    selectedImage,
-    isLoading,
-    pickFromGallery,
-    pickFromCamera,
-    clearImage,
-  } = useImagePicker({
-    onImageSelected: (result) => {
-      console.log('图片已选择:', result);
-    },
-    onImageError: (error) => {
-      Alert.alert('错误', error);
-    },
-  });
+  const {selectedImage, isLoading, pickFromGallery, pickFromCamera, clearImage} =
+    useImagePicker({
+      onImageError: error => Alert.alert('图片错误', error),
+    });
 
-  // 使用 useMemo 缓存 Skia Image 对象
   const skImage = useMemo<SkImage | null>(() => {
-    if (!selectedImage?.success || !selectedImage.uri) {
+    if (!selectedImage?.success || !selectedImage.base64) {
       return null;
     }
 
     try {
-      // 如果有 base64 数据，优先使用
-      if (selectedImage.base64 && selectedImage.base64.length > 0) {
-        const base64String = selectedImage.base64.replace(/^data:image\/\w+;base64,/, '');
-        const data = Skia.Data.fromBase64(base64String);
-        if (data) {
-          return Skia.Image.MakeImageFromEncoded(data);
-        }
-      }
-      
-      // 否则从 URI 加载（这个需要 native 支持）
-      console.log('从 URI 加载图片:', selectedImage.uri);
-      return null; // 暂时返回 null，使用 base64 方式
+      const base64String = selectedImage.base64.replace(/^data:image\/\w+;base64,/, '');
+      const data = Skia.Data.fromBase64(base64String);
+      return data ? Skia.Image.MakeImageFromEncoded(data) : null;
     } catch (error) {
-      console.error('加载 Skia Image 失败:', error);
+      console.error('Skia image decode failed:', error);
       return null;
     }
-  }, [selectedImage?.uri, selectedImage?.base64, selectedImage?.success]);
+  }, [selectedImage?.base64, selectedImage?.success]);
 
-  const handleBasicChange = useCallback((basic: ColorGradingParams['basic']) => {
-    setParams(prev => ({...prev, basic}));
-    if (selectedPresetId !== 'preset_original') {
+  const voice = useVoiceColorGrading({
+    currentParams: params,
+    onApplyParams: nextParams => {
+      setParams(nextParams);
       setSelectedPresetId('preset_original');
-    }
-  }, [selectedPresetId]);
+    },
+    getImageContext: () => buildVoiceImageContext(selectedImage, skImage),
+  });
 
-  const handleColorBalanceChange = useCallback((colorBalance: ColorGradingParams['colorBalance']) => {
-    setParams(prev => ({...prev, colorBalance}));
-    if (selectedPresetId !== 'preset_original') {
-      setSelectedPresetId('preset_original');
+  const lastVisualKeyRef = useRef('');
+  useEffect(() => {
+    if (!selectedImage?.success || !skImage || !selectedImage.base64) {
+      lastVisualKeyRef.current = '';
+      return;
     }
-  }, [selectedPresetId]);
+    const key = `${selectedImage.uri || ''}_${selectedImage.width || 0}_${selectedImage.height || 0}`;
+    if (lastVisualKeyRef.current === key) {
+      return;
+    }
+    lastVisualKeyRef.current = key;
+    voice.requestInitialVisualSuggestion().catch(error => {
+      console.warn('initial visual suggestion failed:', error);
+    });
+  }, [
+    selectedImage?.base64,
+    selectedImage?.height,
+    selectedImage?.success,
+    selectedImage?.uri,
+    selectedImage?.width,
+    skImage,
+    voice,
+  ]);
+
+  const handleBasicChange = useCallback(
+    (basic: ColorGradingParams['basic']) => {
+      setParams(prev => ({...prev, basic}));
+      if (selectedPresetId !== 'preset_original') {
+        setSelectedPresetId('preset_original');
+      }
+    },
+    [selectedPresetId],
+  );
+
+  const handleColorBalanceChange = useCallback(
+    (colorBalance: ColorGradingParams['colorBalance']) => {
+      setParams(prev => ({...prev, colorBalance}));
+      if (selectedPresetId !== 'preset_original') {
+        setSelectedPresetId('preset_original');
+      }
+    },
+    [selectedPresetId],
+  );
 
   const handleSelectPreset = useCallback((preset: ColorPreset) => {
     setSelectedPresetId(preset.id);
     setParams(preset.params);
   }, []);
 
-  const handleResetAll = () => {
+  const handleProCurvesChange = useCallback(
+    (curves: ColorGradingParams['pro']['curves']) => {
+      setParams(prev => ({...prev, pro: {...prev.pro, curves}}));
+      if (selectedPresetId !== 'preset_original') {
+        setSelectedPresetId('preset_original');
+      }
+    },
+    [selectedPresetId],
+  );
+
+  const handleProWheelsChange = useCallback(
+    (wheels: ColorGradingParams['pro']['wheels']) => {
+      setParams(prev => ({...prev, pro: {...prev.pro, wheels}}));
+      if (selectedPresetId !== 'preset_original') {
+        setSelectedPresetId('preset_original');
+      }
+    },
+    [selectedPresetId],
+  );
+
+  const handleResetAll = useCallback(() => {
     setParams(defaultColorGradingParams);
     setSelectedPresetId('preset_original');
-  };
+  }, []);
 
-  const handleApplyAI = () => {
-    // TODO: AI 智能调色入口
-    Alert.alert('AI 智能调色', '该功能即将上线，敬请期待！');
-    console.log('触发 AI 智能调色', params);
-  };
-
-  // 保存图片 - 使用 GPU 截图
   const handleSave = useCallback(async () => {
     if (!selectedImage?.success || !skImage) {
       Alert.alert('提示', '请先选择一张图片');
@@ -121,181 +163,225 @@ const ColorGradingScreen: React.FC<ColorGradingScreenProps> = ({
     }
 
     try {
-      setLoading(true);
-      
-      // TODO: 使用 GPU 截图并保存
-      // 这是后续优化的部分，需要使用 Skia 的 Surface 截图功能
-      Alert.alert(
-        '保存功能',
-        'GPU 截图保存功能开发中...',
-        [{text: '确定'}]
-      );
-    } catch (error) {
-      console.error('保存图片失败:', error);
-      Alert.alert('失败', '保存图片时出错，请重试');
+      setIsSaving(true);
+      Alert.alert('保存功能', 'GPU 导出将在下一步接入系统相册。');
     } finally {
-      setLoading(false);
+      setIsSaving(false);
     }
-  }, [selectedImage, skImage]);
+  }, [selectedImage?.success, skImage]);
 
-  // 显示对比开关
-  const toggleComparison = () => {
-    setShowComparison(!showComparison);
-  };
-
-  if (!skImage && selectedImage?.success) {
-    return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-        <LinearGradient
-          colors={['#2D5A5A', '#1A3A3A']}
-          style={styles.gradient}
-        >
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.loadingText}>加载图片中...</Text>
-          </View>
-        </LinearGradient>
-      </View>
-    );
-  }
+  const handleVoiceToggle = useCallback(() => {
+    const task = voice.isRecording ? voice.stopPressToTalk() : voice.startPressToTalk();
+    task.catch(error => {
+      console.warn('voice toggle failed:', error);
+    });
+  }, [voice]);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <LinearGradient
-        colors={['#2D5A5A', '#1A3A3A']}
-        style={styles.gradient}
-      >
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {/* 顶部横条 */}
-          <View style={styles.topBar}>
-            <View style={styles.topBarLine} />
+    <LinearGradient
+      colors={[COLORS.bgStart, COLORS.bgMid, COLORS.bgEnd]}
+      style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.headerCard}>
+          <View>
+            <Text style={styles.headerTitle}>GPU 调色工作台</Text>
+            <Text style={styles.headerSubtitle}>单主预览 | 连续语音 | 实时渲染</Text>
           </View>
-
-          {/* 标题区域 */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Create</Text>
-            <Text style={styles.title}>Magic</Text>
-            <View style={styles.subtitleContainer}>
-              <Text style={styles.subtitle}>STUDIO MODE</Text>
-              <View style={styles.dot} />
-            </View>
-          </View>
-
-          {/* AI 智能调色入口卡片 */}
-          <TouchableOpacity style={styles.featureCard} onPress={handleApplyAI} activeOpacity={0.8}>
-            <View style={styles.featureCardContent}>
-              <Icon name="color-palette-outline" size={40} color="#fff" />
-              <Text style={styles.featureCardTitle}>AI 智能调色</Text>
-            </View>
-            <View style={styles.aiButton}>
-              <Icon name="sparkles" size={20} color="#fff" />
-              <Text style={styles.aiButtonText}>智能优化</Text>
-            </View>
+          <TouchableOpacity style={styles.headerAction} onPress={handleResetAll}>
+            <Icon name="refresh-outline" size={16} color={COLORS.primaryStrong} />
+            <Text style={styles.headerActionText}>重置参数</Text>
           </TouchableOpacity>
+        </View>
 
-          {/* 图片选择组件 */}
-          <ImagePickerComponent
-            selectedImage={selectedImage}
-            isLoading={isLoading}
-            onPickFromGallery={pickFromGallery}
-            onPickFromCamera={pickFromCamera}
-            onClearImage={clearImage}
-          />
+        <ImagePickerComponent
+          selectedImage={selectedImage}
+          isLoading={isLoading}
+          onPickFromGallery={pickFromGallery}
+          onPickFromCamera={pickFromCamera}
+          onClearImage={clearImage}
+          compactWhenSelected
+        />
 
-          {/* 如果已选择图片，显示预览和调色控件 */}
-          {selectedImage?.success && skImage && (
-            <>
-              {/* 图片预览与对比 - 使用 GPU 实时渲染 */}
+        {selectedImage?.success && !skImage ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={styles.loadingText}>正在解码图片...</Text>
+          </View>
+        ) : null}
+
+        {selectedImage?.success && skImage ? (
+          <>
+            <View style={styles.viewerHeader}>
+              <Text style={styles.viewerTitle}>实时预览</Text>
+              <TouchableOpacity
+                style={styles.compareButton}
+                onPress={() => setShowComparison(v => !v)}>
+                <Icon name="layers-outline" size={16} color={COLORS.textMain} />
+                <Text style={styles.compareText}>
+                  {showComparison ? '关闭对比' : '开启对比'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.viewerCard}>
               <GPUBeforeAfterViewer
                 image={skImage}
                 params={params}
                 showComparison={showComparison}
-                onToggleComparison={toggleComparison}
+                onToggleComparison={() => setShowComparison(v => !v)}
+                onShaderAvailabilityChange={setShaderAvailable}
               />
+            </View>
 
-              {/* 预设选择器 */}
-              <Text style={styles.sectionTitle}>滤镜预设</Text>
+            {!shaderAvailable ? (
+              <View style={styles.shaderWarningCard}>
+                <Icon name="warning-outline" size={15} color={COLORS.warning} />
+                <Text style={styles.shaderWarningText}>
+                  当前设备不支持 Runtime Shader，已回退到基础矩阵模式。进阶参数效果会受限。
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={styles.voiceCard}>
+              <View style={styles.voiceHeader}>
+                <Text style={styles.voiceTitle}>语音智能调色</Text>
+                <Text style={styles.voiceState}>{voice.state}</Text>
+              </View>
+
+              <View style={styles.voiceSummaryCard}>
+                <Text style={styles.voiceSummaryTitle}>视觉首轮建议</Text>
+                <Text style={styles.voiceSummaryMeta}>
+                  状态: {voice.visualState}
+                  {voice.visualProfile ? ` | 场景: ${voice.visualProfile}` : ''}
+                </Text>
+                {voice.visualSummary ? (
+                  <Text style={styles.voiceSummaryText}>{voice.visualSummary}</Text>
+                ) : null}
+                {voice.visualApplySummary ? (
+                  <Text style={styles.voiceSummaryText}>
+                    已应用: {voice.visualApplySummary}
+                  </Text>
+                ) : null}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.voiceButton,
+                  voice.isRecording && styles.voiceButtonActive,
+                ]}
+                onPress={handleVoiceToggle}
+                activeOpacity={0.78}
+                hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}
+                pressRetentionOffset={{top: 16, bottom: 16, left: 16, right: 16}}
+                disabled={voice.state === 'queue_applying'}>
+                <Icon
+                  name="mic"
+                  size={18}
+                  color={voice.isRecording ? '#08213a' : COLORS.textMain}
+                />
+                <Text
+                  style={[
+                    styles.voiceButtonText,
+                    voice.isRecording && styles.voiceButtonTextActive,
+                  ]}>
+                  {voice.isRecording ? '点击结束并自动叠加' : '在当前建议上继续语音修改'}
+                </Text>
+              </TouchableOpacity>
+
+              {voice.lastError ? <Text style={styles.voiceError}>{voice.lastError}</Text> : null}
+
+              {voice.lastAppliedSummary ? (
+                <View style={styles.voiceSummaryCard}>
+                  <Text style={styles.voiceSummaryTitle}>最近一次语音增量</Text>
+                  <Text style={styles.voiceSummaryText}>{voice.lastAppliedSummary}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.voiceActions}>
+                {voice.canUndo ? (
+                  <TouchableOpacity style={styles.undoButton} onPress={voice.undoLastApply}>
+                    <Icon name="arrow-undo-outline" size={16} color={COLORS.textMain} />
+                    <Text style={styles.undoText}>撤销本次应用</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {voice.canUndoSession ? (
+                  <TouchableOpacity style={styles.undoButton} onPress={voice.undoSessionApply}>
+                    <Icon name="albums-outline" size={16} color={COLORS.textMain} />
+                    <Text style={styles.undoText}>撤销本次会话</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <TouchableOpacity
+                style={styles.voiceDebugToggle}
+                onPress={() => setShowVoiceDebug(v => !v)}>
+                <Text style={styles.voiceDebugToggleText}>
+                  {showVoiceDebug ? '收起识别调试信息' : '展开识别调试信息'}
+                </Text>
+                <Icon
+                  name={showVoiceDebug ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={COLORS.textSub}
+                />
+              </TouchableOpacity>
+
+              {showVoiceDebug ? (
+                <View style={styles.voiceDebugPanel}>
+                  {voice.partialTranscript ? (
+                    <Text style={styles.voiceDebugText}>识别中: {voice.partialTranscript}</Text>
+                  ) : null}
+                  {voice.transcript ? (
+                    <Text style={styles.voiceDebugText}>最终文本: {voice.transcript}</Text>
+                  ) : (
+                    <Text style={styles.voiceDebugText}>暂无识别文本</Text>
+                  )}
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.blockCard}>
+              <Text style={styles.blockTitle}>预设</Text>
               <PresetSelector
                 presets={BUILTIN_PRESETS}
                 selectedPresetId={selectedPresetId}
                 onSelectPreset={handleSelectPreset}
               />
+            </View>
 
-              {/* 参数调整模块 */}
-              <Text style={styles.sectionTitle}>专业调整</Text>
-              
-              <BasicLightModule
-                params={params.basic}
-                onChange={handleBasicChange}
-              />
-
+            <View style={styles.blockCard}>
+              <Text style={styles.blockTitle}>参数调节</Text>
+              <BasicLightModule params={params.basic} onChange={handleBasicChange} />
               <ColorBalanceModule
                 params={params.colorBalance}
                 onChange={handleColorBalanceChange}
               />
-            </>
-          )}
+              <ToneCurvesModule
+                curves={params.pro.curves}
+                onChange={handleProCurvesChange}
+              />
+              <ColorWheelsModule
+                wheels={params.pro.wheels}
+                onChange={handleProWheelsChange}
+              />
+            </View>
 
-          {/* 底部占位 */}
-          <View style={styles.bottomPadding} />
-        </ScrollView>
-
-        {/* 底部操作栏 */}
-        {selectedImage?.success && skImage && (
-          <View style={styles.bottomActionBar}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleResetAll}>
-              <Icon name="refresh-outline" size={20} color="#666" />
-              <Text style={styles.actionButtonText}>重置</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.saveButton]} 
+            <TouchableOpacity
+              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
               onPress={handleSave}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color="#666" />
+              disabled={isSaving}>
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#0b2a47" />
               ) : (
-                <>
-                  <Icon name="download-outline" size={20} color="#666" />
-                  <Text style={styles.actionButtonText}>保存</Text>
-                </>
+                <Icon name="download-outline" size={18} color="#0b2a47" />
               )}
+              <Text style={styles.saveButtonText}>{isSaving ? '处理中...' : '导出结果'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.compareButton]} 
-              onPress={toggleComparison}
-            >
-              <Icon name="layers-outline" size={20} color={showComparison ? '#6C63FF' : '#666'} />
-              <Text style={[styles.actionButtonText, {color: showComparison ? '#6C63FF' : '#666'}]}>
-                {showComparison ? '对比中' : '对比'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* 底部导航栏 */}
-        <View style={styles.bottomNav}>
-          <TouchableOpacity style={styles.navItem} onPress={() => onTabChange('home')}>
-            <Icon name="home-outline" size={24} color={activeTab === 'home' ? '#6C63FF' : '#999'} />
-            <Text style={[styles.navText, {color: activeTab === 'home' ? '#6C63FF' : '#999'}]}>首页</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => onTabChange('camera')}>
-            <Icon name="camera" size={24} color={activeTab === 'camera' ? '#6C63FF' : '#999'} />
-            <Text style={[styles.navText, {color: activeTab === 'camera' ? '#6C63FF' : '#999'}]}>拍照</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => onTabChange('assistant')}>
-            <Icon name="sparkles-outline" size={24} color={activeTab === 'assistant' ? '#6C63FF' : '#999'} />
-            <Text style={[styles.navText, {color: activeTab === 'assistant' ? '#6C63FF' : '#999'}]}>AI 助手</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => onTabChange('profile')}>
-            <Icon name="person-outline" size={24} color={activeTab === 'profile' ? '#6C63FF' : '#999'} />
-            <Text style={[styles.navText, {color: activeTab === 'profile' ? '#6C63FF' : '#999'}]}>我的</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    </View>
+          </>
+        ) : null}
+      </ScrollView>
+    </LinearGradient>
   );
 };
 
@@ -303,149 +389,293 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  gradient: {
-    flex: 1,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  headerCard: {
+    borderRadius: 15,
+    padding: 14,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
   },
-  loadingText: {
-    color: '#fff',
-    marginTop: 10,
-    fontSize: 16,
+  headerTitle: {
+    color: COLORS.textMain,
+    fontSize: 21,
+    fontWeight: '700',
   },
-  topBar: {
-    height: 40,
-    justifyContent: 'flex-end',
-    paddingBottom: 8,
+  headerSubtitle: {
+    color: COLORS.textSub,
+    fontSize: 12,
+    marginTop: 4,
   },
-  topBarLine: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    width: '100%',
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  subtitleContainer: {
+  headerAction: {
+    backgroundColor: 'rgba(23, 79, 122, 0.75)',
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(141, 197, 236, 0.32)',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 5,
+    gap: 6,
   },
-  subtitle: {
+  headerActionText: {
+    color: COLORS.primaryStrong,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    letterSpacing: 2,
+    fontWeight: '600',
   },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#6C63FF',
-    marginLeft: 8,
-  },
-  featureCard: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  loadingCard: {
+    marginTop: 8,
     borderRadius: 12,
-    marginHorizontal: 20,
-    marginTop: 15,
-    padding: 15,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardSoft,
+  },
+  loadingText: {
+    color: COLORS.textSub,
+    fontSize: 13,
+  },
+  viewerHeader: {
+    marginTop: 10,
+    marginBottom: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  viewerTitle: {
+    color: COLORS.textMain,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  compareButton: {
+    borderRadius: 15,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(24, 73, 110, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(156, 208, 246, 0.26)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compareText: {
+    color: COLORS.textMain,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  viewerCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: '#041224',
+  },
+  shaderWarningCard: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 214, 162, 0.36)',
+    backgroundColor: 'rgba(120, 84, 34, 0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shaderWarningText: {
+    color: '#ffe1bc',
+    fontSize: 11,
+    flex: 1,
+  },
+  voiceCard: {
+    borderRadius: 14,
+    marginTop: 10,
+    padding: 11,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  voiceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  featureCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  voiceTitle: {
+    color: COLORS.textMain,
+    fontSize: 15,
+    fontWeight: '700',
   },
-  featureCardTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 12,
+  voiceState: {
+    color: COLORS.textMute,
+    fontSize: 11,
+    textTransform: 'uppercase',
   },
-  aiButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(108, 99, 255, 0.3)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  aiButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    marginLeft: 6,
-  },
-  sectionTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 20,
-    marginBottom: 10,
-    marginLeft: 20,
-  },
-  bottomPadding: {
-    height: 100,
-  },
-  bottomActionBar: {
-    position: 'absolute',
-    bottom: 70,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
+  voiceButton: {
+    marginTop: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(153, 206, 246, 0.35)',
+    backgroundColor: 'rgba(27, 82, 125, 0.78)',
+    paddingVertical: 12,
+    minHeight: 48,
     justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  actionButton: {
-    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginHorizontal: 6,
-  },
-  saveButton: {
-    backgroundColor: 'rgba(108, 99, 255, 0.2)',
-  },
-  compareButton: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-  },
-  actionButtonText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  bottomNav: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    paddingTop: 10,
-    paddingBottom: 25,
-    paddingHorizontal: 20,
+    gap: 8,
   },
-  navItem: {
-    flex: 1,
-    alignItems: 'center',
+  voiceButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primaryStrong,
   },
-  navText: {
+  voiceButtonText: {
+    color: COLORS.textMain,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  voiceButtonTextActive: {
+    color: '#08213a',
+  },
+  voiceError: {
+    color: COLORS.danger,
+    marginTop: 8,
+    fontSize: 12,
+  },
+  voiceSummaryCard: {
+    marginTop: 9,
+    borderRadius: 10,
+    padding: 9,
+    backgroundColor: 'rgba(21, 71, 108, 0.8)',
+  },
+  voiceSummaryTitle: {
+    color: '#d9edff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  voiceSummaryText: {
+    color: '#cae3fa',
     fontSize: 12,
     marginTop: 4,
   },
+  voiceSummaryMeta: {
+    color: '#9cc7ef',
+    fontSize: 11,
+    marginTop: 4,
+  },
+  applySuggestionButton: {
+    marginTop: 9,
+    borderRadius: 10,
+    paddingVertical: 8,
+    backgroundColor: '#85d0ff',
+    borderWidth: 1,
+    borderColor: '#b7e4ff',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  applySuggestionText: {
+    color: '#07243f',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  voiceActions: {
+    marginTop: 9,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  undoButton: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(24, 70, 106, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(157, 208, 245, 0.34)',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  undoText: {
+    color: COLORS.textMain,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  voiceDebugToggle: {
+    marginTop: 9,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(147, 198, 237, 0.25)',
+    backgroundColor: 'rgba(13, 47, 75, 0.75)',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  voiceDebugToggleText: {
+    color: COLORS.textSub,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  voiceDebugPanel: {
+    marginTop: 7,
+    borderRadius: 9,
+    padding: 8,
+    backgroundColor: 'rgba(8, 31, 53, 0.8)',
+    borderWidth: 1,
+    borderColor: 'rgba(146, 195, 232, 0.22)',
+  },
+  voiceDebugText: {
+    color: '#a8cbeb',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  blockCard: {
+    marginTop: 10,
+    borderRadius: 14,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardSoft,
+  },
+  blockTitle: {
+    color: COLORS.textMain,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  saveButton: {
+    marginTop: 14,
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginBottom: 6,
+    backgroundColor: COLORS.primaryStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
+  },
+  saveButtonText: {
+    color: '#0b2a47',
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });
 
-export default ColorGradingScreen;
+export default GPUColorGradingScreen;

@@ -1,11 +1,17 @@
-import type {ColorMatrix} from '@shopify/react-native-skia';
-import type {ColorGradingParams} from '../types/colorGrading';
+export type Matrix = number[];
 
-/**
- * 创建亮度颜色矩阵
- * @param brightness 亮度值 (-100 ~ 100)
- */
-export const createBrightnessMatrix = (brightness: number): ColorMatrix => {
+export const createExposureMatrix = (exposure: number): Matrix => {
+  const clamped = Math.max(-2, Math.min(2, exposure));
+  const factor = Math.pow(2, clamped);
+  return [
+    factor, 0, 0, 0, 0,
+    0, factor, 0, 0, 0,
+    0, 0, factor, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+};
+
+export const createBrightnessMatrix = (brightness: number): Matrix => {
   const value = brightness / 100;
   return [
     1, 0, 0, 0, value,
@@ -15,14 +21,10 @@ export const createBrightnessMatrix = (brightness: number): ColorMatrix => {
   ];
 };
 
-/**
- * 创建对比度颜色矩阵
- * @param contrast 对比度值 (-100 ~ 100)
- */
-export const createContrastMatrix = (contrast: number): ColorMatrix => {
+export const createContrastMatrix = (contrast: number): Matrix => {
   const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
   const intercept = 128 * (1 - factor);
-  
+
   return [
     factor, 0, 0, 0, intercept / 255,
     0, factor, 0, 0, intercept / 255,
@@ -31,16 +33,12 @@ export const createContrastMatrix = (contrast: number): ColorMatrix => {
   ];
 };
 
-/**
- * 创建饱和度颜色矩阵
- * @param saturation 饱和度值 (-100 ~ 100)
- */
-export const createSaturationMatrix = (saturation: number): ColorMatrix => {
+export const createSaturationMatrix = (saturation: number): Matrix => {
   const s = (100 + saturation) / 100;
   const r = 0.2126;
   const g = 0.7152;
   const b = 0.0722;
-  
+
   return [
     (1 - s) * r + s, (1 - s) * g, (1 - s) * b, 0, 0,
     (1 - s) * r, (1 - s) * g + s, (1 - s) * b, 0, 0,
@@ -49,15 +47,11 @@ export const createSaturationMatrix = (saturation: number): ColorMatrix => {
   ];
 };
 
-/**
- * 创建色温颜色矩阵
- * @param temperature 色温值 (-100 ~ 100)
- */
-export const createTemperatureMatrix = (temperature: number): ColorMatrix => {
+export const createTemperatureMatrix = (temperature: number): Matrix => {
   const temp = temperature / 100;
   const r = temp > 0 ? 1 + temp * 0.5 : 1 + temp * 0.3;
   const b = temp < 0 ? 1 - temp * 0.5 : 1 - temp * 0.3;
-  
+
   return [
     r, 0, 0, 0, 0,
     0, 1, 0, 0, 0,
@@ -66,15 +60,10 @@ export const createTemperatureMatrix = (temperature: number): ColorMatrix => {
   ];
 };
 
-/**
- * 创建色调颜色矩阵
- * @param tint 色调值 (-100 ~ 100)
- */
-export const createTintMatrix = (tint: number): ColorMatrix => {
+export const createTintMatrix = (tint: number): Matrix => {
   const t = tint / 100;
   const g = 1 + t * 0.2;
-  const m = 1 - t * 0.2;
-  
+
   return [
     1, 0, 0, 0, t > 0 ? t * 50 : 0,
     0, g, 0, 0, 0,
@@ -83,49 +72,37 @@ export const createTintMatrix = (tint: number): ColorMatrix => {
   ];
 };
 
-/**
- * 组合多个颜色矩阵
- * 注意：ColorMatrix 是一个 4x5 的矩阵，用于颜色变换
- * 简单叠加各个矩阵的效果
- */
-export const composeColorMatrices = (matrices: ColorMatrix[]): ColorMatrix => {
+export const composeColorMatrices = (matrices: Matrix[]): Matrix => {
+  const identity: Matrix = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
   if (matrices.length === 0) {
-    return [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+    return identity;
   }
-  
+
   if (matrices.length === 1) {
     return matrices[0];
   }
-  
-  // 从单位矩阵开始
-  const result: ColorMatrix = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
-  
-  // 依次应用每个矩阵
-  for (const matrix of matrices) {
-    const newResult: ColorMatrix = [];
-    for (let i = 0; i < 20; i++) {
-      newResult.push(matrix[i]);
-    }
-    
-    // 组合矩阵：result = matrix * result
+
+  const multiply4x5 = (a: Matrix, b: Matrix): Matrix => {
+    const out: Matrix = new Array(20).fill(0);
     for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 5; col++) {
-        let value = 0;
-        if (col < 4) {
-          // 对于 RGB 通道，只做线性变换
-          value = matrix[row * 5 + col] * result[col * 5 + col];
-        } else {
-          // 对于偏移量，累加
-          value = result[row * 5 + 4] + matrix[row * 5 + 4];
-        }
-        newResult[row * 5 + col] = value;
+      for (let col = 0; col < 4; col++) {
+        out[row * 5 + col] =
+          a[row * 5 + 0] * b[col + 0] +
+          a[row * 5 + 1] * b[col + 5] +
+          a[row * 5 + 2] * b[col + 10] +
+          a[row * 5 + 3] * b[col + 15];
       }
+
+      out[row * 5 + 4] =
+        a[row * 5 + 0] * b[4] +
+        a[row * 5 + 1] * b[9] +
+        a[row * 5 + 2] * b[14] +
+        a[row * 5 + 3] * b[19] +
+        a[row * 5 + 4];
     }
-    
-    for (let i = 0; i < 20; i++) {
-      result[i] = newResult[i];
-    }
-  }
-  
-  return result;
+
+    return out;
+  };
+
+  return matrices.reduce((acc, matrix) => multiply4x5(matrix, acc), identity);
 };

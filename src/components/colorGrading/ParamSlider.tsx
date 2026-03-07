@@ -14,6 +14,7 @@ interface ParamSliderProps {
   min: number;
   max: number;
   step?: number;
+  precision?: number;
   unit?: string;
   onChange: (value: number) => void;
   onReset: () => void;
@@ -25,11 +26,14 @@ export const ParamSlider: React.FC<ParamSliderProps> = ({
   min,
   max,
   step = 1,
+  precision,
   unit = '',
   onChange,
   onReset,
 }) => {
   const isDefault = value === 0;
+  const digits = typeof precision === 'number' ? precision : step < 1 ? 2 : 0;
+  const displayValue = digits > 0 ? value.toFixed(digits) : String(Math.round(value));
 
   return (
     <View style={styles.sliderContainer}>
@@ -37,11 +41,13 @@ export const ParamSlider: React.FC<ParamSliderProps> = ({
         <Text style={styles.sliderLabel}>{label}</Text>
         <View style={styles.sliderValueContainer}>
           <Text style={[styles.sliderValue, !isDefault && styles.sliderValueActive]}>
-            {value > 0 ? '+' : ''}{value}{unit}
+            {value > 0 ? '+' : ''}
+            {displayValue}
+            {unit}
           </Text>
           {!isDefault && (
             <TouchableOpacity onPress={onReset} style={styles.resetButton}>
-              <Icon name="refresh" size={14} color="#666" />
+              <Icon name="refresh" size={14} color="#92c9f2" />
             </TouchableOpacity>
           )}
         </View>
@@ -53,9 +59,9 @@ export const ParamSlider: React.FC<ParamSliderProps> = ({
         step={step}
         value={value}
         onValueChange={onChange}
-        minimumTrackTintColor="#6C63FF"
-        maximumTrackTintColor="#444"
-        thumbTintColor="#6C63FF"
+        minimumTrackTintColor="#79c9ff"
+        maximumTrackTintColor="#31597a"
+        thumbTintColor="#79c9ff"
       />
     </View>
   );
@@ -82,12 +88,12 @@ const styles = StyleSheet.create({
   },
   sliderValue: {
     fontSize: 12,
-    color: '#999',
+    color: '#8aaecd',
     minWidth: 45,
     textAlign: 'right',
   },
   sliderValueActive: {
-    color: '#6C63FF',
+    color: '#9ad8ff',
     fontWeight: '600',
   },
   resetButton: {

@@ -1,46 +1,125 @@
-import React, {useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  LayoutAnimation,
-  Platform,
-  UIManager,
-} from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import React, {useMemo, useState} from 'react';
+import {StyleSheet, Text, View} from 'react-native';
 import {ParamSlider} from './ParamSlider';
-import type {BasicLightParams} from '../../types/colorGrading';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+import {
+  AdvancedPalette,
+  type AdvancedPaletteLayer,
+} from './AdvancedPalette';
+import {
+  COLOR_PARAM_SPECS,
+  type BasicLightParams,
+} from '../../types/colorGrading.ts';
 
 interface BasicLightModuleProps {
   params: BasicLightParams;
   onChange: (params: BasicLightParams) => void;
 }
 
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const toDisplay = (value: number): number => Math.round(value);
+
 export const BasicLightModule: React.FC<BasicLightModuleProps> = ({
   params,
   onChange,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [activeLayerIndex, setActiveLayerIndex] = useState(0);
+  const [weights, setWeights] = useState([1, 1]);
 
-  const toggleExpand = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsExpanded(!isExpanded);
+  const applyLayerValue = (
+    layerIndex: number,
+    xNorm: number,
+    yNorm: number,
+    weight: number,
+  ) => {
+    const x = clamp(Math.round(xNorm * 100 * weight), -100, 100);
+    const y = clamp(Math.round(yNorm * 100 * weight), -100, 100);
+
+    if (layerIndex === 0) {
+      onChange({
+        ...params,
+        highlights: x,
+        shadows: y,
+      });
+      return;
+    }
+
+    onChange({
+      ...params,
+      whites: x,
+      blacks: y,
+    });
   };
 
-  const updateParam = (key: keyof BasicLightParams, value: number) => {
+  const layers: AdvancedPaletteLayer[] = useMemo(() => {
+    const highlightWeight = weights[0] || 1;
+    const rangeWeight = weights[1] || 1;
+    return [
+      {
+        id: 'tone',
+        label: '高光/阴影',
+        xLabel: '高光',
+        yLabel: '阴影',
+        xNorm: clamp(params.highlights / (100 * highlightWeight), -1, 1),
+        yNorm: clamp(params.shadows / (100 * highlightWeight), -1, 1),
+        xDisplay: toDisplay(params.highlights),
+        yDisplay: toDisplay(params.shadows),
+      },
+      {
+        id: 'range',
+        label: '白场/黑场',
+        xLabel: '白场',
+        yLabel: '黑场',
+        xNorm: clamp(params.whites / (100 * rangeWeight), -1, 1),
+        yNorm: clamp(params.blacks / (100 * rangeWeight), -1, 1),
+        xDisplay: toDisplay(params.whites),
+        yDisplay: toDisplay(params.blacks),
+      },
+    ];
+  }, [
+    params.blacks,
+    params.highlights,
+    params.shadows,
+    params.whites,
+    weights,
+  ]);
+
+  const updateFineTune = (key: keyof BasicLightParams, value: number) => {
     onChange({...params, [key]: value});
   };
 
+  const handleRingChange = (value: number) => {
+    const next = [...weights];
+    const previousWeight = weights[activeLayerIndex] || 1;
+    const xNorm =
+      activeLayerIndex === 0
+        ? clamp(params.highlights / (100 * previousWeight), -1, 1)
+        : clamp(params.whites / (100 * previousWeight), -1, 1);
+    const yNorm =
+      activeLayerIndex === 0
+        ? clamp(params.shadows / (100 * previousWeight), -1, 1)
+        : clamp(params.blacks / (100 * previousWeight), -1, 1);
+    next[activeLayerIndex] = value;
+    setWeights(next);
+    applyLayerValue(activeLayerIndex, xNorm, yNorm, value);
+  };
+
+  const resetLayer = () => {
+    if (activeLayerIndex === 0) {
+      onChange({...params, highlights: 0, shadows: 0});
+      return;
+    }
+    onChange({...params, whites: 0, blacks: 0});
+  };
+
   const resetAll = () => {
+    setWeights([1, 1]);
     onChange({
+      ...params,
       exposure: 0,
-      contrast: 0,
       brightness: 0,
+      contrast: 0,
       highlights: 0,
       shadows: 0,
       whites: 0,
@@ -48,142 +127,70 @@ export const BasicLightModule: React.FC<BasicLightModuleProps> = ({
     });
   };
 
-  const hasChanges = Object.values(params).some(v => v !== 0);
-
   return (
-    <View style={styles.moduleContainer}>
-      <TouchableOpacity style={styles.moduleHeader} onPress={toggleExpand} activeOpacity={0.7}>
-        <View style={styles.moduleHeaderLeft}>
-          <Icon name="sunny-outline" size={20} color="#FFD700" />
-          <Text style={styles.moduleTitle}>光影调整</Text>
-          {hasChanges && <View style={styles.indicator} />}
-        </View>
-        <View style={styles.moduleHeaderRight}>
-          {hasChanges && (
-            <TouchableOpacity onPress={resetAll} style={styles.resetAllButton}>
-              <Text style={styles.resetAllText}>重置</Text>
-            </TouchableOpacity>
-          )}
-          <Icon
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={24}
-            color="#fff"
-          />
-        </View>
-      </TouchableOpacity>
+    <View>
+      <AdvancedPalette
+        title="光影控制调色盘"
+        layers={layers}
+        activeLayerIndex={activeLayerIndex}
+        ringValue={weights[activeLayerIndex] || 1}
+        onLayerChange={setActiveLayerIndex}
+        onXYChange={(xNorm, yNorm) =>
+          applyLayerValue(activeLayerIndex, xNorm, yNorm, weights[activeLayerIndex] || 1)
+        }
+        onRingValueChange={handleRingChange}
+        onResetLayer={resetLayer}
+        onResetAll={resetAll}
+        accentColor="#79c9ff"
+      />
 
-      {isExpanded && (
-        <View style={styles.moduleContent}>
-          <ParamSlider
-            label="曝光度"
-            value={params.exposure}
-            min={-2}
-            max={2}
-            step={0.1}
-            onChange={(value) => updateParam('exposure', value)}
-            onReset={() => updateParam('exposure', 0)}
-          />
-          <ParamSlider
-            label="对比度"
-            value={params.contrast}
-            min={-100}
-            max={100}
-            onChange={(value) => updateParam('contrast', value)}
-            onReset={() => updateParam('contrast', 0)}
-          />
-          <ParamSlider
-            label="亮度"
-            value={params.brightness}
-            min={-100}
-            max={100}
-            onChange={(value) => updateParam('brightness', value)}
-            onReset={() => updateParam('brightness', 0)}
-          />
-          <ParamSlider
-            label="高光"
-            value={params.highlights}
-            min={-100}
-            max={100}
-            onChange={(value) => updateParam('highlights', value)}
-            onReset={() => updateParam('highlights', 0)}
-          />
-          <ParamSlider
-            label="阴影"
-            value={params.shadows}
-            min={-100}
-            max={100}
-            onChange={(value) => updateParam('shadows', value)}
-            onReset={() => updateParam('shadows', 0)}
-          />
-          <ParamSlider
-            label="白色色阶"
-            value={params.whites}
-            min={-100}
-            max={100}
-            onChange={(value) => updateParam('whites', value)}
-            onReset={() => updateParam('whites', 0)}
-          />
-          <ParamSlider
-            label="黑色色阶"
-            value={params.blacks}
-            min={-100}
-            max={100}
-            onChange={(value) => updateParam('blacks', value)}
-            onReset={() => updateParam('blacks', 0)}
-          />
-        </View>
-      )}
+      <View style={styles.fineTuneCard}>
+        <Text style={styles.fineTuneTitle}>光影精调</Text>
+        <ParamSlider
+          label="曝光"
+          value={params.exposure}
+          min={COLOR_PARAM_SPECS.exposure.min}
+          max={COLOR_PARAM_SPECS.exposure.max}
+          step={COLOR_PARAM_SPECS.exposure.step}
+          precision={2}
+          onChange={value => updateFineTune('exposure', value)}
+          onReset={() => updateFineTune('exposure', 0)}
+        />
+        <ParamSlider
+          label="亮度"
+          value={params.brightness}
+          min={COLOR_PARAM_SPECS.brightness.min}
+          max={COLOR_PARAM_SPECS.brightness.max}
+          onChange={value => updateFineTune('brightness', value)}
+          onReset={() => updateFineTune('brightness', 0)}
+        />
+        <ParamSlider
+          label="对比度"
+          value={params.contrast}
+          min={COLOR_PARAM_SPECS.contrast.min}
+          max={COLOR_PARAM_SPECS.contrast.max}
+          onChange={value => updateFineTune('contrast', value)}
+          onReset={() => updateFineTune('contrast', 0)}
+        />
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  moduleContainer: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  moduleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-  },
-  moduleHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  moduleTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginLeft: 10,
-  },
-  indicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#6C63FF',
-    marginLeft: 8,
-  },
-  moduleHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  resetAllButton: {
-    marginRight: 12,
+  fineTuneCard: {
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 12,
   },
-  resetAllText: {
-    fontSize: 12,
-    color: '#fff',
-  },
-  moduleContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  fineTuneTitle: {
+    color: '#e4efff',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
   },
 });

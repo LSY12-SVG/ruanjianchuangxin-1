@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import type {ImagePickerResult} from '../hooks/useImagePicker';
+import type {ImagePickerResult} from '../../hooks/useImagePicker';
 
 interface ImagePickerComponentProps {
   selectedImage: ImagePickerResult | null;
@@ -16,6 +16,7 @@ interface ImagePickerComponentProps {
   onPickFromGallery: () => void;
   onPickFromCamera: () => void;
   onClearImage: () => void;
+  compactWhenSelected?: boolean;
 }
 
 export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
@@ -24,9 +25,47 @@ export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
   onPickFromGallery,
   onPickFromCamera,
   onClearImage,
+  compactWhenSelected = false,
 }) => {
   // 如果已选择图片，显示图片和操作按钮
   if (selectedImage?.success && selectedImage.uri) {
+    if (compactWhenSelected) {
+      return (
+        <View style={styles.compactContainer}>
+          <View style={styles.compactInfoRow}>
+            <Text style={styles.compactTitle}>已选择图片</Text>
+            <View style={styles.compactInfoPills}>
+              <Text style={styles.compactPill}>
+                {selectedImage.width} × {selectedImage.height}
+              </Text>
+              {selectedImage.fileSize ? (
+                <Text style={styles.compactPill}>
+                  {formatFileSize(selectedImage.fileSize)}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.compactActions}>
+            <TouchableOpacity
+              style={styles.compactSecondaryButton}
+              onPress={onPickFromGallery}
+              activeOpacity={0.8}>
+              <Icon name="images-outline" size={16} color="#b9dfff" />
+              <Text style={styles.compactSecondaryText}>更换</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.compactDangerButton}
+              onPress={onClearImage}
+              activeOpacity={0.8}>
+              <Icon name="trash-outline" size={16} color="#ffd0d0" />
+              <Text style={styles.compactDangerText}>删除</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.imageContainer}>
         <Image
@@ -63,7 +102,7 @@ export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
             onPress={onPickFromGallery}
             activeOpacity={0.7}
           >
-            <Icon name="images-outline" size={20} color="#6C63FF" />
+            <Icon name="images-outline" size={20} color="#2a7bb3" />
             <Text style={styles.changeButtonText}>更换</Text>
           </TouchableOpacity>
         </View>
@@ -88,10 +127,10 @@ export const ImagePickerComponent: React.FC<ImagePickerComponentProps> = ({
         activeOpacity={0.7}
       >
         {isLoading ? (
-          <ActivityIndicator size="large" color="#6C63FF" />
+          <ActivityIndicator size="large" color="#79c9ff" />
         ) : (
           <>
-            <Icon name="images-outline" size={48} color="#6C63FF" />
+            <Icon name="images-outline" size={48} color="#79c9ff" />
             <Text style={styles.pickButtonTitle}>选择图片</Text>
             <Text style={styles.pickButtonSubtitle}>
               从相册中选择一张图片开始调色
@@ -143,6 +182,76 @@ function formatFileSize(bytes: number): string {
 }
 
 const styles = StyleSheet.create({
+  compactContainer: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(144, 195, 240, 0.24)',
+    backgroundColor: 'rgba(11, 39, 63, 0.82)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  compactInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactTitle: {
+    color: '#d9ecff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  compactInfoPills: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  compactPill: {
+    color: '#c5def6',
+    fontSize: 11,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  compactActions: {
+    marginTop: 9,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  compactSecondaryButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(144, 195, 240, 0.36)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(24, 66, 101, 0.7)',
+  },
+  compactSecondaryText: {
+    color: '#b9dfff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  compactDangerButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(244, 136, 136, 0.32)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(97, 33, 33, 0.42)',
+  },
+  compactDangerText: {
+    color: '#ffd0d0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   imageContainer: {
     marginHorizontal: 20,
     marginTop: 20,
@@ -202,7 +311,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   changeButtonText: {
-    color: '#6C63FF',
+    color: '#2a7bb3',
     fontSize: 13,
     fontWeight: '600',
   },
@@ -223,15 +332,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     borderWidth: 2,
     borderStyle: 'dashed',
-    borderColor: '#6C63FF',
+    borderColor: '#79c9ff',
     borderRadius: 20,
-    backgroundColor: 'rgba(108, 99, 255, 0.05)',
+    backgroundColor: 'rgba(121, 201, 255, 0.08)',
     width: '100%',
   },
   pickButtonTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#6C63FF',
+    color: '#79c9ff',
     marginTop: 16,
   },
   pickButtonSubtitle: {
@@ -259,7 +368,7 @@ const styles = StyleSheet.create({
   cameraButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#6C63FF',
+    backgroundColor: '#2a7bb3',
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 16,
@@ -281,3 +390,4 @@ const styles = StyleSheet.create({
     color: '#999',
   },
 });
+

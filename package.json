@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android --port 8081",
+    "backend": "node ./backend/src/server.js",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start --port 8081 --host 0.0.0.0",
