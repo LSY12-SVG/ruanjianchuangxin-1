@@ -73,3 +73,11 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# 2D to 3D backend runtime
+backend/data/*.db
+backend/data/*.db-*
+
+
+backend/.env
+
