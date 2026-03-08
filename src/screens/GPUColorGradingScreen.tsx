@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -79,6 +80,8 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [shaderAvailable, setShaderAvailable] = useState(true);
   const [showVoiceDebug, setShowVoiceDebug] = useState(false);
+  const [manualVoiceCommand, setManualVoiceCommand] = useState('');
+  const [isApplyingManualVoiceCommand, setIsApplyingManualVoiceCommand] = useState(false);
 
   const {selectedImage, isLoading, pickFromGallery, pickFromCamera, clearImage} =
     useImagePicker({
@@ -216,6 +219,21 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
       console.warn('voice toggle failed:', error);
     });
   }, [voice]);
+
+  const handleApplyManualVoiceCommand = useCallback(async () => {
+    const command = manualVoiceCommand.trim();
+    if (!command) {
+      return;
+    }
+
+    setIsApplyingManualVoiceCommand(true);
+    try {
+      await voice.applyTextCommand(command);
+      setManualVoiceCommand('');
+    } finally {
+      setIsApplyingManualVoiceCommand(false);
+    }
+  }, [manualVoiceCommand, voice]);
 
   const handleApplyVisualSuggestion = useCallback(async (): Promise<AgentActionResult> => {
     if (!selectedImage?.success || !skImage) {
@@ -398,6 +416,32 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               </TouchableOpacity>
 
               {voice.lastError ? <Text style={styles.voiceError}>{voice.lastError}</Text> : null}
+
+              {voice.lastError.includes('网络') ? (
+                <View style={styles.textFallbackCard}>
+                  <Text style={styles.textFallbackTitle}>语音网络不稳定时，改用文本命令</Text>
+                  <TextInput
+                    style={styles.textFallbackInput}
+                    value={manualVoiceCommand}
+                    onChangeText={setManualVoiceCommand}
+                    placeholder="例如：亮一点，对比增强，肤色自然"
+                    placeholderTextColor="#8cb0cf"
+                    editable={!isApplyingManualVoiceCommand}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.textFallbackButton,
+                      (isApplyingManualVoiceCommand || !manualVoiceCommand.trim()) &&
+                        styles.textFallbackButtonDisabled,
+                    ]}
+                    onPress={handleApplyManualVoiceCommand}
+                    disabled={isApplyingManualVoiceCommand || !manualVoiceCommand.trim()}>
+                    <Text style={styles.textFallbackButtonText}>
+                      {isApplyingManualVoiceCommand ? '应用中...' : '应用文本命令'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
               {voice.lastAppliedSummary ? (
                 <View style={styles.voiceSummaryCard}>
@@ -749,6 +793,47 @@ const styles = StyleSheet.create({
     color: '#a8cbeb',
     fontSize: 12,
     marginBottom: 2,
+  },
+  textFallbackCard: {
+    marginTop: 9,
+    borderRadius: 10,
+    padding: 9,
+    backgroundColor: 'rgba(14, 53, 82, 0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(151, 206, 247, 0.28)',
+  },
+  textFallbackTitle: {
+    color: '#d8edff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  textFallbackInput: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 203, 245, 0.35)',
+    backgroundColor: 'rgba(8, 31, 53, 0.85)',
+    color: '#e7f3ff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+  },
+  textFallbackButton: {
+    marginTop: 8,
+    borderRadius: 10,
+    paddingVertical: 9,
+    alignItems: 'center',
+    backgroundColor: '#8bd2ff',
+    borderWidth: 1,
+    borderColor: '#bce7ff',
+  },
+  textFallbackButtonDisabled: {
+    opacity: 0.6,
+  },
+  textFallbackButtonText: {
+    color: '#083152',
+    fontSize: 12,
+    fontWeight: '800',
   },
   blockCard: {
     marginTop: 10,

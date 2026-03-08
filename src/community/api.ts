@@ -59,6 +59,28 @@ interface CommunityDraftPayload {
 const DEFAULT_BASE_URL = 'http://127.0.0.1:8787';
 const DEFAULT_USER_ID = 'lsy-local-user';
 
+const isIpv4Host = (hostname: string): boolean =>
+  /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+
+const isUsableDevHost = (hostname: string): boolean => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '10.0.2.2' ||
+    normalized === '10.0.3.2'
+  ) {
+    return true;
+  }
+  if (isIpv4Host(normalized)) {
+    return true;
+  }
+  return normalized.includes('.');
+};
+
 const buildBaseFromScriptURL = (): string | null => {
   const scriptURL = NativeModules?.SourceCode?.scriptURL;
   if (typeof scriptURL !== 'string' || scriptURL.length === 0) {
@@ -66,10 +88,11 @@ const buildBaseFromScriptURL = (): string | null => {
   }
   try {
     const parsed = new URL(scriptURL);
-    if (!parsed.hostname) {
+    const hostname = parsed.hostname || '';
+    if (!isUsableDevHost(hostname)) {
       return null;
     }
-    return `${parsed.protocol}//${parsed.hostname}:8787`;
+    return `${parsed.protocol}//${hostname}:8787`;
   } catch {
     return null;
   }
@@ -77,14 +100,14 @@ const buildBaseFromScriptURL = (): string | null => {
 
 const resolveBaseCandidates = (): string[] => {
   const set = new Set<string>();
-  const fromScript = buildBaseFromScriptURL();
-  if (fromScript) {
-    set.add(fromScript);
-  }
   set.add(DEFAULT_BASE_URL);
   set.add('http://localhost:8787');
   set.add('http://10.0.2.2:8787');
   set.add('http://10.0.3.2:8787');
+  const fromScript = buildBaseFromScriptURL();
+  if (fromScript) {
+    set.add(fromScript);
+  }
   return Array.from(set);
 };
 

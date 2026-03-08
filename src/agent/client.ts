@@ -10,6 +10,28 @@ import type {
 const DEFAULT_AGENT_BASE = 'http://127.0.0.1:8787';
 const MAX_RETRIES = 0;
 
+const isIpv4Host = (hostname: string): boolean =>
+  /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+
+const isUsableDevHost = (hostname: string): boolean => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '10.0.2.2' ||
+    normalized === '10.0.3.2'
+  ) {
+    return true;
+  }
+  if (isIpv4Host(normalized)) {
+    return true;
+  }
+  return normalized.includes('.');
+};
+
 const timeoutFetch = async (
   url: string,
   init: RequestInit,
@@ -36,10 +58,11 @@ const buildBaseFromScriptURL = (): string | null => {
 
   try {
     const parsed = new URL(scriptURL);
-    if (!parsed.hostname) {
+    const hostname = parsed.hostname || '';
+    if (!isUsableDevHost(hostname)) {
       return null;
     }
-    return `${parsed.protocol}//${parsed.hostname}:8787`;
+    return `${parsed.protocol}//${hostname}:8787`;
   } catch {
     return null;
   }
@@ -55,14 +78,14 @@ const resolveBases = (override?: string): string[] => {
   }
 
   const set = new Set<string>();
-  const scriptBase = buildBaseFromScriptURL();
-  if (scriptBase) {
-    set.add(scriptBase);
-  }
   set.add(DEFAULT_AGENT_BASE);
   set.add('http://localhost:8787');
   set.add('http://10.0.2.2:8787');
   set.add('http://10.0.3.2:8787');
+  const scriptBase = buildBaseFromScriptURL();
+  if (scriptBase) {
+    set.add(scriptBase);
+  }
   return Array.from(set);
 };
 

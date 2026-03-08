@@ -35,6 +35,7 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   private var speechRecognizer: SpeechRecognizer? = null
   private var currentLocale: String = "zh-CN"
   private var usingActivityFallback: Boolean = false
+  private var retriedWithActivityFallback: Boolean = false
 
   init {
     reactContext.addActivityEventListener(this)
@@ -57,6 +58,7 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   @ReactMethod
   fun start(locale: String?, promise: Promise) {
     currentLocale = if (locale.isNullOrBlank()) "zh-CN" else locale
+    retriedWithActivityFallback = false
 
     Handler(Looper.getMainLooper()).post {
       try {
@@ -70,16 +72,11 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
         }
 
         if (canLaunchRecognitionActivity()) {
-          val activity = reactContext.currentActivity
-          if (activity == null) {
-            emitError("No active screen for voice recognition")
+          if (!launchActivityFallback()) {
+            emitError("当前页面不可用，无法打开系统语音识别")
             promise.reject("E_NO_ACTIVITY", "No active screen for voice recognition")
             return@post
           }
-
-          usingActivityFallback = true
-          emit(EVENT_START, null)
-          activity.startActivityForResult(createRecognitionIntent(), REQUEST_CODE_RECOGNIZE)
           promise.resolve(null)
           return@post
         }
@@ -157,6 +154,8 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLocale)
       putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
       putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+      // Prefer on-device recognition to reduce dependency on unstable network.
+      putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
     }
   }
 
@@ -199,18 +198,47 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   }
 
   override fun onError(error: Int) {
+    if (
+      (error == SpeechRecognizer.ERROR_NETWORK ||
+        error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) &&
+      !usingActivityFallback &&
+      !retriedWithActivityFallback &&
+      canLaunchRecognitionActivity()
+    ) {
+      retriedWithActivityFallback = true
+      emitError("语音网络不稳定，正在切换系统识别重试")
+      if (launchActivityFallback()) {
+        return
+      }
+    }
+
     val message = when (error) {
-      SpeechRecognizer.ERROR_CLIENT -> "speech error: client"
-      SpeechRecognizer.ERROR_AUDIO -> "speech error: audio"
-      SpeechRecognizer.ERROR_NETWORK -> "speech error: network"
-      SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "speech error: network timeout"
-      SpeechRecognizer.ERROR_NO_MATCH -> "speech error: no match"
-      SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "speech error: recognizer busy"
-      SpeechRecognizer.ERROR_SERVER -> "speech error: server"
-      SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "speech error: speech timeout"
-      else -> "speech error: $error"
+      SpeechRecognizer.ERROR_CLIENT -> "语音识别异常（客户端）"
+      SpeechRecognizer.ERROR_AUDIO -> "语音识别异常（麦克风音频）"
+      SpeechRecognizer.ERROR_NETWORK ->
+        "语音识别网络不可用，请检查设备网络，或在系统中启用离线语音包后重试"
+      SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+        "语音识别网络超时，请检查设备网络，或在系统中启用离线语音包后重试"
+      SpeechRecognizer.ERROR_NO_MATCH -> "未识别到有效语音，请再说一次"
+      SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正在忙，请稍后再试"
+      SpeechRecognizer.ERROR_SERVER -> "语音识别服务暂不可用，请稍后重试"
+      SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "长时间未检测到语音，请重试"
+      else -> "语音识别异常（错误码: $error）"
     }
     emitError(message)
+  }
+
+  private fun launchActivityFallback(): Boolean {
+    val activity = reactContext.currentActivity ?: return false
+    return try {
+      usingActivityFallback = true
+      emit(EVENT_START, null)
+      activity.startActivityForResult(createRecognitionIntent(), REQUEST_CODE_RECOGNIZE)
+      true
+    } catch (_: Exception) {
+      usingActivityFallback = false
+      false
+    }
   }
 
   override fun onResults(results: Bundle?) {

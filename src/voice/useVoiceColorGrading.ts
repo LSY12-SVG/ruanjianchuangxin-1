@@ -44,6 +44,7 @@ interface UseVoiceColorGradingResult {
   requestInitialVisualSuggestion: () => Promise<void>;
   startPressToTalk: () => Promise<void>;
   stopPressToTalk: () => Promise<void>;
+  applyTextCommand: (text: string) => Promise<void>;
   undoLastApply: () => void;
   undoSessionApply: () => void;
 }
@@ -71,7 +72,10 @@ const isRecoverableRecognizerError = (message: string): boolean => {
   return (
     normalized.includes('no match') ||
     normalized.includes('speech timeout') ||
-    normalized.includes('recognizer busy')
+    normalized.includes('recognizer busy') ||
+    message.includes('未识别到有效语音') ||
+    message.includes('长时间未检测到语音') ||
+    message.includes('语音识别正在忙')
   );
 };
 
@@ -450,6 +454,41 @@ export const useVoiceColorGrading = ({
     processQueue().catch(() => undefined);
   }, [processQueue]);
 
+  const applyTextCommand = useCallback(
+    async (text: string) => {
+      const finalText = text.trim();
+      if (!finalText) {
+        setLastError('请输入文本命令后再应用。');
+        return;
+      }
+      if (!getImageContext()) {
+        setLastError('请先上传图片并完成首轮建议。');
+        return;
+      }
+
+      setState('queue_applying');
+      setTranscript(finalText);
+      setPartialTranscript('');
+      setLastError('');
+
+      try {
+        const interpretation = await resolveVoiceRefine(finalText);
+        if (!interpretation || interpretation.actions.length === 0) {
+          setLastError('未能识别为有效调色命令，请换个说法。');
+          return;
+        }
+        const decayed = applyConvergenceDecay(interpretation, targetDecayRef.current);
+        applyInterpretation(decayed, '文本增量: ');
+        updateDecayMap(decayed, targetDecayRef.current);
+        setState('parsed');
+      } catch {
+        setLastError('文本命令解析失败，请重试。');
+        setState('error');
+      }
+    },
+    [applyInterpretation, getImageContext, resolveVoiceRefine],
+  );
+
   const undoLastApply = useCallback(() => {
     const lastApply = lastApplyRef.current;
     if (!lastApply) {
@@ -526,6 +565,7 @@ export const useVoiceColorGrading = ({
     requestInitialVisualSuggestion,
     startPressToTalk,
     stopPressToTalk,
+    applyTextCommand,
     undoLastApply,
     undoSessionApply,
   };
