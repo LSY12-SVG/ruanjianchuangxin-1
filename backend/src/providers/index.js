@@ -8,6 +8,7 @@ function createProvider(config) {
       secretKey: config.tencentSecretKey,
       region: config.tencentRegion,
       model: config.tencentModel,
+      variant: config.tencentVariant,
     });
   }
 

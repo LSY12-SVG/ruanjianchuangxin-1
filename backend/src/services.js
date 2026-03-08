@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { ApiError } = require('./errors');
-const { mapProviderStatus, pickPreferredFile, toPublicTask } = require('./jobMapper');
+const { mapProviderStatus, buildViewerPayload, toPublicTask } = require('./jobMapper');
 
 function createImageTo3DService({ provider, repository, logger, config }) {
   return {
@@ -23,8 +23,11 @@ function createImageTo3DService({ provider, repository, logger, config }) {
           rawStatus: 'WAIT',
           sourceImageRef: `${file.originalname}:${file.mimetype}:${file.size}`,
           previewUrl: null,
+          previewImageUrl: null,
           downloadUrl: null,
           fileType: null,
+          viewerFormat: null,
+          viewerFiles: [],
           errorCode: null,
           errorMessage: null,
           createdAt: now,
@@ -62,16 +65,19 @@ function createImageTo3DService({ provider, repository, logger, config }) {
         try {
           const providerResult = await provider.getJob({ providerJobId: task.providerJobId });
           const nextStatus = mapProviderStatus(providerResult.rawStatus);
-          const preferredFile = pickPreferredFile(providerResult.files);
+          const viewerPayload = buildViewerPayload(providerResult.files);
           const now = new Date().toISOString();
 
           task = repository.update({
             ...task,
             status: nextStatus,
             rawStatus: providerResult.rawStatus || task.rawStatus,
-            previewUrl: preferredFile?.type === 'GLB' ? preferredFile.url : null,
-            downloadUrl: preferredFile?.url || null,
-            fileType: preferredFile?.type || null,
+            previewUrl: viewerPayload.previewUrl,
+            previewImageUrl: viewerPayload.previewImageUrl,
+            downloadUrl: viewerPayload.downloadUrl,
+            fileType: viewerPayload.fileType,
+            viewerFormat: viewerPayload.viewerFormat,
+            viewerFiles: viewerPayload.viewerFiles,
             errorCode: providerResult.errorCode || null,
             errorMessage: providerResult.errorMessage || null,
             updatedAt: now,
@@ -109,7 +115,10 @@ function createImageTo3DService({ provider, repository, logger, config }) {
           ...task,
           status: 'expired',
           previewUrl: null,
+          previewImageUrl: null,
           downloadUrl: null,
+          viewerFormat: null,
+          viewerFiles: [],
           updatedAt: new Date().toISOString(),
         });
       }
@@ -126,5 +135,3 @@ function createImageTo3DService({ provider, repository, logger, config }) {
 module.exports = {
   createImageTo3DService,
 };
-
-

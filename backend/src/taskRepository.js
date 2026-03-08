@@ -3,6 +3,15 @@ function mapRow(row) {
     return null;
   }
 
+  let viewerFiles = [];
+  if (row.viewer_files_json) {
+    try {
+      viewerFiles = JSON.parse(row.viewer_files_json);
+    } catch (_error) {
+      viewerFiles = [];
+    }
+  }
+
   return {
     taskId: row.task_id,
     provider: row.provider,
@@ -11,8 +20,11 @@ function mapRow(row) {
     rawStatus: row.raw_status,
     sourceImageRef: row.source_image_ref,
     previewUrl: row.preview_url,
+    previewImageUrl: row.preview_image_url,
     downloadUrl: row.download_url,
     fileType: row.file_type,
+    viewerFormat: row.viewer_format,
+    viewerFiles,
     errorCode: row.error_code,
     errorMessage: row.error_message,
     createdAt: row.created_at,
@@ -31,8 +43,11 @@ function createTaskRepository(db) {
       raw_status,
       source_image_ref,
       preview_url,
+      preview_image_url,
       download_url,
       file_type,
+      viewer_format,
+      viewer_files_json,
       error_code,
       error_message,
       created_at,
@@ -46,8 +61,11 @@ function createTaskRepository(db) {
       @rawStatus,
       @sourceImageRef,
       @previewUrl,
+      @previewImageUrl,
       @downloadUrl,
       @fileType,
+      @viewerFormat,
+      @viewerFilesJson,
       @errorCode,
       @errorMessage,
       @createdAt,
@@ -62,8 +80,11 @@ function createTaskRepository(db) {
       status = @status,
       raw_status = @rawStatus,
       preview_url = @previewUrl,
+      preview_image_url = @previewImageUrl,
       download_url = @downloadUrl,
       file_type = @fileType,
+      viewer_format = @viewerFormat,
+      viewer_files_json = @viewerFilesJson,
       error_code = @errorCode,
       error_message = @errorMessage,
       updated_at = @updatedAt,
@@ -79,11 +100,17 @@ function createTaskRepository(db) {
 
   return {
     insert(task) {
-      insertTask.run(task);
+      insertTask.run({
+        ...task,
+        viewerFilesJson: JSON.stringify(task.viewerFiles || []),
+      });
       return task;
     },
     update(task) {
-      updateTask.run(task);
+      updateTask.run({
+        ...task,
+        viewerFilesJson: JSON.stringify(task.viewerFiles || []),
+      });
       return this.getById(task.taskId);
     },
     getById(taskId) {

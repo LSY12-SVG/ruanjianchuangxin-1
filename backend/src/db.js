@@ -17,8 +17,11 @@ function createDatabase(databasePath) {
       raw_status TEXT,
       source_image_ref TEXT,
       preview_url TEXT,
+      preview_image_url TEXT,
       download_url TEXT,
       file_type TEXT,
+      viewer_format TEXT,
+      viewer_files_json TEXT,
       error_code TEXT,
       error_message TEXT,
       created_at TEXT NOT NULL,
@@ -26,6 +29,21 @@ function createDatabase(databasePath) {
       expires_at TEXT
     )
   `);
+
+  const existingColumns = db
+    .prepare('PRAGMA table_info(image_to_3d_tasks)')
+    .all()
+    .map(column => column.name);
+
+  const addColumnIfMissing = (columnName, definition) => {
+    if (!existingColumns.includes(columnName)) {
+      db.exec(`ALTER TABLE image_to_3d_tasks ADD COLUMN ${columnName} ${definition}`);
+    }
+  };
+
+  addColumnIfMissing('preview_image_url', 'TEXT');
+  addColumnIfMissing('viewer_format', 'TEXT');
+  addColumnIfMissing('viewer_files_json', 'TEXT');
 
   return db;
 }

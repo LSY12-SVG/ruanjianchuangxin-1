@@ -54,6 +54,7 @@ module.exports = {
   rateLimitMaxRequests: readIntEnv('IMAGE_TO_3D_RATE_LIMIT_MAX', 20),
   tencentRegion: process.env.TENCENT_REGION || 'ap-guangzhou',
   tencentModel: process.env.TENCENT_HUNYUAN_3D_MODEL || '3.0',
+  tencentVariant: (process.env.TENCENT_HUNYUAN_3D_VARIANT || 'rapid').toLowerCase(),
   tencentSecretId: process.env.TENCENT_SECRET_ID || '',
   tencentSecretKey: process.env.TENCENT_SECRET_KEY || '',
   mockResultUrl:

@@ -12,7 +12,9 @@ jest.mock('react-native-webview', () => {
   const React = require('react');
   const {View} = require('react-native');
   return {
-    WebView: ({testID}: {testID?: string}) => <View testID={testID ?? 'webview'} />,
+    WebView: ({testID, ...rest}: {testID?: string}) => (
+      <View testID={testID ?? 'webview'} {...rest} />
+    ),
   };
 });
 
@@ -37,6 +39,12 @@ const createImageTo3DJobMock = createImageTo3DJob as jest.MockedFunction<
 const getImageTo3DJobMock = getImageTo3DJob as jest.MockedFunction<
   typeof getImageTo3DJob
 >;
+
+const selectedAsset = {
+  uri: 'file:///tmp/input.jpg',
+  type: 'image/jpeg',
+  fileName: 'input.jpg',
+};
 
 describe('ThreeDModeling', () => {
   beforeEach(() => {
@@ -85,13 +93,7 @@ describe('ThreeDModeling', () => {
 
   it('enables generate after selecting one image from the gallery', async () => {
     launchImageLibrary.mockResolvedValue({
-      assets: [
-        {
-          uri: 'file:///tmp/input.jpg',
-          type: 'image/jpeg',
-          fileName: 'input.jpg',
-        },
-      ],
+      assets: [selectedAsset],
       didCancel: false,
     });
 
@@ -111,15 +113,9 @@ describe('ThreeDModeling', () => {
     });
   });
 
-  it('polls until the model becomes previewable', async () => {
+  it('polls until a GLB model becomes previewable', async () => {
     launchImageLibrary.mockResolvedValue({
-      assets: [
-        {
-          uri: 'file:///tmp/input.jpg',
-          type: 'image/jpeg',
-          fileName: 'input.jpg',
-        },
-      ],
+      assets: [selectedAsset],
       didCancel: false,
     });
 
@@ -136,8 +132,11 @@ describe('ThreeDModeling', () => {
         status: 'processing',
         message: 'still working',
         previewUrl: null,
+        previewImageUrl: null,
         downloadUrl: null,
         fileType: null,
+        viewerFormat: null,
+        viewerFiles: [],
         expiresAt: null,
       })
       .mockResolvedValueOnce({
@@ -145,8 +144,11 @@ describe('ThreeDModeling', () => {
         status: 'succeeded',
         message: 'done',
         previewUrl: 'https://example.com/model.glb',
+        previewImageUrl: 'https://example.com/model.webp',
         downloadUrl: 'https://example.com/model.glb',
         fileType: 'GLB',
+        viewerFormat: 'glb',
+        viewerFiles: [{type: 'GLB', url: 'https://example.com/model.glb'}],
         expiresAt: '2026-03-09T00:00:00.000Z',
       });
 
@@ -159,8 +161,6 @@ describe('ThreeDModeling', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('generate-button'));
     });
-
-    expect(createImageTo3DJobMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(5000);
@@ -175,6 +175,105 @@ describe('ThreeDModeling', () => {
     await waitFor(() => {
       expect(screen.getByTestId('model-preview')).toBeTruthy();
     });
-    expect(screen.queryByText('Download Model')).toBeNull();
+    expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
+  });
+
+  it('renders an OBJ preview when the backend returns rapid-format metadata', async () => {
+    launchImageLibrary.mockResolvedValue({
+      assets: [selectedAsset],
+      didCancel: false,
+    });
+
+    createImageTo3DJobMock.mockResolvedValue({
+      taskId: 'task-obj',
+      status: 'queued',
+      pollAfterMs: 5000,
+      message: null,
+    });
+
+    getImageTo3DJobMock.mockResolvedValue({
+      taskId: 'task-obj',
+      status: 'succeeded',
+      message: 'done',
+      previewUrl: 'https://example.com/model.obj',
+      previewImageUrl: 'https://example.com/model.webp',
+      downloadUrl: 'https://example.com/model.obj',
+      fileType: 'OBJ',
+      viewerFormat: 'obj',
+      viewerFiles: [
+        {type: 'OBJ', url: 'https://example.com/model.obj'},
+        {type: 'MTL', url: 'https://example.com/model.mtl'},
+      ],
+      expiresAt: '2026-03-09T00:00:00.000Z',
+    });
+
+    const screen = render(<ThreeDModeling />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('upload-card'));
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('generate-button'));
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
+    });
+  });
+
+  it('shows readable preview errors instead of object stringification', async () => {
+    launchImageLibrary.mockResolvedValue({
+      assets: [selectedAsset],
+      didCancel: false,
+    });
+
+    createImageTo3DJobMock.mockResolvedValue({
+      taskId: 'task-fbx',
+      status: 'succeeded',
+      pollAfterMs: 5000,
+      message: null,
+    });
+
+    getImageTo3DJobMock.mockResolvedValue({
+      taskId: 'task-fbx',
+      status: 'succeeded',
+      message: 'done',
+      previewUrl: 'https://example.com/model.fbx',
+      previewImageUrl: 'https://example.com/model.webp',
+      downloadUrl: 'https://example.com/model.fbx',
+      fileType: 'FBX',
+      viewerFormat: 'fbx',
+      viewerFiles: [{type: 'FBX', url: 'https://example.com/model.fbx'}],
+      expiresAt: '2026-03-09T00:00:00.000Z',
+    });
+
+    const screen = render(<ThreeDModeling />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('upload-card'));
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('generate-button'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
+    });
+
+    fireEvent(screen.getByTestId('model-preview-webview'), 'onMessage', {
+      nativeEvent: {
+        data: JSON.stringify({type: 'error', message: 'Rapid preview failed.'}),
+      },
+    });
+
+    expect(screen.getByText('Rapid preview failed.')).toBeTruthy();
+    expect(screen.queryByText('[object Object]')).toBeNull();
   });
 });

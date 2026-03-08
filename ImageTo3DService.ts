@@ -7,6 +7,14 @@ export type ImageTo3DJobStatus =
   | 'failed'
   | 'expired';
 
+export type ViewerFormat = 'glb' | 'gltf' | 'obj' | 'fbx';
+
+export type ViewerFile = {
+  type: string;
+  url: string;
+  previewImageUrl?: string | null;
+};
+
 export type UploadableImageAsset = {
   uri: string;
   type?: string;
@@ -29,8 +37,11 @@ export type ImageTo3DJob = {
   status: ImageTo3DJobStatus;
   message: string | null;
   previewUrl: string | null;
+  previewImageUrl: string | null;
   downloadUrl: string | null;
   fileType: string | null;
+  viewerFormat: ViewerFormat | null;
+  viewerFiles: ViewerFile[];
   expiresAt: string | null;
 };
 
@@ -108,8 +119,11 @@ export async function getImageTo3DJob(taskId: string): Promise<ImageTo3DJob> {
     status: payload.status,
     message: payload.message ?? null,
     previewUrl: payload.previewUrl ?? null,
+    previewImageUrl: payload.previewImageUrl ?? null,
     downloadUrl: payload.downloadUrl ?? null,
     fileType: payload.fileType ?? null,
+    viewerFormat: payload.viewerFormat ?? null,
+    viewerFiles: Array.isArray(payload.viewerFiles) ? payload.viewerFiles : [],
     expiresAt: payload.expiresAt ?? null,
   };
 }

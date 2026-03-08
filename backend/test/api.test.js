@@ -70,7 +70,10 @@ test('creates a job and progresses to a successful GLB result', async () => {
       .expect(200);
     assert.equal(thirdPoll.body.status, 'succeeded');
     assert.equal(thirdPoll.body.fileType, 'GLB');
+    assert.equal(thirdPoll.body.viewerFormat, 'glb');
+    assert.equal(thirdPoll.body.viewerFiles.length, 1);
     assert.match(thirdPoll.body.downloadUrl, /\.glb$/i);
+    assert.match(thirdPoll.body.previewImageUrl, /poster-astronaut/i);
   } finally {
     instance.cleanup();
   }
@@ -107,8 +110,11 @@ test('returns expired for succeeded jobs whose download url timed out', async ()
       rawStatus: 'DONE',
       sourceImageRef: 'seed:image/png:100',
       previewUrl: 'https://example.com/model.glb',
+      previewImageUrl: 'https://example.com/model.webp',
       downloadUrl: 'https://example.com/model.glb',
       fileType: 'GLB',
+      viewerFormat: 'glb',
+      viewerFiles: [{type: 'GLB', url: 'https://example.com/model.glb'}],
       errorCode: null,
       errorMessage: null,
       createdAt: now,
@@ -122,6 +128,8 @@ test('returns expired for succeeded jobs whose download url timed out', async ()
 
     assert.equal(response.body.status, 'expired');
     assert.equal(response.body.downloadUrl, null);
+    assert.equal(response.body.viewerFormat, null);
+    assert.equal(response.body.previewImageUrl, null);
   } finally {
     instance.cleanup();
   }

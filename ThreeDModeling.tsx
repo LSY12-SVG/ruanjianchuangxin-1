@@ -21,6 +21,8 @@ import {
   type ImageTo3DJob,
   type ImageTo3DJobStatus,
   type UploadableImageAsset,
+  type ViewerFile,
+  type ViewerFormat,
 } from './ImageTo3DService';
 
 type PermissionState = 'unknown' | 'granted' | 'denied' | 'blocked';
@@ -38,6 +40,11 @@ type Props = {
     goBack?: () => void;
   };
   onBack?: () => void;
+};
+
+type ViewerEvent = {
+  type?: 'loaded' | 'error';
+  message?: string;
 };
 
 const MAX_POLLING_MS = 10 * 60 * 1000;
@@ -99,7 +106,7 @@ function getErrorMessage(error: unknown): string {
       if (serialized && serialized !== '{}') {
         return serialized;
       }
-    } catch (serializationError) {
+    } catch (_serializationError) {
     }
   }
 
@@ -115,8 +122,15 @@ function toUploadableAsset(asset: Asset): UploadableImageAsset {
   };
 }
 
-function renderModelViewerHtml(modelUrl: string): string {
-  const escapedUrl = modelUrl.replace(/"/g, '&quot;');
+function serializeForHtml(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
+function renderThreePreviewHtml(viewerFormat: ViewerFormat, viewerFiles: ViewerFile[]): string {
+  const serializedPayload = serializeForHtml({viewerFormat, viewerFiles});
 
   return `
     <!doctype html>
@@ -127,122 +141,239 @@ function renderModelViewerHtml(modelUrl: string): string {
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1"
         />
-        <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-        <script nomodule src="https://unpkg.com/@google/model-viewer/dist/model-viewer-legacy.js"></script>
         <style>
           html, body {
             margin: 0;
-            height: 100%;
-            overflow: hidden;
-            background: #111111;
-          }
-          #viewer {
             width: 100%;
             height: 100%;
-            background: radial-gradient(circle at top, #202020, #0f0f0f 70%);
-          }
-          .fallback {
-            display: none;
-            box-sizing: border-box;
-            padding: 24px;
-            color: #ffffff;
+            overflow: hidden;
+            background: #101010;
             font-family: sans-serif;
+          }
+          #root {
+            position: relative;
+            width: 100%;
+            height: 100%;
+          }
+          #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+          }
+          #status {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.68);
+            color: #ffffff;
+            font-size: 13px;
             line-height: 1.5;
           }
-          .loading {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #d7d7d7;
-            font-family: sans-serif;
+          #status[data-hidden="true"] {
+            display: none;
           }
         </style>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MTLLoader.js"></script>
       </head>
       <body>
-        <div id="loading" class="loading">Loading 3D preview...</div>
-        <model-viewer
-          id="viewer"
-          src="${escapedUrl}"
-          alt="Generated 3D model"
-          camera-controls
-          auto-rotate
-          shadow-intensity="1"
-          exposure="1"
-          touch-action="pan-y"
-          ar="false"
-          ar-modes="none"
-          interaction-prompt="none"
-        ></model-viewer>
-        <div id="fallback" class="fallback">Inline preview is unavailable on this WebView. The 3D model was generated successfully, but this device cannot render it inside the app.</div>
+        <div id="root">
+          <canvas id="canvas"></canvas>
+          <div id="status">Loading 3D preview...</div>
+        </div>
         <script>
-          const allowedSchemes = ['http:', 'https:', 'about:', 'data:', 'blob:'];
-          const loading = document.getElementById('loading');
-          const fallback = document.getElementById('fallback');
-          const viewer = document.getElementById('viewer');
-          const showFallback = () => {
-            if (loading) {
-              loading.style.display = 'none';
+          const payload = ${serializedPayload};
+          const statusNode = document.getElementById('status');
+          const canvas = document.getElementById('canvas');
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x111111);
+
+          const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+          renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+          const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+          camera.position.set(2.4, 1.8, 2.4);
+
+          const controls = new THREE.OrbitControls(camera, renderer.domElement);
+          controls.enableDamping = true;
+          controls.target.set(0, 0, 0);
+
+          scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+          const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
+          keyLight.position.set(4, 6, 8);
+          scene.add(keyLight);
+          const fillLight = new THREE.DirectionalLight(0x9db4ff, 0.5);
+          fillLight.position.set(-5, 3, -4);
+          scene.add(fillLight);
+          const grid = new THREE.GridHelper(10, 10, 0x2f2f2f, 0x1b1b1b);
+          grid.position.y = -1.2;
+          scene.add(grid);
+
+          function postMessage(type, message) {
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type, message }));
             }
-            if (viewer) {
-              viewer.style.display = 'none';
-            }
-            if (fallback) {
-              fallback.style.display = 'block';
-            }
-          };
-          const hideLoading = () => {
-            if (loading) {
-              loading.style.display = 'none';
-            }
-          };
-          const originalOpen = window.open;
-          window.open = function(url) {
-            if (!url) {
-              return null;
-            }
-            try {
-              const parsed = new URL(url, window.location.href);
-              if (!allowedSchemes.includes(parsed.protocol)) {
-                return null;
-              }
-            } catch (error) {
-              return null;
-            }
-            return originalOpen ? originalOpen.apply(window, arguments) : null;
-          };
-          document.addEventListener('click', function(event) {
-            const anchor = event.target.closest('a');
-            if (!anchor || !anchor.href) {
+          }
+
+          function setStatus(message, isError) {
+            if (!statusNode) {
               return;
             }
-            try {
-              const parsed = new URL(anchor.href, window.location.href);
-              if (!allowedSchemes.includes(parsed.protocol)) {
-                event.preventDefault();
-              }
-            } catch (error) {
-              event.preventDefault();
-            }
-          }, true);
-          window.addEventListener('load', function() {
-            setTimeout(function() {
-              if (!customElements.get('model-viewer')) {
-                showFallback();
-              }
-            }, 3000);
-          });
-          if (viewer) {
-            viewer.addEventListener('load', hideLoading);
-            viewer.addEventListener('model-visibility', hideLoading);
-            viewer.addEventListener('error', showFallback);
+            statusNode.dataset.hidden = 'false';
+            statusNode.textContent = message;
+            statusNode.style.background = isError ? 'rgba(106, 20, 20, 0.82)' : 'rgba(0, 0, 0, 0.68)';
           }
-          setTimeout(function() {
-            if (loading && loading.style.display !== 'none') {
-              showFallback();
+
+          function clearStatus() {
+            if (!statusNode) {
+              return;
             }
-          }, 10000);
+            statusNode.dataset.hidden = 'true';
+          }
+
+          function reportError(message) {
+            const safeMessage = message || '3D preview failed to load.';
+            setStatus(safeMessage, true);
+            postMessage('error', safeMessage);
+          }
+
+          function resizeRenderer() {
+            const width = window.innerWidth || 1;
+            const height = window.innerHeight || 1;
+            renderer.setSize(width, height, false);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+          }
+
+          function fileByType(type) {
+            return (payload.viewerFiles || []).find(file => file.type === type) || null;
+          }
+
+          function basePath(url) {
+            const lastSlashIndex = url.lastIndexOf('/');
+            return lastSlashIndex >= 0 ? url.slice(0, lastSlashIndex + 1) : url;
+          }
+
+          function frameObject(object) {
+            const box = new THREE.Box3().setFromObject(object);
+            if (box.isEmpty()) {
+              return;
+            }
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            object.position.sub(center);
+            const maxDimension = Math.max(size.x, size.y, size.z) || 1;
+            camera.position.set(maxDimension * 1.6, maxDimension * 1.2, maxDimension * 1.6);
+            controls.target.set(0, 0, 0);
+            controls.update();
+          }
+
+          function onLoaded(object) {
+            scene.add(object);
+            frameObject(object);
+            clearStatus();
+            postMessage('loaded', '3D preview ready.');
+          }
+
+          function loadGlbLike() {
+            const modelFile = fileByType(payload.viewerFormat === 'gltf' ? 'GLTF' : 'GLB');
+            if (!modelFile || !modelFile.url) {
+              reportError('The generated model file is missing.');
+              return;
+            }
+
+            const loader = new THREE.GLTFLoader();
+            loader.load(
+              modelFile.url,
+              gltf => onLoaded(gltf.scene),
+              undefined,
+              error => reportError(error && error.message ? error.message : 'Failed to load the generated model.'),
+            );
+          }
+
+          function loadFbx() {
+            const modelFile = fileByType('FBX');
+            if (!modelFile || !modelFile.url) {
+              reportError('The generated FBX file is missing.');
+              return;
+            }
+
+            const loader = new THREE.FBXLoader();
+            loader.load(
+              modelFile.url,
+              object => onLoaded(object),
+              undefined,
+              error => reportError(error && error.message ? error.message : 'Failed to load the generated FBX model.'),
+            );
+          }
+
+          function loadObj() {
+            const objFile = fileByType('OBJ');
+            if (!objFile || !objFile.url) {
+              reportError('The generated OBJ file is missing.');
+              return;
+            }
+
+            const mtlFile = fileByType('MTL');
+            const objLoader = new THREE.OBJLoader();
+            if (!mtlFile || !mtlFile.url) {
+              objLoader.load(
+                objFile.url,
+                object => onLoaded(object),
+                undefined,
+                error => reportError(error && error.message ? error.message : 'Failed to load the generated OBJ model.'),
+              );
+              return;
+            }
+
+            const mtlLoader = new THREE.MTLLoader();
+            mtlLoader.setResourcePath(basePath(mtlFile.url));
+            mtlLoader.load(
+              mtlFile.url,
+              materials => {
+                materials.preload();
+                objLoader.setMaterials(materials);
+                objLoader.load(
+                  objFile.url,
+                  object => onLoaded(object),
+                  undefined,
+                  error => reportError(error && error.message ? error.message : 'Failed to load the generated OBJ model.'),
+                );
+              },
+              undefined,
+              error => reportError(error && error.message ? error.message : 'Failed to load the generated material file.'),
+            );
+          }
+
+          resizeRenderer();
+          window.addEventListener('resize', resizeRenderer);
+
+          (function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+          })();
+
+          try {
+            if (payload.viewerFormat === 'glb' || payload.viewerFormat === 'gltf') {
+              loadGlbLike();
+            } else if (payload.viewerFormat === 'obj') {
+              loadObj();
+            } else if (payload.viewerFormat === 'fbx') {
+              loadFbx();
+            } else {
+              reportError('This 3D file format is not supported for in-app preview.');
+            }
+          } catch (error) {
+            reportError(error && error.message ? error.message : '3D preview failed to initialize.');
+          }
         </script>
       </body>
     </html>
@@ -284,12 +415,10 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
     screenStage !== 'processing';
 
   const canPreviewModel = useMemo(() => {
-    return (
-      job?.status === 'succeeded' &&
-      Boolean(job.previewUrl) &&
-      job.fileType?.toUpperCase() === 'GLB'
-    );
+    return Boolean(job?.viewerFormat && job.viewerFiles.length > 0);
   }, [job]);
+
+  const hasPreviewImage = Boolean(job?.previewImageUrl);
 
   useEffect(() => {
     return () => {
@@ -318,6 +447,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
   const applyJob = (nextJob: ImageTo3DJob) => {
     setJob(nextJob);
     setStatusMessage(getStatusMessage(nextJob.status));
+    setPreviewErrorMessage(null);
 
     if (nextJob.status === 'queued' || nextJob.status === 'processing') {
       setScreenStage('processing');
@@ -453,8 +583,11 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
         status: createdJob.status,
         message: createdJob.message ?? null,
         previewUrl: null,
+        previewImageUrl: null,
         downloadUrl: null,
         fileType: null,
+        viewerFormat: null,
+        viewerFiles: [],
         expiresAt: null,
       });
       pollDeadlineRef.current = Date.now() + MAX_POLLING_MS;
@@ -475,7 +608,94 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
   };
 
   const previewHtml =
-    canPreviewModel && job?.previewUrl ? renderModelViewerHtml(job.previewUrl) : null;
+    canPreviewModel && job?.viewerFormat
+      ? renderThreePreviewHtml(job.viewerFormat, job.viewerFiles)
+      : null;
+
+  const handlePreviewMessage = (rawEventData: string) => {
+    try {
+      const payload = JSON.parse(rawEventData) as ViewerEvent;
+      if (payload.type === 'loaded') {
+        setPreviewErrorMessage(null);
+        return;
+      }
+
+      if (payload.type === 'error') {
+        setPreviewErrorMessage(payload.message || '3D preview failed to load.');
+      }
+    } catch (_error) {
+      if (rawEventData) {
+        setPreviewErrorMessage(rawEventData);
+      }
+    }
+  };
+
+  const renderPreviewSection = () => {
+    if (screenStage !== 'succeeded' || !job) {
+      return null;
+    }
+
+    const showStaticPreview = Boolean(job.previewImageUrl) && (!previewHtml || Boolean(previewErrorMessage));
+    const showInteractivePreview = Boolean(previewHtml && !previewErrorMessage);
+
+    return (
+      <View style={styles.previewCard}>
+        <Text style={styles.previewTitle}>3D Preview</Text>
+        {previewErrorMessage ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{previewErrorMessage}</Text>
+          </View>
+        ) : null}
+
+        {showInteractivePreview ? (
+          <View style={styles.webViewWrapper} testID="model-preview">
+            <WebView
+              testID="model-preview-webview"
+              originWhitelist={['http://*', 'https://*', 'about:blank', 'data:*', 'blob:*']}
+              source={{
+                html: previewHtml ?? '',
+                baseUrl: 'https://appassets.androidplatform.net/',
+              }}
+              javaScriptEnabled
+              domStorageEnabled
+              mixedContentMode="always"
+              setSupportMultipleWindows={false}
+              scrollEnabled={false}
+              allowsInlineMediaPlayback
+              onShouldStartLoadWithRequest={request =>
+                shouldAllowWebViewRequest(request.url)
+              }
+              onMessage={syntheticEvent => {
+                handlePreviewMessage(syntheticEvent.nativeEvent.data);
+              }}
+              onError={syntheticEvent => {
+                const {nativeEvent} = syntheticEvent;
+                setPreviewErrorMessage(getErrorMessage(nativeEvent));
+              }}
+            />
+          </View>
+        ) : null}
+
+        {showStaticPreview ? (
+          <View testID="preview-image-fallback">
+            <Image source={{uri: job.previewImageUrl!}} style={styles.previewImage} />
+            <Text style={styles.previewHint}>
+              Showing the static preview image because this WebView could not render the generated 3D file directly.
+            </Text>
+          </View>
+        ) : null}
+
+        {!showInteractivePreview && !showStaticPreview ? (
+          <View style={styles.messageCard}>
+            <Text style={styles.messageTitle}>Preview unavailable</Text>
+            <Text style={styles.messageBody}>
+              3D generation succeeded, but the returned result is not previewable on this device.
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <View style={styles.safeArea}>
@@ -554,48 +774,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
           <Text style={styles.primaryButtonText}>Generate 3D Model</Text>
         </TouchableOpacity>
 
-        {screenStage === 'succeeded' && canPreviewModel && previewHtml ? (
-          <View style={styles.previewCard}>
-            <Text style={styles.previewTitle}>3D Preview</Text>
-            {previewErrorMessage ? (
-              <View style={styles.errorCard}>
-                <Text style={styles.errorText}>{previewErrorMessage}</Text>
-              </View>
-            ) : null}
-            <View style={styles.webViewWrapper} testID="model-preview">
-              <WebView
-                originWhitelist={['http://*', 'https://*', 'about:blank', 'data:*', 'blob:*']}
-                source={{
-                  html: previewHtml,
-                  baseUrl: 'https://appassets.androidplatform.net/',
-                }}
-                javaScriptEnabled
-                domStorageEnabled
-                mixedContentMode="always"
-                setSupportMultipleWindows={false}
-                scrollEnabled={false}
-                allowsInlineMediaPlayback
-                onShouldStartLoadWithRequest={request =>
-                  shouldAllowWebViewRequest(request.url)
-                }
-                onError={syntheticEvent => {
-                  const {nativeEvent} = syntheticEvent;
-                  setPreviewErrorMessage(getErrorMessage(nativeEvent));
-                }}
-              />
-            </View>
-          </View>
-        ) : null}
-
-        {screenStage === 'succeeded' && !canPreviewModel ? (
-          <View style={styles.messageCard}>
-            <Text style={styles.messageTitle}>Preview unavailable</Text>
-            <Text style={styles.messageBody}>
-              3D generation succeeded, but the returned result is not a previewable
-              GLB model.
-            </Text>
-          </View>
-        ) : null}
+        {renderPreviewSection()}
       </ScrollView>
     </View>
   );
@@ -732,5 +911,18 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: '#111111',
+  },
+  previewImage: {
+    width: '100%',
+    height: 360,
+    borderRadius: 18,
+    resizeMode: 'cover',
+    backgroundColor: '#111111',
+  },
+  previewHint: {
+    marginTop: 12,
+    color: '#D7D7D7',
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
