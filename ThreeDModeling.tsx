@@ -1,142 +1,303 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  AppState,
   Image,
-  Linking,
   PermissionsAndroid,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import type { AppStateStatus } from 'react-native';
-import { launchImageLibrary, type Asset, type ImagePickerResponse } from 'react-native-image-picker';
-import { WebView } from 'react-native-webview';
+import type {Asset, ImageLibraryOptions} from 'react-native-image-picker';
+import {launchImageLibrary} from 'react-native-image-picker';
+import {WebView} from 'react-native-webview';
+
 import {
-  ImageTo3DService,
-  type ImageTo3DJobResponse,
-  type ImageTo3DTaskStatus,
-  type SelectedImageAsset,
+  createImageTo3DJob,
+  getImageTo3DJob,
+  isTerminalJobStatus,
+  type ImageTo3DJob,
+  type ImageTo3DJobStatus,
+  type UploadableImageAsset,
 } from './ImageTo3DService';
-import {
-  createEmptyTaskSession,
-  getThreeDModelingSession,
-  resetThreeDModelingSession,
-  setThreeDModelingSession,
-  type ThreeDModelingTaskSession,
-} from './ThreeDModelingSession';
 
-interface ThreeDModelingProps {
-  onBack: () => void;
-}
+type PermissionState = 'unknown' | 'granted' | 'denied' | 'blocked';
+type ScreenStage =
+  | 'idle'
+  | 'permission_required'
+  | 'image_selected'
+  | 'submitting'
+  | 'processing'
+  | 'succeeded'
+  | 'failed';
 
-const MAX_POLLING_WINDOW_MS = 10 * 60 * 1000;
+type Props = {
+  navigation?: {
+    goBack?: () => void;
+  };
+  onBack?: () => void;
+};
+
+const MAX_POLLING_MS = 10 * 60 * 1000;
 const DEFAULT_POLL_AFTER_MS = 5000;
+const READ_MEDIA_IMAGES_PERMISSION = 'android.permission.READ_MEDIA_IMAGES';
 
-function escapeHtmlAttribute(value: string) {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+const imagePickerOptions: ImageLibraryOptions = {
+  mediaType: 'photo',
+  selectionLimit: 1,
+  quality: 1,
+  includeBase64: false,
+};
+
+function getGalleryPermission(): string {
+  return Number(Platform.Version) >= 33
+    ? READ_MEDIA_IMAGES_PERMISSION
+    : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
 }
 
-function buildModelViewerHtml(modelUrl: string) {
-  const safeUrl = escapeHtmlAttribute(modelUrl);
+function getStatusMessage(status: ImageTo3DJobStatus): string {
+  switch (status) {
+    case 'queued':
+      return 'Image uploaded. Waiting for the 3D generation job to start.';
+    case 'processing':
+      return 'Generating the 3D model. This can take a few minutes.';
+    case 'succeeded':
+      return '3D model generated successfully.';
+    case 'failed':
+      return '3D generation failed. Try another image or retry.';
+    case 'expired':
+      return 'The preview link expired. Generate again to refresh the model.';
+    default:
+      return '';
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object') {
+    const message = (error as {message?: unknown}).message;
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+
+    const description = (error as {description?: unknown}).description;
+    if (typeof description === 'string' && description.trim()) {
+      return description;
+    }
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch (serializationError) {
+    }
+  }
+
+  return 'Something went wrong. Please try again.';
+}
+
+function toUploadableAsset(asset: Asset): UploadableImageAsset {
+  return {
+    uri: asset.uri ?? '',
+    type: asset.type ?? 'image/jpeg',
+    fileName: asset.fileName ?? `upload-${Date.now()}.jpg`,
+    fileSize: asset.fileSize,
+  };
+}
+
+function renderModelViewerHtml(modelUrl: string): string {
+  const escapedUrl = modelUrl.replace(/"/g, '&quot;');
 
   return `
-    <!DOCTYPE html>
-    <html lang="en">
+    <!doctype html>
+    <html>
       <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta charset="utf-8" />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1"
+        />
         <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+        <script nomodule src="https://unpkg.com/@google/model-viewer/dist/model-viewer-legacy.js"></script>
         <style>
           html, body {
             margin: 0;
             height: 100%;
-            background: #050505;
+            overflow: hidden;
+            background: #111111;
           }
-
-          model-viewer {
+          #viewer {
             width: 100%;
             height: 100%;
-            background: radial-gradient(circle at top, rgba(0, 168, 255, 0.18), transparent 55%), #050505;
-            --poster-color: transparent;
+            background: radial-gradient(circle at top, #202020, #0f0f0f 70%);
+          }
+          .fallback {
+            display: none;
+            box-sizing: border-box;
+            padding: 24px;
+            color: #ffffff;
+            font-family: sans-serif;
+            line-height: 1.5;
+          }
+          .loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #d7d7d7;
+            font-family: sans-serif;
           }
         </style>
       </head>
       <body>
+        <div id="loading" class="loading">Loading 3D preview...</div>
         <model-viewer
-          src="${safeUrl}"
+          id="viewer"
+          src="${escapedUrl}"
+          alt="Generated 3D model"
           camera-controls
           auto-rotate
-          shadow-intensity="1.1"
+          shadow-intensity="1"
           exposure="1"
-          ar>
-        </model-viewer>
+          touch-action="pan-y"
+          ar="false"
+          ar-modes="none"
+          interaction-prompt="none"
+        ></model-viewer>
+        <div id="fallback" class="fallback">Inline preview is unavailable on this WebView. The 3D model was generated successfully, but this device cannot render it inside the app.</div>
+        <script>
+          const allowedSchemes = ['http:', 'https:', 'about:', 'data:', 'blob:'];
+          const loading = document.getElementById('loading');
+          const fallback = document.getElementById('fallback');
+          const viewer = document.getElementById('viewer');
+          const showFallback = () => {
+            if (loading) {
+              loading.style.display = 'none';
+            }
+            if (viewer) {
+              viewer.style.display = 'none';
+            }
+            if (fallback) {
+              fallback.style.display = 'block';
+            }
+          };
+          const hideLoading = () => {
+            if (loading) {
+              loading.style.display = 'none';
+            }
+          };
+          const originalOpen = window.open;
+          window.open = function(url) {
+            if (!url) {
+              return null;
+            }
+            try {
+              const parsed = new URL(url, window.location.href);
+              if (!allowedSchemes.includes(parsed.protocol)) {
+                return null;
+              }
+            } catch (error) {
+              return null;
+            }
+            return originalOpen ? originalOpen.apply(window, arguments) : null;
+          };
+          document.addEventListener('click', function(event) {
+            const anchor = event.target.closest('a');
+            if (!anchor || !anchor.href) {
+              return;
+            }
+            try {
+              const parsed = new URL(anchor.href, window.location.href);
+              if (!allowedSchemes.includes(parsed.protocol)) {
+                event.preventDefault();
+              }
+            } catch (error) {
+              event.preventDefault();
+            }
+          }, true);
+          window.addEventListener('load', function() {
+            setTimeout(function() {
+              if (!customElements.get('model-viewer')) {
+                showFallback();
+              }
+            }, 3000);
+          });
+          if (viewer) {
+            viewer.addEventListener('load', hideLoading);
+            viewer.addEventListener('model-visibility', hideLoading);
+            viewer.addEventListener('error', showFallback);
+          }
+          setTimeout(function() {
+            if (loading && loading.style.display !== 'none') {
+              showFallback();
+            }
+          }, 10000);
+        </script>
       </body>
     </html>
   `;
 }
 
-async function requestPhotoPermission() {
-  if (Platform.OS !== 'android') {
-    return true;
-  }
-
-  try {
-    const permission =
-      Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
-        ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
-        : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
-
-    const result = await PermissionsAndroid.request(permission, {
-      title: 'Photo Permission',
-      message: 'Vision Genie needs access to your photos to generate a 3D model.',
-      buttonPositive: 'Allow',
-      buttonNegative: 'Deny',
-    });
-
-    return result === PermissionsAndroid.RESULTS.GRANTED;
-  } catch (error) {
-    console.warn('Photo permission request failed', error);
+function shouldAllowWebViewRequest(url?: string): boolean {
+  if (!url) {
     return false;
   }
+
+  return (
+    url.startsWith('about:blank') ||
+    url.startsWith('data:') ||
+    url.startsWith('blob:') ||
+    url.startsWith('http://') ||
+    url.startsWith('https://')
+  );
 }
 
-function toSelectedImage(asset: Asset): SelectedImageAsset | null {
-  if (!asset.uri) {
-    return null;
-  }
+export default function ThreeDModeling({navigation, onBack}: Props) {
+  const [permissionState, setPermissionState] =
+    useState<PermissionState>('unknown');
+  const [screenStage, setScreenStage] = useState<ScreenStage>('idle');
+  const [selectedImage, setSelectedImage] = useState<UploadableImageAsset | null>(
+    null,
+  );
+  const [job, setJob] = useState<ImageTo3DJob | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>('');
+  const [previewErrorMessage, setPreviewErrorMessage] = useState<string | null>(null);
 
-  return {
-    uri: asset.uri,
-    type: asset.type || 'image/jpeg',
-    fileName: asset.fileName || 'upload.jpg',
-  };
-}
-
-export default function ThreeDModeling({ onBack }: ThreeDModelingProps) {
-  const persistedSession = useMemo(() => getThreeDModelingSession(), []);
-  const serviceRef = useRef(new ImageTo3DService());
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const taskRef = useRef<ThreeDModelingTaskSession>(persistedSession.task);
-  const [selectedImage, setSelectedImage] = useState<SelectedImageAsset | null>(persistedSession.selectedImage);
-  const [task, setTask] = useState<ThreeDModelingTaskSession>(persistedSession.task);
+  const pollDeadlineRef = useRef<number>(0);
 
-  const isBusy = task.status === 'submitting' || task.status === 'queued' || task.status === 'processing';
-  const canGenerate = Boolean(selectedImage) && !isBusy;
-  const canPreviewInApp = task.status === 'succeeded' && task.fileType === 'GLB' && Boolean(task.previewUrl);
+  const canGenerate =
+    Boolean(selectedImage) &&
+    screenStage !== 'submitting' &&
+    screenStage !== 'processing';
 
-  const persistState = (nextImage: SelectedImageAsset | null, nextTask: ThreeDModelingTaskSession) => {
-    taskRef.current = nextTask;
-    setSelectedImage(nextImage);
-    setTask(nextTask);
-    setThreeDModelingSession({
-      selectedImage: nextImage,
-      task: nextTask,
-    });
-  };
+  const canPreviewModel = useMemo(() => {
+    return (
+      job?.status === 'succeeded' &&
+      Boolean(job.previewUrl) &&
+      job.fileType?.toUpperCase() === 'GLB'
+    );
+  }, [job]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const clearPolling = () => {
     if (pollTimeoutRef.current) {
@@ -145,477 +306,431 @@ export default function ThreeDModeling({ onBack }: ThreeDModelingProps) {
     }
   };
 
-  const updateTaskFromResponse = (response: ImageTo3DJobResponse) => {
-    const nextTask: ThreeDModelingTaskSession = {
-      taskId: response.taskId,
-      status: response.status,
-      message: response.message,
-      previewUrl: response.previewUrl,
-      downloadUrl: response.downloadUrl,
-      fileType: response.fileType,
-      expiresAt: response.expiresAt,
-      pollAfterMs: taskRef.current.pollAfterMs || DEFAULT_POLL_AFTER_MS,
-      pollStartedAt: taskRef.current.pollStartedAt,
-    };
-
-    persistState(selectedImage, nextTask);
-    return nextTask;
-  };
-
-  const schedulePoll = (delayMs: number) => {
+  const resetJobState = (nextStage: ScreenStage) => {
     clearPolling();
-    pollTimeoutRef.current = setTimeout(() => {
-      void pollTask();
-    }, delayMs);
+    setJob(null);
+    setErrorMessage(null);
+    setStatusMessage('');
+    setPreviewErrorMessage(null);
+    setScreenStage(nextStage);
   };
 
-  const pollTask = async () => {
-    const currentTask = taskRef.current;
+  const applyJob = (nextJob: ImageTo3DJob) => {
+    setJob(nextJob);
+    setStatusMessage(getStatusMessage(nextJob.status));
 
-    if (!currentTask.taskId) {
+    if (nextJob.status === 'queued' || nextJob.status === 'processing') {
+      setScreenStage('processing');
       return;
     }
 
-    const pollStartedAt = currentTask.pollStartedAt ?? Date.now();
-    if (Date.now() - pollStartedAt > MAX_POLLING_WINDOW_MS) {
-      persistState(selectedImage, {
-        ...currentTask,
-        status: 'failed',
-        message: '3D generation timed out. Please try again.',
-      });
+    if (nextJob.status === 'succeeded') {
+      setScreenStage('succeeded');
       return;
     }
 
-    try {
-      const response = await serviceRef.current.getJob(currentTask.taskId);
-      const nextTask = updateTaskFromResponse(response);
-
-      if (nextTask.status === 'queued' || nextTask.status === 'processing') {
-        schedulePoll(nextTask.pollAfterMs || DEFAULT_POLL_AFTER_MS);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to refresh 3D job status.';
-      persistState(selectedImage, {
-        ...currentTask,
-        status: 'failed',
-        message,
-      });
-    }
+    setScreenStage('failed');
+    setErrorMessage(nextJob.message || getStatusMessage(nextJob.status));
   };
 
-  useEffect(() => {
-    if (task.status === 'queued' || task.status === 'processing') {
-      schedulePoll(0);
-    }
+  const pollJobStatus = async (taskId: string, pollAfterMs: number) => {
+    clearPolling();
 
-    return () => {
-      clearPolling();
-    };
-  }, []);
+    pollTimeoutRef.current = setTimeout(async () => {
+      try {
+        const latestJob = await getImageTo3DJob(taskId);
+        applyJob(latestJob);
 
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
-        const currentTask = taskRef.current;
-        if (currentTask.status === 'queued' || currentTask.status === 'processing') {
-          schedulePoll(0);
+        if (!isTerminalJobStatus(latestJob.status)) {
+          if (Date.now() >= pollDeadlineRef.current) {
+            setScreenStage('failed');
+            setErrorMessage('3D generation timed out. Please try again.');
+            return;
+          }
+
+          pollJobStatus(taskId, DEFAULT_POLL_AFTER_MS);
         }
+      } catch (error) {
+        setScreenStage('failed');
+        setErrorMessage(getErrorMessage(error));
       }
+    }, pollAfterMs);
+  };
+
+  const requestGalleryPermission = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') {
+      setPermissionState('granted');
+      return true;
+    }
+
+    const permission = getGalleryPermission();
+    const hasPermission = await PermissionsAndroid.check(permission as any);
+    if (hasPermission) {
+      setPermissionState('granted');
+      return true;
+    }
+
+    const result = await PermissionsAndroid.request(permission as any, {
+      title: 'Photo access required',
+      message:
+        'VisionGenie needs photo access so you can pick a 2D image for 3D generation.',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Deny',
     });
 
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  const handleImageUpload = async () => {
-    if (isBusy) {
-      return;
+    if (result === PermissionsAndroid.RESULTS.GRANTED) {
+      setPermissionState('granted');
+      return true;
     }
 
-    const hasPermission = await requestPhotoPermission();
-    if (!hasPermission) {
-      Alert.alert('Permission required', 'Please grant photo access to upload a reference image.');
-      return;
+    if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+      setPermissionState('blocked');
+      setScreenStage('permission_required');
+      setErrorMessage(
+        'Photo access is blocked. Please enable gallery permission in system settings and try again.',
+      );
+      return false;
     }
 
-    try {
-      const result: ImagePickerResponse = await launchImageLibrary({
-        mediaType: 'photo',
-        selectionLimit: 1,
-        includeBase64: false,
-      });
-
-      if (result.didCancel) {
-        return;
-      }
-
-      if (result.errorCode) {
-        Alert.alert('Upload failed', result.errorMessage || 'Unable to open the photo library.');
-        return;
-      }
-
-      const nextImage = result.assets?.[0] ? toSelectedImage(result.assets[0]) : null;
-      if (!nextImage) {
-        Alert.alert('Upload failed', 'Please select a valid image.');
-        return;
-      }
-
-      clearPolling();
-      persistState(nextImage, createEmptyTaskSession());
-    } catch (error) {
-      console.error('Image picker error', error);
-      Alert.alert('Upload failed', 'An unexpected error occurred while selecting the image.');
-    }
+    setPermissionState('denied');
+    setScreenStage('permission_required');
+    setErrorMessage(
+      'Photo access is required before you can choose an image. Tap retry to request permission again.',
+    );
+    return false;
   };
 
-  const handleGenerate3D = async () => {
-    if (!selectedImage || isBusy) {
+  const handlePickImage = async () => {
+    setErrorMessage(null);
+
+    const hasPermission = await requestGalleryPermission();
+    if (!hasPermission) {
       return;
     }
 
-    const submittingTask: ThreeDModelingTaskSession = {
-      taskId: null,
-      status: 'submitting',
-      message: 'Uploading your image to the backend...',
-      previewUrl: null,
-      downloadUrl: null,
-      fileType: null,
-      expiresAt: null,
-      pollAfterMs: DEFAULT_POLL_AFTER_MS,
-      pollStartedAt: Date.now(),
-    };
+    const result = await launchImageLibrary(imagePickerOptions);
 
-    persistState(selectedImage, submittingTask);
+    if (result?.didCancel) {
+      if (!selectedImage) {
+        setScreenStage('idle');
+      }
+      return;
+    }
+
+    if (result?.errorMessage) {
+      setScreenStage('failed');
+      setErrorMessage(result.errorMessage);
+      return;
+    }
+
+    const asset = result?.assets?.[0];
+    if (!asset?.uri) {
+      setScreenStage('failed');
+      setErrorMessage('No image was returned from the gallery.');
+      return;
+    }
+
+    setPermissionState('granted');
+    setSelectedImage(toUploadableAsset(asset));
+    resetJobState('image_selected');
+  };
+
+  const handleGenerate = async () => {
+    if (!selectedImage) {
+      return;
+    }
 
     try {
-      const createdTask = await serviceRef.current.createJob(selectedImage);
-      const nextTask: ThreeDModelingTaskSession = {
-        taskId: createdTask.taskId,
-        status: 'queued',
-        message: 'Image uploaded. Waiting for the 3D model to start generating...',
+      clearPolling();
+      setErrorMessage(null);
+      setPreviewErrorMessage(null);
+      setStatusMessage('Uploading image and creating the generation job.');
+      setScreenStage('submitting');
+
+      const createdJob = await createImageTo3DJob(selectedImage);
+      setJob({
+        taskId: createdJob.taskId,
+        status: createdJob.status,
+        message: createdJob.message ?? null,
         previewUrl: null,
         downloadUrl: null,
         fileType: null,
         expiresAt: null,
-        pollAfterMs: createdTask.pollAfterMs || DEFAULT_POLL_AFTER_MS,
-        pollStartedAt: Date.now(),
-      };
-
-      persistState(selectedImage, nextTask);
-      schedulePoll(nextTask.pollAfterMs);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to start 3D generation.';
-      persistState(selectedImage, {
-        ...submittingTask,
-        status: 'failed',
-        message,
       });
-      Alert.alert('Generation failed', message);
+      pollDeadlineRef.current = Date.now() + MAX_POLLING_MS;
+
+      if (isTerminalJobStatus(createdJob.status)) {
+        const finishedJob = await getImageTo3DJob(createdJob.taskId);
+        applyJob(finishedJob);
+        return;
+      }
+
+      setScreenStage('processing');
+      setStatusMessage(getStatusMessage(createdJob.status));
+      pollJobStatus(createdJob.taskId, createdJob.pollAfterMs ?? DEFAULT_POLL_AFTER_MS);
+    } catch (error) {
+      setScreenStage('failed');
+      setErrorMessage(getErrorMessage(error));
     }
   };
 
-  const handleRetry = async () => {
-    if (selectedImage) {
-      await handleGenerate3D();
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!task.downloadUrl) {
-      return;
-    }
-
-    try {
-      await Linking.openURL(task.downloadUrl);
-    } catch (_error) {
-      Alert.alert('Download failed', 'Unable to open the generated model link.');
-    }
-  };
-
-  const handleBack = () => {
-    clearPolling();
-    onBack();
-  };
-
-  const handleReset = () => {
-    clearPolling();
-    resetThreeDModelingSession();
-    persistState(null, createEmptyTaskSession());
-  };
-
-  const statusLabel = (() => {
-    switch (task.status as ImageTo3DTaskStatus) {
-      case 'submitting':
-        return 'Uploading image';
-      case 'queued':
-        return 'Queued';
-      case 'processing':
-        return 'Generating 3D model';
-      case 'succeeded':
-        return 'Model ready';
-      case 'failed':
-        return 'Generation failed';
-      case 'expired':
-        return 'Result expired';
-      default:
-        return '';
-    }
-  })();
+  const previewHtml =
+    canPreviewModel && job?.previewUrl ? renderModelViewerHtml(job.previewUrl) : null;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>3D Modeling (Misako)</Text>
-      </View>
+    <View style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => onBack?.() ?? navigation?.goBack?.()}
+            style={styles.backButton}>
+            <Text style={styles.backText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>3D Modeling (Misako)</Text>
+        </View>
 
-      <View style={styles.content}>
         <TouchableOpacity
-          testID="upload-placeholder"
-          style={styles.imageContainer}
-          activeOpacity={0.9}
-          onPress={handleImageUpload}>
-          {selectedImage ? (
-            <>
-              <Image source={{ uri: selectedImage.uri }} style={styles.previewImage} resizeMode="cover" />
-              <View style={styles.imageOverlay}>
-                <Text style={styles.imageOverlayText}>{isBusy ? 'Generating…' : 'Tap to change image'}</Text>
-              </View>
-            </>
+          accessibilityRole="button"
+          activeOpacity={0.85}
+          onPress={handlePickImage}
+          style={styles.uploadCard}
+          testID="upload-card">
+          {selectedImage?.uri ? (
+            <Image source={{uri: selectedImage.uri}} style={styles.uploadedImage} />
           ) : (
-            <View style={styles.uploadPlaceholder}>
-              <Text style={styles.uploadText}>Tap to Upload 2D Image</Text>
-            </View>
+            <Text style={styles.uploadPlaceholder}>Tap to Upload 2D Image</Text>
           )}
         </TouchableOpacity>
 
-        {selectedImage ? (
-          <TouchableOpacity
-            testID="generate-button"
-            style={[styles.generateButton, !canGenerate && styles.disabledButton]}
-            disabled={!canGenerate}
-            onPress={handleGenerate3D}>
-            {isBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.generateButtonText}>Generate 3D Model</Text>}
-          </TouchableOpacity>
-        ) : null}
+        {screenStage === 'permission_required' && (
+          <View style={styles.messageCard}>
+            <Text style={styles.messageTitle}>Photo access required</Text>
+            <Text style={styles.messageBody}>
+              {errorMessage ??
+                (permissionState === 'blocked'
+                  ? 'Photo access is blocked. Enable it in system settings and try again.'
+                  : 'Gallery permission is required before you can select an image.')}
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={handlePickImage}
+              style={styles.secondaryButton}
+              testID="retry-permission-button">
+              <Text style={styles.secondaryButtonText}>Retry Permission</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {task.status !== 'idle' ? (
-          <View style={styles.statusCard}>
-            <Text style={styles.statusLabel}>{statusLabel}</Text>
-            <Text style={styles.statusMessage}>{task.message}</Text>
+        {statusMessage ? (
+          <View style={styles.messageCard}>
+            <Text style={styles.messageBody}>{statusMessage}</Text>
           </View>
         ) : null}
 
-        {canPreviewInApp && task.previewUrl ? (
-          <View style={styles.viewerSection}>
-            <Text style={styles.viewerTitle}>3D Preview</Text>
-            <View style={styles.viewerFrame}>
+        {errorMessage && screenStage !== 'permission_required' ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        ) : null}
+
+        {(screenStage === 'submitting' || screenStage === 'processing') && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color="#3798EC" />
+            <Text style={styles.loadingText}>Generating 3D model...</Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityState={{disabled: !canGenerate}}
+          disabled={!canGenerate}
+          onPress={handleGenerate}
+          style={[
+            styles.primaryButton,
+            !canGenerate && styles.primaryButtonDisabled,
+          ]}
+          testID="generate-button">
+          <Text style={styles.primaryButtonText}>Generate 3D Model</Text>
+        </TouchableOpacity>
+
+        {screenStage === 'succeeded' && canPreviewModel && previewHtml ? (
+          <View style={styles.previewCard}>
+            <Text style={styles.previewTitle}>3D Preview</Text>
+            {previewErrorMessage ? (
+              <View style={styles.errorCard}>
+                <Text style={styles.errorText}>{previewErrorMessage}</Text>
+              </View>
+            ) : null}
+            <View style={styles.webViewWrapper} testID="model-preview">
               <WebView
-                testID="model-preview"
-                originWhitelist={['*']}
-                source={{ html: buildModelViewerHtml(task.previewUrl) }}
-                style={styles.viewerWebView}
+                originWhitelist={['http://*', 'https://*', 'about:blank', 'data:*', 'blob:*']}
+                source={{
+                  html: previewHtml,
+                  baseUrl: 'https://appassets.androidplatform.net/',
+                }}
                 javaScriptEnabled
                 domStorageEnabled
                 mixedContentMode="always"
+                setSupportMultipleWindows={false}
+                scrollEnabled={false}
+                allowsInlineMediaPlayback
+                onShouldStartLoadWithRequest={request =>
+                  shouldAllowWebViewRequest(request.url)
+                }
+                onError={syntheticEvent => {
+                  const {nativeEvent} = syntheticEvent;
+                  setPreviewErrorMessage(getErrorMessage(nativeEvent));
+                }}
               />
             </View>
           </View>
         ) : null}
 
-        {task.status === 'succeeded' && !canPreviewInApp ? (
-          <View style={styles.fallbackCard}>
-            <Text style={styles.fallbackTitle}>Preview unavailable in-app</Text>
-            <Text style={styles.fallbackText}>This result is not a GLB file, so the app will offer download only.</Text>
+        {screenStage === 'succeeded' && !canPreviewModel ? (
+          <View style={styles.messageCard}>
+            <Text style={styles.messageTitle}>Preview unavailable</Text>
+            <Text style={styles.messageBody}>
+              3D generation succeeded, but the returned result is not a previewable
+              GLB model.
+            </Text>
           </View>
         ) : null}
-
-        {(task.status === 'succeeded' || task.status === 'expired') && task.downloadUrl ? (
-          <TouchableOpacity testID="download-button" style={styles.secondaryButton} onPress={handleDownload}>
-            <Text style={styles.secondaryButtonText}>Download Model</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {(task.status === 'failed' || task.status === 'expired') && selectedImage ? (
-          <TouchableOpacity testID="retry-button" style={styles.secondaryButton} onPress={handleRetry}>
-            <Text style={styles.secondaryButtonText}>Retry Generation</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {selectedImage ? (
-          <TouchableOpacity style={styles.ghostButton} onPress={handleReset}>
-            <Text style={styles.ghostButtonText}>Clear Session</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#000000',
   },
-  header: {
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 18,
+    marginBottom: 28,
   },
   backButton: {
-    paddingVertical: 10,
-    paddingRight: 12,
+    marginRight: 16,
+    paddingVertical: 8,
+    paddingRight: 8,
   },
-  backButtonText: {
-    color: '#fff',
-    fontSize: 26,
+  backText: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    lineHeight: 40,
   },
-  title: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 30,
+    fontWeight: '500',
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
-  imageContainer: {
-    height: 320,
-    borderRadius: 22,
-    overflow: 'hidden',
+  uploadCard: {
+    height: 360,
+    borderRadius: 28,
     backgroundColor: '#141414',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  uploadPlaceholder: {
-    flex: 1,
-    width: '100%',
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  uploadText: {
-    color: '#8b8b8b',
-    fontSize: 18,
-  },
-  previewImage: {
+  uploadedImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
-  imageOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+  uploadPlaceholder: {
+    color: '#9A9A9A',
+    fontSize: 20,
   },
-  imageOverlayText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  generateButton: {
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: '#2a9af2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  disabledButton: {
-    backgroundColor: '#4f6474',
-  },
-  generateButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  statusCard: {
-    borderRadius: 18,
-    backgroundColor: '#111827',
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(42,154,242,0.25)',
-  },
-  statusLabel: {
-    color: '#73c2ff',
-    fontSize: 13,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  statusMessage: {
-    color: '#f3f4f6',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  viewerSection: {
-    marginBottom: 18,
-  },
-  viewerTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  viewerFrame: {
-    height: 280,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#050505',
-  },
-  viewerWebView: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  fallbackCard: {
-    borderRadius: 18,
-    backgroundColor: '#131313',
+  messageCard: {
+    marginTop: 20,
     padding: 16,
-    marginBottom: 18,
+    borderRadius: 18,
+    backgroundColor: '#151A22',
   },
-  fallbackTitle: {
-    color: '#fff',
+  messageTitle: {
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     marginBottom: 8,
   },
-  fallbackText: {
-    color: '#c5c5c5',
+  messageBody: {
+    color: '#D7D7D7',
     fontSize: 14,
     lineHeight: 20,
   },
-  secondaryButton: {
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#ffffff',
+  errorCard: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#2A1212',
+  },
+  errorText: {
+    color: '#FFB4B4',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  loadingRow: {
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: '#E9E9E9',
+    fontSize: 15,
+  },
+  primaryButton: {
+    marginTop: 28,
+    minHeight: 72,
+    borderRadius: 36,
+    backgroundColor: '#3798EC',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+  },
+  primaryButtonDisabled: {
+    backgroundColor: '#1D4463',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    marginTop: 14,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 22,
+    backgroundColor: '#2A87DA',
   },
   secondaryButtonText: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  ghostButton: {
-    alignSelf: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  ghostButtonText: {
-    color: '#9ca3af',
+    color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  previewCard: {
+    marginTop: 28,
+    borderRadius: 24,
+    backgroundColor: '#111111',
+    padding: 16,
+  },
+  previewTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  webViewWrapper: {
+    height: 360,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#111111',
   },
 });

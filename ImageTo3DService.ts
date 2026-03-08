@@ -1,93 +1,115 @@
-import { NativeModules, Platform } from 'react-native';
+import {Platform} from 'react-native';
 
-export type ImageTo3DTaskStatus =
-  | 'idle'
-  | 'submitting'
+export type ImageTo3DJobStatus =
   | 'queued'
   | 'processing'
   | 'succeeded'
   | 'failed'
   | 'expired';
 
-export interface SelectedImageAsset {
+export type UploadableImageAsset = {
   uri: string;
   type?: string;
   fileName?: string;
-}
+  fileSize?: number;
+};
 
-export interface CreateImageTo3DJobResponse {
+export type SelectedImageAsset = UploadableImageAsset;
+export type ImageTo3DTaskStatus = ImageTo3DJobStatus | 'idle';
+
+export type CreateImageTo3DJobResponse = {
   taskId: string;
-  status: 'queued';
+  status: ImageTo3DJobStatus;
   pollAfterMs: number;
-}
+  message?: string | null;
+};
 
-export interface ImageTo3DJobResponse {
+export type ImageTo3DJob = {
   taskId: string;
-  status: Exclude<ImageTo3DTaskStatus, 'idle' | 'submitting'>;
-  message: string;
+  status: ImageTo3DJobStatus;
+  message: string | null;
   previewUrl: string | null;
   downloadUrl: string | null;
   fileType: string | null;
   expiresAt: string | null;
-}
+};
 
-function inferHostFromMetro() {
-  const scriptURL = NativeModules.SourceCode?.scriptURL;
+const API_BASE_URL =
+  Platform.OS === 'android' ? 'http://127.0.0.1:3001' : 'http://127.0.0.1:3001';
 
-  if (!scriptURL) {
-    return null;
+function normalizeServiceError(payload: any, status: number): string {
+  const candidates = [payload?.message, payload?.error, payload?.detail];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate;
+    }
+
+    if (candidate && typeof candidate === 'object') {
+      if (typeof candidate.message === 'string' && candidate.message.trim()) {
+        return candidate.message;
+      }
+
+      try {
+        const serialized = JSON.stringify(candidate);
+        if (serialized && serialized !== '{}') {
+          return serialized;
+        }
+      } catch (serializationError) {
+      }
+    }
   }
 
-  try {
-    const parsedUrl = new URL(scriptURL);
-    return parsedUrl.hostname;
-  } catch (_error) {
-    return null;
-  }
+  return `Request failed with status ${status}`;
 }
 
-export function getDefaultImageTo3DBaseUrl() {
-  const metroHost = inferHostFromMetro();
-
-  if (metroHost) {
-    return `http://${metroHost}:3001`;
-  }
-
-  return Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
-}
-
-async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const data = await response.json().catch(() => ({}));
-
+function assertOk(response: Response, payload: any) {
   if (!response.ok) {
-    const message = data?.error?.message || data?.message || 'Request failed.';
-    throw new Error(message);
+    throw new Error(normalizeServiceError(payload, response.status));
   }
-
-  return data as T;
 }
 
-export class ImageTo3DService {
-  constructor(private readonly baseUrl: string = getDefaultImageTo3DBaseUrl()) {}
+export function isTerminalJobStatus(status: ImageTo3DJobStatus): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'expired';
+}
 
-  async createJob(image: SelectedImageAsset): Promise<CreateImageTo3DJobResponse> {
-    const formData = new FormData();
-    formData.append('image', {
-      uri: image.uri,
-      name: image.fileName || 'upload.jpg',
-      type: image.type || 'image/jpeg',
-    } as never);
+export async function createImageTo3DJob(
+  image: UploadableImageAsset,
+): Promise<CreateImageTo3DJobResponse> {
+  const formData = new FormData();
+  formData.append('image', {
+    uri: image.uri,
+    type: image.type ?? 'image/jpeg',
+    name: image.fileName ?? `image-${Date.now()}.jpg`,
+  } as any);
 
-    const response = await fetch(`${this.baseUrl}/api/v1/image-to-3d/jobs`, {
-      method: 'POST',
-      body: formData,
-    });
+  const response = await fetch(`${API_BASE_URL}/api/v1/image-to-3d/jobs`, {
+    method: 'POST',
+    body: formData,
+  });
+  const payload = await response.json();
+  assertOk(response, payload);
 
-    return parseJsonResponse<CreateImageTo3DJobResponse>(response);
-  }
+  return {
+    taskId: payload.taskId,
+    status: payload.status,
+    pollAfterMs: payload.pollAfterMs ?? 5000,
+    message: payload.message ?? null,
+  };
+}
 
-  async getJob(taskId: string): Promise<ImageTo3DJobResponse> {
-    const response = await fetch(`${this.baseUrl}/api/v1/image-to-3d/jobs/${taskId}`);
-    return parseJsonResponse<ImageTo3DJobResponse>(response);
-  }
+export async function getImageTo3DJob(taskId: string): Promise<ImageTo3DJob> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/image-to-3d/jobs/${taskId}`);
+  const payload = await response.json();
+  assertOk(response, payload);
+
+  return {
+    taskId: payload.taskId,
+    status: payload.status,
+    message: payload.message ?? null,
+    previewUrl: payload.previewUrl ?? null,
+    downloadUrl: payload.downloadUrl ?? null,
+    fileType: payload.fileType ?? null,
+    expiresAt: payload.expiresAt ?? null,
+  };
 }

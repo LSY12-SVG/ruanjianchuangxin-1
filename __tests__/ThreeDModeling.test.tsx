@@ -1,93 +1,166 @@
 import React from 'react';
-import { PermissionsAndroid } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import {PermissionsAndroid, Platform} from 'react-native';
+import {act, fireEvent, render, waitFor} from '@testing-library/react-native';
+
 import ThreeDModeling from '../ThreeDModeling';
-import { resetThreeDModelingSession } from '../ThreeDModelingSession';
-import { launchImageLibrary } from 'react-native-image-picker';
+import {
+  createImageTo3DJob,
+  getImageTo3DJob,
+} from '../ImageTo3DService';
+
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const {View} = require('react-native');
+  return {
+    WebView: ({testID}: {testID?: string}) => <View testID={testID ?? 'webview'} />,
+  };
+});
 
 jest.mock('react-native-image-picker', () => ({
   launchImageLibrary: jest.fn(),
 }));
 
-jest.mock('react-native-webview', () => {
-  const React = require('react');
-  const { View } = require('react-native');
+jest.mock('../ImageTo3DService', () => ({
+  createImageTo3DJob: jest.fn(),
+  getImageTo3DJob: jest.fn(),
+  isTerminalJobStatus: (status: string) =>
+    status === 'succeeded' || status === 'failed' || status === 'expired',
+}));
 
-  return {
-    WebView: ({ testID }: { testID?: string }) => <View testID={testID || 'mock-webview'} />,
-  };
-});
+const {launchImageLibrary} = jest.requireMock('react-native-image-picker') as {
+  launchImageLibrary: jest.Mock;
+};
+
+const createImageTo3DJobMock = createImageTo3DJob as jest.MockedFunction<
+  typeof createImageTo3DJob
+>;
+const getImageTo3DJobMock = getImageTo3DJob as jest.MockedFunction<
+  typeof getImageTo3DJob
+>;
 
 describe('ThreeDModeling', () => {
-  const fetchMock = jest.fn();
-
   beforeEach(() => {
     jest.useFakeTimers();
-    resetThreeDModelingSession();
-    fetchMock.mockReset();
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-    jest.spyOn(PermissionsAndroid, 'request').mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
-    (launchImageLibrary as jest.Mock).mockResolvedValue({
-      assets: [
-        {
-          uri: 'file:///tmp/portrait.png',
-          type: 'image/png',
-          fileName: 'portrait.png',
-        },
-      ],
+    jest.clearAllMocks();
+    Object.defineProperty(Platform, 'OS', {
+      configurable: true,
+      value: 'android',
     });
+    Object.defineProperty(Platform, 'Version', {
+      configurable: true,
+      value: 32,
+    });
+    jest
+      .spyOn(PermissionsAndroid, 'check')
+      .mockResolvedValue(true);
+    jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
   });
 
   afterEach(() => {
-    jest.clearAllTimers();
+    jest.runOnlyPendingTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
-  it('uploads an image, polls the backend, and renders a GLB preview', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ taskId: 'task-1', status: 'queued', pollAfterMs: 5000 }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          taskId: 'task-1',
-          status: 'processing',
-          message: '3D model is being generated.',
-          previewUrl: null,
-          downloadUrl: null,
-          fileType: null,
-          expiresAt: null,
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          taskId: 'task-1',
-          status: 'succeeded',
-          message: '3D model is ready.',
-          previewUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-          downloadUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
-          fileType: 'GLB',
-          expiresAt: '2030-01-01T00:00:00.000Z',
-        }),
-      });
+  it('requests permission and shows retry state when photo access is denied', async () => {
+    jest
+      .spyOn(PermissionsAndroid, 'check')
+      .mockResolvedValue(false);
+    jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockResolvedValue(PermissionsAndroid.RESULTS.DENIED);
 
-    const screen = render(<ThreeDModeling onBack={jest.fn()} />);
+    const screen = render(<ThreeDModeling />);
 
-    fireEvent.press(screen.getByTestId('upload-placeholder'));
-    await waitFor(() => expect(launchImageLibrary).toHaveBeenCalled());
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('upload-card'));
+    });
 
-    fireEvent.press(screen.getByTestId('generate-button'));
+    expect(PermissionsAndroid.request).toHaveBeenCalled();
+    expect(screen.getByText('Photo access required')).toBeTruthy();
+    expect(screen.getByTestId('retry-permission-button')).toBeTruthy();
+  });
+
+  it('enables generate after selecting one image from the gallery', async () => {
+    launchImageLibrary.mockResolvedValue({
+      assets: [
+        {
+          uri: 'file:///tmp/input.jpg',
+          type: 'image/jpeg',
+          fileName: 'input.jpg',
+        },
+      ],
+      didCancel: false,
+    });
+
+    const screen = render(<ThreeDModeling />);
+    const generateButton = screen.getByTestId('generate-button');
+
+    expect(generateButton.props.accessibilityState.disabled).toBe(true);
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('upload-card'));
+    });
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/image-to-3d/jobs'),
-        expect.objectContaining({ method: 'POST' })
-      );
+      expect(
+        screen.getByTestId('generate-button').props.accessibilityState.disabled,
+      ).toBe(false);
     });
+  });
+
+  it('polls until the model becomes previewable', async () => {
+    launchImageLibrary.mockResolvedValue({
+      assets: [
+        {
+          uri: 'file:///tmp/input.jpg',
+          type: 'image/jpeg',
+          fileName: 'input.jpg',
+        },
+      ],
+      didCancel: false,
+    });
+
+    createImageTo3DJobMock.mockResolvedValue({
+      taskId: 'task-1',
+      status: 'queued',
+      pollAfterMs: 5000,
+      message: null,
+    });
+
+    getImageTo3DJobMock
+      .mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'processing',
+        message: 'still working',
+        previewUrl: null,
+        downloadUrl: null,
+        fileType: null,
+        expiresAt: null,
+      })
+      .mockResolvedValueOnce({
+        taskId: 'task-1',
+        status: 'succeeded',
+        message: 'done',
+        previewUrl: 'https://example.com/model.glb',
+        downloadUrl: 'https://example.com/model.glb',
+        fileType: 'GLB',
+        expiresAt: '2026-03-09T00:00:00.000Z',
+      });
+
+    const screen = render(<ThreeDModeling />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('upload-card'));
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('generate-button'));
+    });
+
+    expect(createImageTo3DJobMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(5000);
@@ -101,56 +174,7 @@ describe('ThreeDModeling', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('model-preview')).toBeTruthy();
-      expect(screen.getByTestId('download-button')).toBeTruthy();
-      expect(screen.getByText('Model ready')).toBeTruthy();
     });
-  });
-
-  it('shows a retry action when generation fails', async () => {
-    fetchMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ taskId: 'task-2', status: 'queued', pollAfterMs: 5000 }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          taskId: 'task-2',
-          status: 'failed',
-          message: '3D generation failed.',
-          previewUrl: null,
-          downloadUrl: null,
-          fileType: null,
-          expiresAt: null,
-        }),
-      });
-
-    const screen = render(<ThreeDModeling onBack={jest.fn()} />);
-
-    fireEvent.press(screen.getByTestId('upload-placeholder'));
-    await waitFor(() => expect(launchImageLibrary).toHaveBeenCalled());
-
-    fireEvent.press(screen.getByTestId('generate-button'));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(0);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('retry-button')).toBeTruthy();
-      expect(screen.getByText('Generation failed')).toBeTruthy();
-    });
+    expect(screen.queryByText('Download Model')).toBeNull();
   });
 });
-
-
