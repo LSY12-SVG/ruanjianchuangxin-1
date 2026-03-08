@@ -67,18 +67,34 @@ uniform float wheelHighlightsHue;
 uniform float wheelHighlightsSat;
 uniform float wheelHighlightsLuma;
 
+float catmull(float p0, float p1, float p2, float p3, float t) {
+  float t2 = t * t;
+  float t3 = t2 * t;
+  return 0.5 * (
+    (2.0 * p1) +
+    (-p0 + p2) * t +
+    (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 +
+    (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+  );
+}
+
 float curveSample(float x, float y0, float y1, float y2, float y3, float y4) {
   float t = clamp(x, 0.0, 1.0);
+  float localT;
   if (t < 0.25) {
-    return mix(y0, y1, t / 0.25);
+    localT = t / 0.25;
+    return clamp(catmull(y0, y0, y1, y2, localT), 0.0, 1.0);
   }
   if (t < 0.5) {
-    return mix(y1, y2, (t - 0.25) / 0.25);
+    localT = (t - 0.25) / 0.25;
+    return clamp(catmull(y0, y1, y2, y3, localT), 0.0, 1.0);
   }
   if (t < 0.75) {
-    return mix(y2, y3, (t - 0.5) / 0.25);
+    localT = (t - 0.5) / 0.25;
+    return clamp(catmull(y1, y2, y3, y4, localT), 0.0, 1.0);
   }
-  return mix(y3, y4, (t - 0.75) / 0.25);
+  localT = (t - 0.75) / 0.25;
+  return clamp(catmull(y2, y3, y4, y4, localT), 0.0, 1.0);
 }
 
 float3 hueTint(float hueDeg) {
@@ -88,6 +104,14 @@ float3 hueTint(float hueDeg) {
     cos(r - 2.0943951),
     cos(r + 2.0943951)
   ));
+}
+
+float3 linearize(float3 color) {
+  return pow(clamp(color, 0.0, 1.0), float3(2.2));
+}
+
+float3 delinearize(float3 color) {
+  return pow(clamp(color, 0.0, 1.0), float3(0.45454545));
 }
 
 float3 applyWheel(float3 color, float luma, float mask, float hue, float sat, float lumaShift) {
@@ -100,16 +124,23 @@ float3 applyWheel(float3 color, float luma, float mask, float hue, float sat, fl
 
 half4 main(float2 xy) {
   half4 src = image.eval(xy);
-  float3 color = clamp(src.rgb, 0.0, 1.0);
+  float3 color = linearize(clamp(src.rgb, 0.0, 1.0));
+
+  float rawLuma = dot(color, float3(0.2126, 0.7152, 0.0722));
+  float skinMask = smoothstep(0.15, 0.6, color.r) *
+    smoothstep(0.08, 0.48, color.g) *
+    (1.0 - smoothstep(0.16, 0.58, color.b)) *
+    smoothstep(0.2, 0.8, rawLuma);
 
   float expFactor = pow(2.0, exposure);
   color *= expFactor;
 
-  color.r += temperature * 0.20;
-  color.b -= temperature * 0.20;
-  color.r += tint * 0.06;
-  color.g += tint * 0.12;
-  color.b += tint * 0.06;
+  float tempStrength = mix(1.0, 0.65, skinMask);
+  color.r += temperature * 0.20 * tempStrength;
+  color.b -= temperature * 0.20 * tempStrength;
+  color.r += tint * 0.06 * tempStrength;
+  color.g += tint * 0.12 * tempStrength;
+  color.b += tint * 0.06 * tempStrength;
 
   color.r *= (1.0 + redBalance * 0.35);
   color.g *= (1.0 + greenBalance * 0.35);
@@ -131,22 +162,30 @@ half4 main(float2 xy) {
   color.b = curveSample(color.b, curveB0, curveB1, curveB2, curveB3, curveB4);
 
   float luma = dot(color, float3(0.2126, 0.7152, 0.0722));
-  float satScale = max(0.0, 1.0 + saturation);
+  float satScale = clamp(1.0 + saturation * mix(1.0, 0.7, skinMask), 0.0, 1.75);
   color = mix(float3(luma), color, satScale);
 
   float maxC = max(max(color.r, color.g), color.b);
   float minC = min(min(color.r, color.g), color.b);
   float chroma = maxC - minC;
   float vibranceMask = 1.0 - smoothstep(0.0, 0.8, chroma);
-  float vibScale = max(0.0, 1.0 + vibrance * vibranceMask);
+  float vibScale = clamp(
+    1.0 + vibrance * vibranceMask * mix(1.0, 0.55, skinMask),
+    0.0,
+    1.65
+  );
   float vibLuma = dot(color, float3(0.2126, 0.7152, 0.0722));
   color = mix(float3(vibLuma), color, vibScale);
 
   float toneLuma = dot(color, float3(0.2126, 0.7152, 0.0722));
-  float shadowMask = 1.0 - smoothstep(0.0, 0.45, toneLuma);
-  float midtoneMask = 1.0 - abs(toneLuma - 0.5) * 2.0;
-  midtoneMask = smoothstep(0.0, 1.0, midtoneMask);
-  float highlightMask = smoothstep(0.55, 1.0, toneLuma);
+  float shadowMask = 1.0 - smoothstep(0.18, 0.62, toneLuma);
+  float midtoneMask = smoothstep(0.18, 0.48, toneLuma) *
+    (1.0 - smoothstep(0.52, 0.82, toneLuma));
+  float highlightMask = smoothstep(0.38, 0.86, toneLuma);
+  float tonalNorm = max(0.001, shadowMask + midtoneMask + highlightMask);
+  shadowMask /= tonalNorm;
+  midtoneMask /= tonalNorm;
+  highlightMask /= tonalNorm;
   float blackMask = 1.0 - smoothstep(0.0, 0.25, toneLuma);
   float whiteMask = smoothstep(0.75, 1.0, toneLuma);
 
@@ -182,6 +221,8 @@ half4 main(float2 xy) {
 
   color = (color - 0.5) * (1.0 + contrast * 0.75) + 0.5;
   color += brightness * 0.25;
+  color = clamp(color, 0.0, 1.0);
+  color = delinearize(color);
   color = clamp(color, 0.0, 1.0);
 
   return half4(half3(color), src.a);

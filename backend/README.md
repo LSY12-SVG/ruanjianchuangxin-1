@@ -47,3 +47,58 @@ curl -X GET https://api.siliconflow.cn/v1/models -H "Authorization: Bearer $MODE
 - `POST /v1/color/interpret`
 - Body: `transcript`, `currentParams`, `locale`, optional `sceneHints`
 - Response: `intent_actions`, `confidence`, `reasoning_summary`, `fallback_used`, `needsConfirmation`, `message`, `source`
+
+## Community (SQLite local)
+
+Set local SQLite env in `backend/.env`:
+
+```bash
+COMMUNITY_ENABLE=true
+DB_CLIENT=sqlite
+SQLITE_PATH=./data/community.sqlite
+DB_SSL=false
+COMMUNITY_PAGE_SIZE_DEFAULT=10
+COMMUNITY_PAGE_SIZE_MAX=30
+```
+
+Default local data file path is `backend/data/community.sqlite`.
+
+The service auto-runs SQL migrations in `backend/migrations/*.sql` on startup.
+
+Community endpoints:
+
+- `GET /v1/community/feed?page&size&filter`
+- `GET /v1/community/me/posts?status&page&size`
+- `POST /v1/community/drafts`
+- `PUT /v1/community/drafts/:id`
+- `POST /v1/community/drafts/:id/publish`
+- `POST /v1/community/posts/:id/like`
+- `POST /v1/community/posts/:id/save`
+- `GET /v1/community/posts/:id/comments?page&size`
+- `POST /v1/community/posts/:id/comments`
+
+Write endpoints require header `X-User-Id`.
+
+## Account + Profile (SQLite + JWT)
+
+Set account env in `backend/.env`:
+
+```bash
+JWT_SECRET=<strong_secret>
+JWT_EXPIRES_IN=7d
+SQLITE_DB_PATH=./data/app.db
+```
+
+Default account data file path is `backend/data/app.db`.
+Account migrations run from `backend/migrations-account/*.sql` on startup.
+
+Auth endpoints:
+
+- `POST /v1/auth/register` (`username`, `password`)
+- `POST /v1/auth/login` (`username`, `password`)
+
+Profile endpoints (require `Authorization: Bearer <token>`):
+
+- `GET /v1/profile/me`
+- `PATCH /v1/profile/me` (`displayName`, `avatarUrl`, `tier`)
+- `PATCH /v1/profile/me/settings` (`syncOnWifi`, `communityNotify`, `voiceAutoApply`)

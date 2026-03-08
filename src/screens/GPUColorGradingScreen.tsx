@@ -29,6 +29,30 @@ import {
 import {useVoiceColorGrading} from '../voice/useVoiceColorGrading';
 import {buildVoiceImageContext} from '../voice/imageContext';
 
+interface AgentActionResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface GPUColorGradingAgentBridge {
+  optimizeCurrentImage: () => Promise<AgentActionResult>;
+  resetAll: () => Promise<AgentActionResult>;
+  applyPresetById: (presetId: string) => Promise<AgentActionResult>;
+  getSnapshot: () => {
+    hasImage: boolean;
+    selectedPresetId: string;
+    voiceState: string;
+  };
+}
+
+interface GPUColorGradingScreenProps {
+  onAgentBridgeReady?: (bridge: GPUColorGradingAgentBridge | null) => void;
+  externalApplyParamsRequest?: {
+    id: number;
+    params: ColorGradingParams;
+  } | null;
+}
+
 const COLORS = {
   bgStart: '#061426',
   bgMid: '#0A2741',
@@ -45,7 +69,10 @@ const COLORS = {
   warning: '#ffd6a2',
 } as const;
 
-const GPUColorGradingScreen: React.FC = () => {
+const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
+  onAgentBridgeReady,
+  externalApplyParamsRequest,
+}) => {
   const [params, setParams] = useState<ColorGradingParams>(defaultColorGradingParams);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('preset_original');
   const [showComparison, setShowComparison] = useState(true);
@@ -83,6 +110,7 @@ const GPUColorGradingScreen: React.FC = () => {
   });
 
   const lastVisualKeyRef = useRef('');
+  const lastExternalApplyIdRef = useRef<number>(0);
   useEffect(() => {
     if (!selectedImage?.success || !skImage || !selectedImage.base64) {
       lastVisualKeyRef.current = '';
@@ -105,6 +133,18 @@ const GPUColorGradingScreen: React.FC = () => {
     skImage,
     voice,
   ]);
+
+  useEffect(() => {
+    if (!externalApplyParamsRequest) {
+      return;
+    }
+    if (lastExternalApplyIdRef.current === externalApplyParamsRequest.id) {
+      return;
+    }
+    lastExternalApplyIdRef.current = externalApplyParamsRequest.id;
+    setParams(externalApplyParamsRequest.params);
+    setSelectedPresetId('preset_original');
+  }, [externalApplyParamsRequest]);
 
   const handleBasicChange = useCallback(
     (basic: ColorGradingParams['basic']) => {
@@ -176,6 +216,73 @@ const GPUColorGradingScreen: React.FC = () => {
       console.warn('voice toggle failed:', error);
     });
   }, [voice]);
+
+  const handleApplyVisualSuggestion = useCallback(async (): Promise<AgentActionResult> => {
+    if (!selectedImage?.success || !skImage) {
+      return {
+        ok: false,
+        message: '请先上传图片后再执行首轮视觉建议。',
+      };
+    }
+
+    try {
+      await voice.requestInitialVisualSuggestion();
+      return {
+        ok: true,
+        message: '已完成视觉首轮建议并应用到当前图片。',
+      };
+    } catch {
+      return {
+        ok: false,
+        message: '视觉建议执行失败，请稍后重试。',
+      };
+    }
+  }, [selectedImage?.success, skImage, voice]);
+
+  const handleApplyPresetById = useCallback(
+    async (presetId: string): Promise<AgentActionResult> => {
+      const preset = BUILTIN_PRESETS.find(item => item.id === presetId);
+      if (!preset) {
+        return {ok: false, message: `未找到预设: ${presetId}`};
+      }
+      handleSelectPreset(preset);
+      return {ok: true, message: `已应用预设: ${preset.name}`};
+    },
+    [handleSelectPreset],
+  );
+
+  useEffect(() => {
+    if (!onAgentBridgeReady) {
+      return;
+    }
+
+    onAgentBridgeReady({
+      optimizeCurrentImage: handleApplyVisualSuggestion,
+      resetAll: async () => {
+        handleResetAll();
+        return {ok: true, message: '已重置全部调色参数。'};
+      },
+      applyPresetById: handleApplyPresetById,
+      getSnapshot: () => ({
+        hasImage: Boolean(selectedImage?.success && skImage),
+        selectedPresetId,
+        voiceState: voice.state,
+      }),
+    });
+
+    return () => {
+      onAgentBridgeReady(null);
+    };
+  }, [
+    handleApplyPresetById,
+    handleApplyVisualSuggestion,
+    handleResetAll,
+    onAgentBridgeReady,
+    selectedImage?.success,
+    selectedPresetId,
+    skImage,
+    voice.state,
+  ]);
 
   return (
     <LinearGradient

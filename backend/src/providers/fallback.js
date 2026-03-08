@@ -1,3 +1,9 @@
+const {
+  estimateSceneProfile,
+  detectQualityRiskFlags,
+  recommendIntensity,
+} = require('./quality');
+
 const pickStyle = text => {
   if (
     text.includes('清冷') ||
@@ -85,7 +91,11 @@ const fallbackInterpret = request => {
       : 'voice_refine';
   const text = String(request.transcript || '').trim().toLowerCase();
   const imageStats = request.imageStats || null;
-  const appliedProfile = estimateProfile(imageStats);
+  const inferredProfile = estimateProfile(imageStats);
+  const sceneProfile = estimateSceneProfile(imageStats, request.sceneHints);
+  const appliedProfile = inferredProfile === 'general' ? sceneProfile : inferredProfile;
+  const qualityRiskFlags = detectQualityRiskFlags(imageStats);
+  const recommendedIntensity = recommendIntensity({imageStats, sceneProfile});
   const analysisSummary = estimateAnalysis(imageStats);
 
   if (!text) {
@@ -107,6 +117,10 @@ const fallbackInterpret = request => {
         source: 'fallback',
         analysis_summary: analysisSummary,
         applied_profile: appliedProfile,
+        scene_profile: sceneProfile,
+        scene_confidence: imageStats ? 0.58 : 0.4,
+        quality_risk_flags: qualityRiskFlags,
+        recommended_intensity: recommendedIntensity,
       };
     }
     return {
@@ -119,6 +133,10 @@ const fallbackInterpret = request => {
       source: 'fallback',
       analysis_summary: analysisSummary,
       applied_profile: appliedProfile,
+      scene_profile: sceneProfile,
+      scene_confidence: imageStats ? 0.58 : 0.4,
+      quality_risk_flags: qualityRiskFlags,
+      recommended_intensity: recommendedIntensity,
     };
   }
 
@@ -133,6 +151,10 @@ const fallbackInterpret = request => {
       source: 'fallback',
       analysis_summary: analysisSummary,
       applied_profile: appliedProfile,
+      scene_profile: sceneProfile,
+      scene_confidence: imageStats ? 0.58 : 0.4,
+      quality_risk_flags: qualityRiskFlags,
+      recommended_intensity: recommendedIntensity,
     };
   }
 
@@ -164,6 +186,10 @@ const fallbackInterpret = request => {
     source: 'fallback',
     analysis_summary: analysisSummary,
     applied_profile: appliedProfile,
+    scene_profile: sceneProfile,
+    scene_confidence: imageStats ? 0.58 : 0.4,
+    quality_risk_flags: qualityRiskFlags,
+    recommended_intensity: recommendedIntensity,
   };
 };
 

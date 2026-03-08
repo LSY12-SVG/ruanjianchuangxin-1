@@ -9,6 +9,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import {VISION_THEME} from '../theme/visionTheme';
+import {useAgentRuntime} from '../agent/runtimeContext';
 
 const QUICK_PROMPTS = [
   '帮我规划夜景拍摄参数',
@@ -26,6 +27,7 @@ const AGENT_CAPS = [
 
 export const AIAgentScreen: React.FC = () => {
   const [activePrompt, setActivePrompt] = useState(0);
+  const {phase, pendingActions, memory, lastMessage, lastError, openPanel} = useAgentRuntime();
 
   return (
     <LinearGradient
@@ -76,6 +78,17 @@ export const AIAgentScreen: React.FC = () => {
         </View>
 
         <View style={styles.block}>
+          <Text style={styles.blockTitle}>运行时状态</Text>
+          <View style={styles.statusPanel}>
+            <Text style={styles.statusLine}>阶段: {phase}</Text>
+            <Text style={styles.statusLine}>待确认动作: {pendingActions.length}</Text>
+            <Text style={styles.statusLine}>历史任务: {memory.history.length}</Text>
+            {lastMessage ? <Text style={styles.statusLine}>{lastMessage}</Text> : null}
+            {lastError ? <Text style={styles.statusError}>{lastError}</Text> : null}
+          </View>
+        </View>
+
+        <View style={styles.block}>
           <Text style={styles.blockTitle}>快捷任务</Text>
           <View style={styles.promptList}>
             {QUICK_PROMPTS.map((prompt, idx) => {
@@ -100,9 +113,9 @@ export const AIAgentScreen: React.FC = () => {
             <Icon name="mic-outline" size={17} color={VISION_THEME.accent.main} />
             <Text style={styles.secondaryButtonText}>语音对话</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9}>
+          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9} onPress={openPanel}>
             <Icon name="flash-outline" size={17} color={VISION_THEME.accent.dark} />
-            <Text style={styles.primaryButtonText}>执行任务</Text>
+            <Text style={styles.primaryButtonText}>打开小精灵面板</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -251,6 +264,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 9,
     marginTop: 2,
+  },
+  statusPanel: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(10, 37, 58, 0.75)',
+    padding: 10,
+    gap: 4,
+  },
+  statusLine: {
+    color: VISION_THEME.text.secondary,
+    fontSize: 12,
+  },
+  statusError: {
+    color: VISION_THEME.feedback.danger,
+    fontSize: 12,
   },
   secondaryButton: {
     flex: 1,

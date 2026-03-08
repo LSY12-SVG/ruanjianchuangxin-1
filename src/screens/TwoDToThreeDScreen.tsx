@@ -10,7 +10,26 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import {VISION_THEME} from '../theme/visionTheme';
 
-type ModelLevel = 'preview' | 'balanced' | 'quality';
+export type ModelLevel = 'preview' | 'balanced' | 'quality';
+
+interface AgentActionResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface TwoDToThreeDAgentBridge {
+  startTask: (level?: ModelLevel) => Promise<AgentActionResult>;
+  setModelLevel: (level: ModelLevel) => Promise<AgentActionResult>;
+  getSnapshot: () => {
+    modelLevel: ModelLevel;
+    progress: number;
+    statusText: string;
+  };
+}
+
+interface TwoDToThreeDScreenProps {
+  onAgentBridgeReady?: (bridge: TwoDToThreeDAgentBridge | null) => void;
+}
 
 const MODEL_OPTIONS: Array<{key: ModelLevel; label: string; hint: string}> = [
   {key: 'preview', label: '极速预览', hint: '30-60 秒'},
@@ -25,8 +44,52 @@ const PIPELINE = [
   'PBR 材质生成与导出',
 ];
 
-export const TwoDToThreeDScreen: React.FC = () => {
+export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
+  onAgentBridgeReady,
+}) => {
   const [modelLevel, setModelLevel] = useState<ModelLevel>('balanced');
+  const [taskProgress, setTaskProgress] = useState(67);
+  const [taskName, setTaskName] = useState('shoe_scan_021');
+  const [statusText, setStatusText] = useState('重建中');
+
+  React.useEffect(() => {
+    if (!onAgentBridgeReady) {
+      return;
+    }
+
+    onAgentBridgeReady({
+      startTask: async (level?: ModelLevel) => {
+        if (level) {
+          setModelLevel(level);
+        }
+        const finalLevel = level || modelLevel;
+        const nextProgress = finalLevel === 'preview' ? 38 : finalLevel === 'balanced' ? 22 : 12;
+        setTaskProgress(nextProgress);
+        setTaskName(`agent_job_${Date.now().toString().slice(-6)}`);
+        setStatusText('任务已启动');
+        return {
+          ok: true,
+          message: `已按${finalLevel}模式启动 2D 转 3D 任务。`,
+        };
+      },
+      setModelLevel: async (level: ModelLevel) => {
+        setModelLevel(level);
+        return {
+          ok: true,
+          message: `已切换重建质量到 ${level}。`,
+        };
+      },
+      getSnapshot: () => ({
+        modelLevel,
+        progress: taskProgress,
+        statusText,
+      }),
+    });
+
+    return () => {
+      onAgentBridgeReady(null);
+    };
+  }, [modelLevel, onAgentBridgeReady, statusText, taskProgress]);
 
   return (
     <LinearGradient
@@ -105,11 +168,13 @@ export const TwoDToThreeDScreen: React.FC = () => {
           <Text style={styles.blockTitle}>最近任务</Text>
           <View style={styles.taskCard}>
             <View style={styles.taskHeader}>
-              <Text style={styles.taskName}>shoe_scan_021</Text>
-              <Text style={styles.taskStatus}>重建中 67%</Text>
+              <Text style={styles.taskName}>{taskName}</Text>
+              <Text style={styles.taskStatus}>
+                {statusText} {taskProgress}%
+              </Text>
             </View>
             <View style={styles.progressRail}>
-              <View style={styles.progressValue} />
+              <View style={[styles.progressValue, {width: `${taskProgress}%`}]} />
             </View>
             <Text style={styles.taskMeta}>预计剩余 1 分 42 秒 · 导出格式 GLB / FBX</Text>
           </View>

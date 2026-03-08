@@ -77,6 +77,9 @@ export interface InterpretRequest {
 
 export interface InterpretResponse {
   actions: VoiceIntentAction[];
+  globalBaseActions?: VoiceIntentAction[];
+  sceneRefineActions?: VoiceIntentAction[];
+  safetyClampActions?: VoiceIntentAction[];
   confidence: number;
   needsConfirmation: boolean;
   fallbackUsed: boolean;
@@ -85,6 +88,10 @@ export interface InterpretResponse {
   source: 'local' | 'cloud' | 'fallback';
   analysisSummary?: string;
   appliedProfile?: string;
+  sceneProfile?: string;
+  sceneConfidence?: number;
+  qualityRiskFlags?: string[];
+  recommendedIntensity?: 'soft' | 'normal' | 'strong';
 }
 
 export interface SpeechRecognitionResult {

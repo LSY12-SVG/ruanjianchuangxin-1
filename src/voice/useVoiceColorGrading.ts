@@ -26,6 +26,8 @@ interface VoiceSession {
   history: VoiceApplyRecord[];
 }
 
+type TargetDecayMap = Record<string, number>;
+
 interface UseVoiceColorGradingResult {
   state: VoicePipelineState | 'continuous_listening' | 'queue_applying';
   isRecording: boolean;
@@ -100,7 +102,71 @@ const buildStyleFallback = (transcript: string): InterpretResponse | null => {
     message: '已使用风格模板进行增量调色',
     source: 'fallback',
     analysisSummary: '云端暂不可用，改用风格模板增量修正',
+    recommendedIntensity: 'normal',
+    qualityRiskFlags: [],
   };
+};
+
+const decayFactorForCount = (count: number): number =>
+  Math.max(0.45, 1 - count * 0.18);
+
+const applyConvergenceDecay = (
+  interpretation: InterpretResponse,
+  decayMap: TargetDecayMap,
+): InterpretResponse => {
+  const decayedActions = interpretation.actions.map(action => {
+    if (action.action !== 'adjust_param' || typeof action.delta !== 'number') {
+      return action;
+    }
+    const target = action.target;
+    const count = decayMap[target] || 0;
+    const factor = decayFactorForCount(count);
+    const nextDelta =
+      Math.abs(action.delta) < 1
+        ? Number((action.delta * factor).toFixed(2))
+        : Math.round(action.delta * factor);
+    return {
+      ...action,
+      delta: nextDelta,
+    };
+  });
+
+  return {
+    ...interpretation,
+    actions: decayedActions,
+  };
+};
+
+const updateDecayMap = (interpretation: InterpretResponse, decayMap: TargetDecayMap): void => {
+  interpretation.actions.forEach(action => {
+    if (
+      action.action === 'adjust_param' ||
+      action.action === 'set_param'
+    ) {
+      const target = action.target;
+      if (target !== 'style') {
+        decayMap[target] = (decayMap[target] || 0) + 1;
+      }
+    }
+  });
+};
+
+const estimateActionMagnitude = (interpretation: InterpretResponse): number => {
+  let sum = 0;
+  interpretation.actions.forEach(action => {
+    if (action.action === 'adjust_param' && typeof action.delta === 'number') {
+      sum += Math.abs(action.delta);
+      return;
+    }
+    if (action.action === 'set_param' && typeof action.value === 'number') {
+      sum += Math.abs(action.value);
+      return;
+    }
+    if (action.action === 'apply_style' && typeof action.strength === 'number') {
+      sum += Math.abs(action.strength * 10);
+    }
+  });
+  return Number(sum.toFixed(2));
 };
 
 export const useVoiceColorGrading = ({
@@ -139,6 +205,7 @@ export const useVoiceColorGrading = ({
   const processingRef = useRef(false);
   const partialTranscriptRef = useRef('');
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const targetDecayRef = useRef<TargetDecayMap>({});
 
   const applyInterpretation = useCallback(
     (interpretation: InterpretResponse, summaryPrefix = '') => {
@@ -165,6 +232,20 @@ export const useVoiceColorGrading = ({
         sessionRef.current.history.push(record);
         setCanUndoSession(sessionRef.current.history.length > 0);
       }
+
+      console.log(
+        '[grading-metrics]',
+        JSON.stringify({
+          event: 'apply',
+          source: interpretation.source,
+          scene_profile: interpretation.sceneProfile || interpretation.appliedProfile || '',
+          recommended_intensity: interpretation.recommendedIntensity || 'normal',
+          quality_risk_flags: interpretation.qualityRiskFlags || [],
+          action_count: interpretation.actions.length,
+          action_magnitude: estimateActionMagnitude(interpretation),
+          can_undo_session: Boolean(sessionRef.current?.history.length),
+        }),
+      );
     },
     [onApplyParams],
   );
@@ -214,7 +295,9 @@ export const useVoiceColorGrading = ({
           setLastError('未能识别为有效风格修改，请换个说法。');
           continue;
         }
-        applyInterpretation(interpretation, '语音增量: ');
+        const decayed = applyConvergenceDecay(interpretation, targetDecayRef.current);
+        applyInterpretation(decayed, '语音增量: ');
+        updateDecayMap(decayed, targetDecayRef.current);
       } catch {
         setLastError('语音增量解析失败，请重试。');
       }
@@ -306,8 +389,11 @@ export const useVoiceColorGrading = ({
       }
 
       applyInterpretation(interpretation, '视觉首轮: ');
+      targetDecayRef.current = {};
       setVisualSummary(interpretation.analysisSummary || interpretation.reasoningSummary);
-      setVisualProfile(interpretation.appliedProfile || '');
+      setVisualProfile(
+        interpretation.sceneProfile || interpretation.appliedProfile || '',
+      );
       setVisualApplySummary(formatInterpretationSummary(interpretation));
       setVisualState('visual_applied');
     } catch {
@@ -341,6 +427,7 @@ export const useVoiceColorGrading = ({
       beforeSession: cloneParams(paramsRef.current),
       history: [],
     };
+    targetDecayRef.current = {};
     setCanUndoSession(false);
     await recognizerRef.current.start(locale);
   }, [getImageContext, locale]);
@@ -381,6 +468,12 @@ export const useVoiceColorGrading = ({
       sessionRef.current.history.pop();
       setCanUndoSession(sessionRef.current.history.length > 0);
     }
+    console.log(
+      '[grading-metrics]',
+      JSON.stringify({
+        event: 'undo_last',
+      }),
+    );
   }, [onApplyParams]);
 
   const undoSessionApply = useCallback(() => {
@@ -388,12 +481,21 @@ export const useVoiceColorGrading = ({
     if (!session || session.history.length === 0) {
       return;
     }
+    const rollbackCount = session.history.length;
     onApplyParams(session.beforeSession);
     paramsRef.current = cloneParams(session.beforeSession);
     session.history = [];
+    targetDecayRef.current = {};
     setCanUndoSession(false);
     setCanUndo(false);
     setLastAppliedSummary('已撤销本次语音会话调色');
+    console.log(
+      '[grading-metrics]',
+      JSON.stringify({
+        event: 'undo_session',
+        count: rollbackCount,
+      }),
+    );
   }, [onApplyParams]);
 
   useEffect(() => {
@@ -428,4 +530,3 @@ export const useVoiceColorGrading = ({
     undoSessionApply,
   };
 };
-

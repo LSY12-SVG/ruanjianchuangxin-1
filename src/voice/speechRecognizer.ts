@@ -70,7 +70,14 @@ export const createSpeechRecognizer = (
     };
   }
 
-  const emitter = new NativeEventEmitter(VoiceRecognition as never);
+  const supportsNativeEmitterContract =
+    typeof (VoiceRecognition as unknown as {addListener?: unknown}).addListener === 'function' &&
+    typeof (VoiceRecognition as unknown as {removeListeners?: unknown}).removeListeners ===
+      'function';
+
+  const emitter = supportsNativeEmitterContract
+    ? new NativeEventEmitter(VoiceRecognition as never)
+    : new NativeEventEmitter();
   const subscriptions = [
     emitter.addListener('VoiceRecognition:onStart', () => callbacks.onStart?.()),
     emitter.addListener('VoiceRecognition:onEnd', () => callbacks.onEnd?.()),

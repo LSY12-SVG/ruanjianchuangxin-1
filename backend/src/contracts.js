@@ -295,6 +295,25 @@ const normalizeInterpretResponse = payload => {
   }
 
   const confidence = Number(payload.confidence || 0.5);
+  const riskFlagsRaw =
+    payload.quality_risk_flags || payload.qualityRiskFlags || payload.riskFlags;
+  const qualityRiskFlags = Array.isArray(riskFlagsRaw)
+    ? riskFlagsRaw.map(item => String(item)).filter(Boolean)
+    : [];
+  const recommendedIntensityRaw =
+    payload.recommended_intensity || payload.recommendedIntensity;
+  const recommendedIntensity =
+    recommendedIntensityRaw === 'soft' ||
+    recommendedIntensityRaw === 'normal' ||
+    recommendedIntensityRaw === 'strong'
+      ? recommendedIntensityRaw
+      : 'normal';
+  const sceneProfileRaw = payload.scene_profile || payload.sceneProfile;
+  const sceneProfile = typeof sceneProfileRaw === 'string' ? sceneProfileRaw : '';
+  const sceneConfidenceRaw = Number(payload.scene_confidence ?? payload.sceneConfidence);
+  const sceneConfidence = Number.isFinite(sceneConfidenceRaw)
+    ? sceneConfidenceRaw
+    : undefined;
 
   return {
     intent_actions: actions,
@@ -330,6 +349,10 @@ const normalizeInterpretResponse = payload => {
         : typeof payload.appliedProfile === 'string'
           ? payload.appliedProfile
           : '',
+    scene_profile: sceneProfile,
+    scene_confidence: sceneConfidence,
+    quality_risk_flags: qualityRiskFlags,
+    recommended_intensity: recommendedIntensity,
   };
 };
 

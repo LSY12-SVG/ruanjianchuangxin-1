@@ -295,7 +295,16 @@ export const isValidInterpretResponse = (
     typeof value.reasoningSummary === 'string' &&
     typeof value.message === 'string' &&
     (value.analysisSummary === undefined || typeof value.analysisSummary === 'string') &&
-    (value.appliedProfile === undefined || typeof value.appliedProfile === 'string')
+    (value.appliedProfile === undefined || typeof value.appliedProfile === 'string') &&
+    (value.sceneProfile === undefined || typeof value.sceneProfile === 'string') &&
+    (value.sceneConfidence === undefined || typeof value.sceneConfidence === 'number') &&
+    (value.qualityRiskFlags === undefined ||
+      (Array.isArray(value.qualityRiskFlags) &&
+        value.qualityRiskFlags.every(item => typeof item === 'string'))) &&
+    (value.recommendedIntensity === undefined ||
+      value.recommendedIntensity === 'soft' ||
+      value.recommendedIntensity === 'normal' ||
+      value.recommendedIntensity === 'strong')
   );
 };
 
@@ -304,11 +313,18 @@ export const normalizeInterpretResponse = (value: unknown): InterpretResponse | 
     return null;
   }
 
-  const actionsRaw = value.actions ?? value.intent_actions;
+  const actionsRaw = value.intent_actions ?? value.actions;
   const fallbackUsedRaw = value.fallbackUsed ?? value.fallback_used;
   const summaryRaw = value.reasoningSummary ?? value.reasoning_summary;
   const analysisSummaryRaw = value.analysisSummary ?? value.analysis_summary;
   const appliedProfileRaw = value.appliedProfile ?? value.applied_profile;
+  const sceneProfileRaw = value.sceneProfile ?? value.scene_profile;
+  const sceneConfidenceRaw = Number(value.sceneConfidence ?? value.scene_confidence);
+  const riskFlagsRaw = value.qualityRiskFlags ?? value.quality_risk_flags;
+  const intensityRaw = value.recommendedIntensity ?? value.recommended_intensity;
+  const globalBaseRaw = value.globalBase ?? value.global_base;
+  const sceneRefineRaw = value.sceneRefine ?? value.scene_refine;
+  const safetyClampRaw = value.safetyClamp ?? value.safety_clamp;
 
   const normalizedActions = Array.isArray(actionsRaw)
     ? actionsRaw.map(normalizeAction).filter((item): item is VoiceIntentAction => Boolean(item))
@@ -318,8 +334,21 @@ export const normalizeInterpretResponse = (value: unknown): InterpretResponse | 
     return null;
   }
 
+  const normalizeActionList = (input: unknown): VoiceIntentAction[] | undefined => {
+    if (!Array.isArray(input)) {
+      return undefined;
+    }
+    const output = input
+      .map(normalizeAction)
+      .filter((item): item is VoiceIntentAction => Boolean(item));
+    return output.length > 0 ? output : [];
+  };
+
   const normalized = {
     actions: normalizedActions,
+    globalBaseActions: normalizeActionList(globalBaseRaw),
+    sceneRefineActions: normalizeActionList(sceneRefineRaw),
+    safetyClampActions: normalizeActionList(safetyClampRaw),
     confidence:
       typeof value.confidence === 'number'
         ? value.confidence
@@ -341,6 +370,16 @@ export const normalizeInterpretResponse = (value: unknown): InterpretResponse | 
       typeof analysisSummaryRaw === 'string' ? analysisSummaryRaw : undefined,
     appliedProfile:
       typeof appliedProfileRaw === 'string' ? appliedProfileRaw : undefined,
+    sceneProfile:
+      typeof sceneProfileRaw === 'string' ? sceneProfileRaw : undefined,
+    sceneConfidence: Number.isFinite(sceneConfidenceRaw) ? sceneConfidenceRaw : undefined,
+    qualityRiskFlags: Array.isArray(riskFlagsRaw)
+      ? riskFlagsRaw.map(item => String(item)).filter(Boolean)
+      : undefined,
+    recommendedIntensity:
+      intensityRaw === 'soft' || intensityRaw === 'normal' || intensityRaw === 'strong'
+        ? intensityRaw
+        : undefined,
   };
 
   return isValidInterpretResponse(normalized) ? normalized : null;

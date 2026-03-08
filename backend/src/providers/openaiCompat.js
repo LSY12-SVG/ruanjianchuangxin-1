@@ -13,6 +13,7 @@ const SYSTEM_PROMPT = [
   '若目标参数超范围，必须裁剪后再输出。',
   'set_param 用 value，adjust_param 用 delta。',
   '返回字段必须包含: actions, confidence, reasoning_summary, fallback_used, needsConfirmation, message, source, analysis_summary, applied_profile。',
+  '并尽量补充: scene_profile, scene_confidence, quality_risk_flags(数组), recommended_intensity(soft|normal|strong)。',
 ].join('\n');
 
 const requestWithTimeout = async (url, options, timeoutMs) => {
@@ -49,6 +50,37 @@ const createProviderError = (message, code, status) => {
     error.status = status;
   }
   return error;
+};
+
+const extractErrorMessage = payload => {
+  const direct = payload?.error?.message;
+  if (typeof direct === 'string' && direct.trim()) {
+    return direct.trim();
+  }
+  if (typeof payload?.message === 'string' && payload.message.trim()) {
+    return payload.message.trim();
+  }
+  return '';
+};
+
+const classifyBadRequestCode = message => {
+  const lowered = String(message || '').toLowerCase();
+  if (
+    lowered.includes('model') &&
+    (lowered.includes('not found') ||
+      lowered.includes('does not exist') ||
+      lowered.includes('invalid'))
+  ) {
+    return 'MODEL_UNAVAILABLE';
+  }
+  if (
+    lowered.includes('response_format') ||
+    lowered.includes('json_object') ||
+    lowered.includes('json mode')
+  ) {
+    return 'UNSUPPORTED_RESPONSE_FORMAT';
+  }
+  return 'HTTP_400';
 };
 
 const interpretWithOpenAICompat = async (request, options = {}) => {
@@ -91,8 +123,23 @@ const interpretWithOpenAICompat = async (request, options = {}) => {
       },
     });
   }
-  try {
-    response = await requestWithTimeout(
+  const requestBodyBase = {
+    model,
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: 'user',
+        content: userContent,
+      },
+    ],
+  };
+
+  const sendRequest = async body =>
+    requestWithTimeout(
       `${baseUrl}/chat/completions`,
       {
         method: 'POST',
@@ -100,37 +147,48 @@ const interpretWithOpenAICompat = async (request, options = {}) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          temperature: 0.1,
-          response_format: {type: 'json_object'},
-          messages: [
-            {
-              role: 'system',
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: 'user',
-              content: userContent,
-            },
-          ],
-        }),
+        body: JSON.stringify(body),
       },
       timeoutMs,
     );
+
+  try {
+    response = await sendRequest({
+      ...requestBodyBase,
+      response_format: {type: 'json_object'},
+    });
+    if (!response.ok && response.status === 400) {
+      const firstPayload = await response.json().catch(() => ({}));
+      const firstMessage = extractErrorMessage(firstPayload);
+      const firstCode = classifyBadRequestCode(firstMessage);
+      if (firstCode === 'UNSUPPORTED_RESPONSE_FORMAT') {
+        response = await sendRequest(requestBodyBase);
+      } else {
+        throw createProviderError(
+          firstMessage || 'provider bad request',
+          firstCode,
+          400,
+        );
+      }
+    }
   } catch (error) {
     if (error && error.name === 'AbortError') {
       throw createProviderError('provider request timeout', 'TIMEOUT');
+    }
+    if (error && typeof error.code === 'string') {
+      throw error;
     }
     throw createProviderError('provider network failure', 'NETWORK');
   }
 
   if (!response.ok) {
-    throw createProviderError(
-      `provider status ${response.status}`,
-      `HTTP_${response.status}`,
-      response.status,
-    );
+    const payload = await response.json().catch(() => ({}));
+    const message = extractErrorMessage(payload) || `provider status ${response.status}`;
+    const code =
+      response.status === 400
+        ? classifyBadRequestCode(message)
+        : `HTTP_${response.status}`;
+    throw createProviderError(message, code, response.status);
   }
 
   const json = await response.json();

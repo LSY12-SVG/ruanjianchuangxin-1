@@ -42,6 +42,8 @@ npm-debug.log
 yarn-error.log
 .env
 backend/.env
+backend/data/*.db
+backend/data/*.sqlite
 
 # fastlane
 #
