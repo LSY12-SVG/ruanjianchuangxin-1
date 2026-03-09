@@ -41,6 +41,24 @@ function readIntEnv(name, fallbackValue) {
   return Number.isNaN(parsedValue) ? fallbackValue : parsedValue;
 }
 
+function readBooleanEnv(name, fallbackValue) {
+  const rawValue = process.env[name];
+
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  if (rawValue === '1' || rawValue.toLowerCase() === 'true') {
+    return true;
+  }
+
+  if (rawValue === '0' || rawValue.toLowerCase() === 'false') {
+    return false;
+  }
+
+  return fallbackValue;
+}
+
 module.exports = {
   port: readIntEnv('IMAGE_TO_3D_PORT', 3001),
   providerName: process.env.IMAGE_TO_3D_PROVIDER || 'mock',
@@ -57,6 +75,12 @@ module.exports = {
   tencentVariant: (process.env.TENCENT_HUNYUAN_3D_VARIANT || 'rapid').toLowerCase(),
   tencentSecretId: process.env.TENCENT_SECRET_ID || '',
   tencentSecretKey: process.env.TENCENT_SECRET_KEY || '',
+  tripoBaseUrl: process.env.TRIPO_BASE_URL || 'https://api.tripo3d.ai/v2/openapi',
+  tripoApiKey: process.env.TRIPO_SECRET_KEY || process.env.TRIPO_API_KEY || '',
+  tripoModelVersion: process.env.TRIPO_MODEL_VERSION || 'v3.0-20250812',
+  tripoOutputFormat: (process.env.TRIPO_OUTPUT_FORMAT || 'glb').toLowerCase(),
+  tripoTexture: readBooleanEnv('TRIPO_TEXTURE', true),
+  tripoPbr: readBooleanEnv('TRIPO_PBR', false),
   mockResultUrl:
     process.env.MOCK_3D_MODEL_URL || 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
 };

@@ -1,5 +1,6 @@
 const { createMockProvider } = require('./mockProvider');
 const { createTencentAi3dProvider } = require('./tencentAi3dProvider');
+const { createTripoProvider } = require('./tripoProvider');
 
 function createProvider(config) {
   if (config.providerName === 'tencent') {
@@ -9,6 +10,17 @@ function createProvider(config) {
       region: config.tencentRegion,
       model: config.tencentModel,
       variant: config.tencentVariant,
+    });
+  }
+
+  if (config.providerName === 'tripo') {
+    return createTripoProvider({
+      apiKey: config.tripoApiKey,
+      baseUrl: config.tripoBaseUrl,
+      modelVersion: config.tripoModelVersion,
+      outputFormat: config.tripoOutputFormat,
+      texture: config.tripoTexture,
+      pbr: config.tripoPbr,
     });
   }
 

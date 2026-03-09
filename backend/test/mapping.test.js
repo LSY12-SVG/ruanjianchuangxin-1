@@ -6,11 +6,15 @@ const {
   pickPreferredFile,
 } = require('../src/jobMapper');
 
-test('maps Tencent provider statuses to app statuses', () => {
+test('maps Tencent and Tripo provider statuses to app statuses', () => {
   assert.equal(mapProviderStatus('WAIT'), 'queued');
   assert.equal(mapProviderStatus('RUN'), 'processing');
   assert.equal(mapProviderStatus('DONE'), 'succeeded');
   assert.equal(mapProviderStatus('FAIL'), 'failed');
+  assert.equal(mapProviderStatus('pending'), 'queued');
+  assert.equal(mapProviderStatus('running'), 'processing');
+  assert.equal(mapProviderStatus('success'), 'succeeded');
+  assert.equal(mapProviderStatus('failed'), 'failed');
 });
 
 test('prefers GLB files when multiple model outputs exist', () => {

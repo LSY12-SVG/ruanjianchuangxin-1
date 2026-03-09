@@ -1,12 +1,22 @@
 function mapProviderStatus(rawStatus) {
-  switch (rawStatus) {
+  switch (String(rawStatus || '').toUpperCase()) {
     case 'WAIT':
+    case 'PENDING':
+    case 'QUEUED':
       return 'queued';
     case 'RUN':
+    case 'RUNNING':
+    case 'PROCESSING':
+    case 'IN_PROGRESS':
       return 'processing';
     case 'DONE':
+    case 'SUCCESS':
+    case 'SUCCEEDED':
+    case 'FINISHED':
       return 'succeeded';
     case 'FAIL':
+    case 'FAILED':
+    case 'ERROR':
       return 'failed';
     default:
       return 'processing';
@@ -15,9 +25,9 @@ function mapProviderStatus(rawStatus) {
 
 function normalizeFile(file) {
   return {
-    type: String(file?.Type || '').toUpperCase(),
-    url: file?.Url || null,
-    previewImageUrl: file?.PreviewImageUrl || null,
+    type: String(file?.Type || file?.type || '').toUpperCase(),
+    url: file?.Url || file?.url || null,
+    previewImageUrl: file?.PreviewImageUrl || file?.previewImageUrl || null,
   };
 }
 
