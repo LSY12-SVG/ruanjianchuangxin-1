@@ -6,7 +6,6 @@ const {
   TARGET_FRAME_COUNT,
   MINIMUM_FRAME_COUNT,
   getMissingAngleTags,
-  getSuggestedAngleTag,
 } = require('./captureGuidance');
 
 function clampScore(value) {
@@ -18,16 +17,16 @@ function buildFrameAssetUrl(sessionId, frameId) {
 }
 
 function getCriticalIssues(qualityIssues) {
-  return new Set(['duplicate_angle', 'blurry_risk', 'subject_too_small']);
+  return new Set(['duplicate_angle']);
 }
 
 function assessFrameQuality({existingFrames, angleTag, width, height, fileSize}) {
   const issues = [];
-  let score = 0.96;
+  let score = 0.92;
 
   if ((existingFrames || []).some(frame => frame.accepted && frame.angleTag === angleTag)) {
     issues.push('duplicate_angle');
-    score -= 0.45;
+    score -= 0.5;
   }
 
   const normalizedWidth = Number(width) || 0;
@@ -36,30 +35,31 @@ function assessFrameQuality({existingFrames, angleTag, width, height, fileSize})
 
   if (normalizedWidth > 0 && normalizedHeight > 0) {
     const shortestEdge = Math.min(normalizedWidth, normalizedHeight);
-    if (shortestEdge < 1080) {
+    if (shortestEdge < 720) {
       issues.push('subject_too_small');
-      score -= 0.28;
+      score -= 0.18;
     }
 
     const aspectRatio = normalizedWidth / normalizedHeight;
-    if (aspectRatio < 0.75 || aspectRatio > 1.5) {
+    if (aspectRatio < 0.65 || aspectRatio > 1.7) {
       issues.push('off_center');
-      score -= 0.1;
+      score -= 0.06;
     }
 
-    const bytesPerPixel = normalizedSize > 0 ? normalizedSize / (normalizedWidth * normalizedHeight) : 0;
-    if (bytesPerPixel > 0 && bytesPerPixel < 0.08) {
+    const bytesPerPixel =
+      normalizedSize > 0 ? normalizedSize / (normalizedWidth * normalizedHeight) : 0;
+    if (bytesPerPixel > 0 && bytesPerPixel < 0.03) {
       issues.push('blurry_risk');
-      score -= 0.24;
+      score -= 0.12;
     }
   }
 
-  if (normalizedSize > 0 && normalizedSize < 180000) {
+  if (normalizedSize > 0 && normalizedSize < 120000) {
     issues.push('exposure_risk');
-    score -= 0.16;
+    score -= 0.1;
   }
 
-  const accepted = !issues.some(issue => getCriticalIssues().has(issue)) && score >= 0.58;
+  const accepted = !issues.some(issue => getCriticalIssues().has(issue)) && score >= 0.3;
 
   return {
     qualityScore: clampScore(score),
@@ -104,10 +104,10 @@ function buildCaptureHints(session, frames) {
     remainingCount,
     statusHint:
       session.acceptedFrameCount >= session.targetFrameCount
-        ? 'Recommended coverage complete. You can generate the 3D result now.'
+        ? '视角覆盖已经完整，可以直接生成 3D 结果。'
         : session.acceptedFrameCount >= session.minimumFrameCount
-          ? 'Coverage is already good enough to generate. Keep shooting for a fuller 360-degree result.'
-          : 'Keep the object centered and follow the suggested angle order.',
+          ? '当前覆盖已经足够生成。你也可以继续自由补拍其它角度。'
+          : '点击任意角度开始拍摄；当前质量提示只做参考，不再强制固定顺序。',
   };
 }
 

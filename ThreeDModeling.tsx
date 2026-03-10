@@ -503,11 +503,11 @@ function evaluateCaptureQuality(
   session: CaptureSession,
 ): LocalQualityResult {
   const issues: string[] = [];
-  let score = 0.96;
+  let score = 0.92;
 
   if (session.frames.some(frame => frame.accepted && frame.angleTag === angleTag)) {
     issues.push('duplicate_angle');
-    score -= 0.45;
+    score -= 0.35;
   }
 
   const width = asset.width ?? 0;
@@ -516,45 +516,40 @@ function evaluateCaptureQuality(
 
   if (width > 0 && height > 0) {
     const shortestEdge = Math.min(width, height);
-    if (shortestEdge < 1080) {
+    if (shortestEdge < 720) {
       issues.push('subject_too_small');
-      score -= 0.28;
+      score -= 0.16;
     }
 
     const aspectRatio = width / height;
-    if (aspectRatio < 0.75 || aspectRatio > 1.5) {
+    if (aspectRatio < 0.65 || aspectRatio > 1.7) {
       issues.push('off_center');
-      score -= 0.1;
+      score -= 0.06;
     }
 
     const bytesPerPixel = fileSize > 0 ? fileSize / (width * height) : 0;
-    if (bytesPerPixel > 0 && bytesPerPixel < 0.08) {
+    if (bytesPerPixel > 0 && bytesPerPixel < 0.03) {
       issues.push('blurry_risk');
-      score -= 0.24;
+      score -= 0.1;
     }
   }
 
-  if (fileSize > 0 && fileSize < 180000) {
+  if (fileSize > 0 && fileSize < 120000) {
     issues.push('exposure_risk');
-    score -= 0.16;
+    score -= 0.08;
   }
 
-  const blocking =
-    issues.includes('duplicate_angle') ||
-    issues.includes('blurry_risk') ||
-    issues.includes('subject_too_small') ||
-    score < 0.58;
-
-  const hint = blocking
-    ? `建议重拍 ${getAngleLabel(angleTag)}，${issues
-        .map(issue => ISSUE_LABELS[issue] || issue)
-        .join('、')}`
-    : null;
+  const hint =
+    issues.length > 0
+      ? `已继续上传 ${getAngleLabel(angleTag)}，质量提示：${issues
+          .map(issue => ISSUE_LABELS[issue] || issue)
+          .join('、')}`
+      : null;
 
   return {
     score: Math.max(0, Math.min(1, Number(score.toFixed(2)))),
     issues: [...new Set(issues)],
-    blocking,
+    blocking: false,
     hint,
   };
 }
@@ -566,6 +561,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
   const [captureSession, setCaptureSession] = useState<CaptureSession | null>(null);
   const [task, setTask] = useState<ReconstructionTask | null>(null);
   const [modelAsset, setModelAsset] = useState<ModelAsset | null>(null);
+  const [selectedAngleTag, setSelectedAngleTag] = useState<string | null>(null);
   const [localFrameUris, setLocalFrameUris] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -588,7 +584,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
   }, []);
 
   const currentAngleTag =
-    captureSession?.suggestedAngleTag || captureSession?.missingAngleTags?.[0] || 'front';
+    selectedAngleTag || captureSession?.suggestedAngleTag || captureSession?.missingAngleTags?.[0] || 'front';
   const canGenerate =
     Boolean(captureSession) &&
     (captureSession?.acceptedFrameCount ?? 0) >= (captureSession?.minimumFrameCount ?? Infinity) &&
@@ -604,6 +600,9 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
       if (persisted.captureSessionId) {
         const restoredSession = await getCaptureSession(persisted.captureSessionId);
         setCaptureSession(restoredSession);
+        setSelectedAngleTag(
+          persisted.selectedAngleTag || restoredSession.suggestedAngleTag || restoredSession.missingAngleTags?.[0] || 'front',
+        );
         setLocalFrameUris(persisted.localFrameUris || {});
         setStatusMessage(restoredSession.statusHint || '继续你的多视角采集。');
 
@@ -621,11 +620,13 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
       } else {
         const nextSession = await createCaptureSession();
         setCaptureSession(nextSession);
-        setStatusMessage(nextSession.statusHint || '按提示依次拍摄 14 个视角。');
+        setSelectedAngleTag(nextSession.suggestedAngleTag || nextSession.missingAngleTags?.[0] || 'front');
+        setStatusMessage(nextSession.statusHint || '点击任意角度开始拍摄。');
         setThreeDModelingSession({
           captureSessionId: nextSession.id,
           reconstructionTaskId: null,
           modelId: null,
+          selectedAngleTag: nextSession.suggestedAngleTag || nextSession.missingAngleTags?.[0] || 'front',
           localFrameUris: {},
         });
       }
@@ -634,11 +635,13 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
       try {
         const nextSession = await createCaptureSession();
         setCaptureSession(nextSession);
-        setStatusMessage(nextSession.statusHint || '按提示依次拍摄 14 个视角。');
+        setSelectedAngleTag(nextSession.suggestedAngleTag || nextSession.missingAngleTags?.[0] || 'front');
+        setStatusMessage(nextSession.statusHint || '点击任意角度开始拍摄。');
         setThreeDModelingSession({
           captureSessionId: nextSession.id,
           reconstructionTaskId: null,
           modelId: null,
+          selectedAngleTag: nextSession.suggestedAngleTag || nextSession.missingAngleTags?.[0] || 'front',
           localFrameUris: {},
         });
       } catch (sessionError) {
@@ -777,9 +780,8 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
 
     const uploadableAsset = toUploadableAsset(asset);
     const quality = evaluateCaptureQuality(uploadableAsset, currentAngleTag, captureSession);
-    if (quality.blocking) {
-      setReviewMessage(quality.hint || '本次拍摄质量不足，建议重拍。');
-      return;
+    if (quality.hint) {
+      setReviewMessage(quality.hint);
     }
 
     setCaptureBusy(true);
@@ -796,18 +798,25 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
         [response.frame.id]: uploadableAsset.uri,
       };
 
+      const nextAngleTag =
+        response.session.missingAngleTags.includes(currentAngleTag)
+          ? currentAngleTag
+          : response.session.suggestedAngleTag || response.session.missingAngleTags?.[0] || currentAngleTag;
+
       setCaptureSession(response.session);
+      setSelectedAngleTag(nextAngleTag);
       setLocalFrameUris(nextLocalFrameUris);
-      setStatusMessage(response.session.statusHint || '继续按提示拍摄剩余角度。');
+      setStatusMessage(response.session.statusHint || '继续自由选择角度拍摄。');
       setReviewMessage(
         response.frame.accepted
           ? `已接收 ${getAngleLabel(response.frame.angleTag)} 视角，质量分 ${Math.round(
               response.frame.qualityScore * 100,
             )}。`
-          : `已记录，但建议重拍 ${getAngleLabel(response.frame.angleTag)}。`,
+          : `已记录 ${getAngleLabel(response.frame.angleTag)}，当前角度未计入通过，可直接补拍或切换其它角度。`,
       );
       setThreeDModelingSession({
         captureSessionId: response.session.id,
+        selectedAngleTag: nextAngleTag,
         localFrameUris: nextLocalFrameUris,
       });
     } catch (error) {
@@ -931,7 +940,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
           <View style={styles.heroCard} testID="capture-guide-card">
             <View style={styles.heroHeaderRow}>
               <View>
-                <Text style={styles.heroEyebrow}>当前建议角度</Text>
+                <Text style={styles.heroEyebrow}>当前拍摄角度</Text>
                 <Text style={styles.heroAngle}>{getAngleLabel(currentAngleTag)}</Text>
               </View>
               <View style={styles.progressRing}>
@@ -947,6 +956,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
             </View>
 
             <Text style={styles.statusHint}>{captureSession.statusHint}</Text>
+            <Text style={styles.summaryText}>点击下方任意角度可自由切换拍摄顺序。</Text>
 
             <View style={styles.angleRow}>
               {Object.keys(ANGLE_LABELS).map(angleTag => {
@@ -956,8 +966,13 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
                 const active = currentAngleTag === angleTag;
 
                 return (
-                  <View
+                  <TouchableOpacity
                     key={angleTag}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setSelectedAngleTag(angleTag);
+                      setThreeDModelingSession({selectedAngleTag: angleTag});
+                    }}
                     style={[
                       styles.angleBadge,
                       captured && styles.angleBadgeComplete,
@@ -971,7 +986,7 @@ export default function ThreeDModeling({navigation, onBack}: Props) {
                       ]}>
                       {getAngleLabel(angleTag)}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -1423,5 +1438,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#071019',
   },
 });
+
+
 
 

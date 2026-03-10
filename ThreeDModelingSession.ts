@@ -2,6 +2,7 @@ export interface ThreeDModelingSessionState {
   captureSessionId: string | null;
   reconstructionTaskId: string | null;
   modelId: string | null;
+  selectedAngleTag: string | null;
   localFrameUris: Record<string, string>;
 }
 
@@ -9,6 +10,7 @@ const defaultSessionState: ThreeDModelingSessionState = {
   captureSessionId: null,
   reconstructionTaskId: null,
   modelId: null,
+  selectedAngleTag: null,
   localFrameUris: {},
 };
 
@@ -19,6 +21,7 @@ export function getThreeDModelingSession(): ThreeDModelingSessionState {
     captureSessionId: currentSession.captureSessionId,
     reconstructionTaskId: currentSession.reconstructionTaskId,
     modelId: currentSession.modelId,
+    selectedAngleTag: currentSession.selectedAngleTag,
     localFrameUris: {...currentSession.localFrameUris},
   };
 }
@@ -36,6 +39,10 @@ export function setThreeDModelingSession(
         ? currentSession.reconstructionTaskId
         : nextSession.reconstructionTaskId,
     modelId: nextSession.modelId === undefined ? currentSession.modelId : nextSession.modelId,
+    selectedAngleTag:
+      nextSession.selectedAngleTag === undefined
+        ? currentSession.selectedAngleTag
+        : nextSession.selectedAngleTag,
     localFrameUris:
       nextSession.localFrameUris === undefined
         ? {...currentSession.localFrameUris}

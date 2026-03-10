@@ -71,10 +71,10 @@ const baseSession = {
   lastErrorCode: null,
   lastErrorMessage: null,
   frames: [],
-  missingAngleTags: ['front', 'front_right'],
+  missingAngleTags: ['front', 'front_right', 'right'],
   suggestedAngleTag: 'front',
   remainingCount: 14,
-  statusHint: 'Keep the object centered and follow the suggested angle order.',
+  statusHint: '点击任意角度开始拍摄；当前质量提示只做参考，不再强制固定顺序。',
 };
 
 describe('ThreeDModeling', () => {
@@ -119,7 +119,7 @@ describe('ThreeDModeling', () => {
     expect(screen.getByText('需要相机权限后才能开始多视角采集。')).toBeTruthy();
   });
 
-  it('uploads an accepted capture frame and advances the guidance angle', async () => {
+  it('uploads an accepted capture frame and advances the suggested next angle', async () => {
     launchCamera.mockResolvedValue({
       assets: [
         {
@@ -152,10 +152,10 @@ describe('ThreeDModeling', () => {
             capturedAt: '2026-03-09T00:01:00.000Z',
           },
         ],
-        missingAngleTags: ['front_right'],
+        missingAngleTags: ['front_right', 'right'],
         suggestedAngleTag: 'front_right',
         remainingCount: 13,
-        statusHint: 'Keep shooting for fuller coverage.',
+        statusHint: '当前覆盖已经足够生成。你也可以继续自由补拍其它角度。',
       },
       frame: {
         id: 'frame-1',
@@ -193,12 +193,115 @@ describe('ThreeDModeling', () => {
     expect(screen.getByText('拍摄 前右侧')).toBeTruthy();
   });
 
+  it('lets the user manually choose the capture angle before shooting', async () => {
+    launchCamera.mockResolvedValue({
+      assets: [
+        {
+          uri: 'file:///tmp/right.jpg',
+          type: 'image/jpeg',
+          fileName: 'right.jpg',
+          fileSize: 420000,
+          width: 2200,
+          height: 2200,
+        },
+      ],
+      didCancel: false,
+    });
+
+    uploadCaptureFrameMock.mockResolvedValue({
+      session: {
+        ...baseSession,
+        frames: [],
+      },
+      frame: {
+        id: 'frame-right',
+        sessionId: 'session-1',
+        imageUrl: 'http://127.0.0.1:3001/api/capture-sessions/session-1/frames/frame-right/asset',
+        angleTag: 'right',
+        qualityScore: 0.7,
+        qualityIssues: [],
+        accepted: true,
+        width: 2200,
+        height: 2200,
+        capturedAt: '2026-03-09T00:02:00.000Z',
+      },
+    });
+
+    const screen = render(<ThreeDModeling />);
+
+    await waitFor(() => {
+      expect(screen.getByText('右侧')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('右侧'));
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('capture-button'));
+    });
+
+    await waitFor(() => {
+      expect(uploadCaptureFrameMock).toHaveBeenCalledWith(
+        'session-1',
+        expect.anything(),
+        expect.objectContaining({angleTag: 'right'}),
+      );
+    });
+  });
+
+  it('still uploads the frame when local quality looks weak', async () => {
+    launchCamera.mockResolvedValue({
+      assets: [
+        {
+          uri: 'file:///tmp/low-quality.jpg',
+          type: 'image/jpeg',
+          fileName: 'low-quality.jpg',
+          fileSize: 90000,
+          width: 640,
+          height: 640,
+        },
+      ],
+      didCancel: false,
+    });
+
+    uploadCaptureFrameMock.mockResolvedValue({
+      session: baseSession,
+      frame: {
+        id: 'frame-low',
+        sessionId: 'session-1',
+        imageUrl: 'http://127.0.0.1:3001/api/capture-sessions/session-1/frames/frame-low/asset',
+        angleTag: 'front',
+        qualityScore: 0.32,
+        qualityIssues: ['subject_too_small'],
+        accepted: false,
+        width: 640,
+        height: 640,
+        capturedAt: '2026-03-09T00:03:00.000Z',
+      },
+    });
+
+    const screen = render(<ThreeDModeling />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-guide-card')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('capture-button'));
+    });
+
+    await waitFor(() => {
+      expect(uploadCaptureFrameMock).toHaveBeenCalled();
+    });
+  });
+
   it('starts reconstruction and renders the interactive preview when the model is ready', async () => {
     createCaptureSessionMock.mockResolvedValue({
       ...baseSession,
       status: 'ready',
       acceptedFrameCount: 8,
-      statusHint: 'Coverage is already good enough to generate.',
+      statusHint: '当前覆盖已经足够生成。你也可以继续自由补拍其它角度。',
     });
 
     generateCaptureSessionMock.mockResolvedValue({
@@ -264,4 +367,3 @@ describe('ThreeDModeling', () => {
     });
   });
 });
-
