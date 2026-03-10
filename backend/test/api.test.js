@@ -6,6 +6,12 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 const { createApp } = require('../src/app');
 
+const originalFetch = global.fetch;
+
+test.afterEach(() => {
+  global.fetch = originalFetch;
+});
+
 function createTestInstance() {
   const dbPath = path.join(
     os.tmpdir(),
@@ -72,8 +78,68 @@ test('creates a job and progresses to a successful GLB result', async () => {
     assert.equal(thirdPoll.body.fileType, 'GLB');
     assert.equal(thirdPoll.body.viewerFormat, 'glb');
     assert.equal(thirdPoll.body.viewerFiles.length, 1);
-    assert.match(thirdPoll.body.downloadUrl, /\.glb$/i);
+    assert.match(
+      thirdPoll.body.downloadUrl,
+      new RegExp(`^http://127\\.0\\.0\\.1:\\d+/api/v1/image-to-3d/jobs/${taskId}/assets/0$`)
+    );
+    assert.equal(thirdPoll.body.downloadUrl, thirdPoll.body.viewerFiles[0].url);
     assert.match(thirdPoll.body.previewImageUrl, /poster-astronaut/i);
+  } finally {
+    instance.cleanup();
+  }
+});
+
+test('proxies generated assets through the backend with CORS headers', async () => {
+  const instance = createTestInstance();
+
+  try {
+    const now = new Date().toISOString();
+    instance.dependencies.repository.insert({
+      taskId: 'asset-task',
+      provider: 'tripo',
+      providerJobId: 'provider-job',
+      status: 'succeeded',
+      rawStatus: 'SUCCESS',
+      sourceImageRef: 'seed:image/png:100',
+      previewUrl: 'https://example.com/model.glb',
+      previewImageUrl: 'https://example.com/model.webp',
+      downloadUrl: 'https://example.com/model.glb',
+      fileType: 'GLB',
+      viewerFormat: 'glb',
+      viewerFiles: [{type: 'GLB', url: 'https://example.com/model.glb'}],
+      errorCode: null,
+      errorMessage: null,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    global.fetch = async url => {
+      assert.equal(url, 'https://example.com/model.glb');
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          'content-type': 'model/gltf-binary',
+          'content-length': '3',
+        }),
+        arrayBuffer: async () => Uint8Array.from(Buffer.from('glb')).buffer,
+      };
+    };
+
+    const response = await request(instance.app)
+      .get('/api/v1/image-to-3d/jobs/asset-task/assets/0')
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+
+    assert.equal(response.headers['access-control-allow-origin'], '*');
+    assert.equal(response.headers['content-type'], 'model/gltf-binary');
+    assert.equal(response.body.toString('utf8'), 'glb');
   } finally {
     instance.cleanup();
   }

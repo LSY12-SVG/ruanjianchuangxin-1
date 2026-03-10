@@ -10,6 +10,60 @@ const { createRateLimiter } = require('./rateLimiter');
 const { validateImageUpload } = require('./imageValidation');
 const { ApiError } = require('./errors');
 
+function setAssetCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+}
+
+function pickContentType(asset, upstreamResponse) {
+  return (
+    upstreamResponse.headers.get('content-type') ||
+    (asset?.type === 'GLB' ? 'model/gltf-binary' : null) ||
+    'application/octet-stream'
+  );
+}
+
+function absolutizeUrl(req, url) {
+  if (!url || !url.startsWith('/')) {
+    return url;
+  }
+
+  return new URL(url, `${req.protocol}://${req.get('host')}`).toString();
+}
+
+function absolutizePublicTask(req, task) {
+  return {
+    ...task,
+    previewUrl: absolutizeUrl(req, task.previewUrl),
+    downloadUrl: absolutizeUrl(req, task.downloadUrl),
+    viewerFiles: (task.viewerFiles || []).map(file => ({
+      ...file,
+      url: absolutizeUrl(req, file.url),
+    })),
+  };
+}
+
+async function proxyRemoteAsset(res, asset) {
+  const upstreamResponse = await fetch(asset.url);
+  if (!upstreamResponse.ok) {
+    throw new ApiError(502, `Failed to load generated asset (${upstreamResponse.status}).`);
+  }
+
+  const bodyBuffer = Buffer.from(await upstreamResponse.arrayBuffer());
+  setAssetCorsHeaders(res);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', pickContentType(asset, upstreamResponse));
+
+  const contentLength = upstreamResponse.headers.get('content-length');
+  if (contentLength) {
+    res.setHeader('Content-Length', contentLength);
+  }
+
+  res.status(200).send(bodyBuffer);
+}
+
 function createApp(overrides = {}) {
   const config = { ...defaultConfig, ...(overrides.config || {}) };
   const logger = overrides.logger || createLogger();
@@ -58,7 +112,31 @@ function createApp(overrides = {}) {
         throw new ApiError(404, 'Task not found.');
       }
 
-      res.json(service.toPublicTask(task));
+      res.json(absolutizePublicTask(req, service.toPublicTask(task)));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.options('/api/v1/image-to-3d/jobs/:taskId/assets/:assetIndex', (_req, res) => {
+    setAssetCorsHeaders(res);
+    res.status(204).end();
+  });
+
+  app.get('/api/v1/image-to-3d/jobs/:taskId/assets/:assetIndex', async (req, res, next) => {
+    try {
+      const task = await service.getTask(req.params.taskId);
+
+      if (!task) {
+        throw new ApiError(404, 'Task not found.');
+      }
+
+      const asset = service.getTaskAsset(task, req.params.assetIndex);
+      if (!asset?.url) {
+        throw new ApiError(404, 'Asset not found.');
+      }
+
+      await proxyRemoteAsset(res, asset);
     } catch (error) {
       next(error);
     }

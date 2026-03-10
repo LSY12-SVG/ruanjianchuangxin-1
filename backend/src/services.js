@@ -2,6 +2,37 @@ const crypto = require('crypto');
 const { ApiError } = require('./errors');
 const { mapProviderStatus, buildViewerPayload, toPublicTask } = require('./jobMapper');
 
+function buildAssetUrl(taskId, assetIndex) {
+  return `/api/v1/image-to-3d/jobs/${taskId}/assets/${assetIndex}`;
+}
+
+function getAssetIndex(task, targetUrl) {
+  if (!targetUrl) {
+    return -1;
+  }
+
+  return (task.viewerFiles || []).findIndex(file => file?.url === targetUrl);
+}
+
+function buildPublicTask(task) {
+  const publicTask = toPublicTask(task);
+  const viewerFiles = (task.viewerFiles || []).map((file, index) => ({
+    ...file,
+    url: buildAssetUrl(task.taskId, index),
+  }));
+
+  const previewIndex = getAssetIndex(task, task.previewUrl);
+  const downloadIndex = getAssetIndex(task, task.downloadUrl);
+
+  return {
+    ...publicTask,
+    previewUrl: previewIndex >= 0 ? buildAssetUrl(task.taskId, previewIndex) : publicTask.previewUrl,
+    downloadUrl:
+      downloadIndex >= 0 ? buildAssetUrl(task.taskId, downloadIndex) : publicTask.downloadUrl,
+    viewerFiles,
+  };
+}
+
 function createImageTo3DService({ provider, repository, logger, config }) {
   return {
     async createTask(file) {
@@ -126,8 +157,17 @@ function createImageTo3DService({ provider, repository, logger, config }) {
       return task;
     },
 
+    getTaskAsset(task, assetIndex) {
+      const parsedIndex = Number.parseInt(String(assetIndex), 10);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0) {
+        return null;
+      }
+
+      return (task.viewerFiles || [])[parsedIndex] || null;
+    },
+
     toPublicTask(task) {
-      return toPublicTask(task);
+      return buildPublicTask(task);
     },
   };
 }
