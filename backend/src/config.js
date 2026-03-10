@@ -64,6 +64,8 @@ module.exports = {
   providerName: process.env.IMAGE_TO_3D_PROVIDER || 'mock',
   databasePath:
     process.env.IMAGE_TO_3D_DB_PATH || path.join(__dirname, '..', 'data', 'image-to-3d.db'),
+  captureFramesDir:
+    process.env.IMAGE_TO_3D_CAPTURE_DIR || path.join(__dirname, '..', 'data', 'capture-frames'),
   maxUploadBytes: readIntEnv('IMAGE_TO_3D_MAX_UPLOAD_BYTES', 6 * 1024 * 1024),
   pollAfterMs: readIntEnv('IMAGE_TO_3D_POLL_AFTER_MS', 5000),
   maxPollingWindowMs: readIntEnv('IMAGE_TO_3D_MAX_POLL_MS', 10 * 60 * 1000),

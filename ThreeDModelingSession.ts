@@ -1,61 +1,48 @@
-import type { ImageTo3DTaskStatus, SelectedImageAsset } from './ImageTo3DService';
-
-export interface ThreeDModelingTaskSession {
-  taskId: string | null;
-  status: ImageTo3DTaskStatus;
-  message: string;
-  previewUrl: string | null;
-  downloadUrl: string | null;
-  fileType: string | null;
-  expiresAt: string | null;
-  pollAfterMs: number;
-  pollStartedAt: number | null;
-}
-
 export interface ThreeDModelingSessionState {
-  selectedImage: SelectedImageAsset | null;
-  task: ThreeDModelingTaskSession;
+  captureSessionId: string | null;
+  reconstructionTaskId: string | null;
+  modelId: string | null;
+  localFrameUris: Record<string, string>;
 }
 
-const defaultTaskSession: ThreeDModelingTaskSession = {
-  taskId: null,
-  status: 'idle',
-  message: '',
-  previewUrl: null,
-  downloadUrl: null,
-  fileType: null,
-  expiresAt: null,
-  pollAfterMs: 5000,
-  pollStartedAt: null,
+const defaultSessionState: ThreeDModelingSessionState = {
+  captureSessionId: null,
+  reconstructionTaskId: null,
+  modelId: null,
+  localFrameUris: {},
 };
 
-let currentSession: ThreeDModelingSessionState = {
-  selectedImage: null,
-  task: { ...defaultTaskSession },
-};
+let currentSession: ThreeDModelingSessionState = {...defaultSessionState};
 
 export function getThreeDModelingSession(): ThreeDModelingSessionState {
   return {
-    selectedImage: currentSession.selectedImage,
-    task: { ...currentSession.task },
+    captureSessionId: currentSession.captureSessionId,
+    reconstructionTaskId: currentSession.reconstructionTaskId,
+    modelId: currentSession.modelId,
+    localFrameUris: {...currentSession.localFrameUris},
   };
 }
 
-export function setThreeDModelingSession(nextSession: Partial<ThreeDModelingSessionState>) {
+export function setThreeDModelingSession(
+  nextSession: Partial<ThreeDModelingSessionState>,
+) {
   currentSession = {
-    selectedImage:
-      nextSession.selectedImage === undefined ? currentSession.selectedImage : nextSession.selectedImage,
-    task: nextSession.task ? { ...nextSession.task } : { ...currentSession.task },
+    captureSessionId:
+      nextSession.captureSessionId === undefined
+        ? currentSession.captureSessionId
+        : nextSession.captureSessionId,
+    reconstructionTaskId:
+      nextSession.reconstructionTaskId === undefined
+        ? currentSession.reconstructionTaskId
+        : nextSession.reconstructionTaskId,
+    modelId: nextSession.modelId === undefined ? currentSession.modelId : nextSession.modelId,
+    localFrameUris:
+      nextSession.localFrameUris === undefined
+        ? {...currentSession.localFrameUris}
+        : {...nextSession.localFrameUris},
   };
 }
 
 export function resetThreeDModelingSession() {
-  currentSession = {
-    selectedImage: null,
-    task: { ...defaultTaskSession },
-  };
-}
-
-export function createEmptyTaskSession(): ThreeDModelingTaskSession {
-  return { ...defaultTaskSession };
+  currentSession = {...defaultSessionState};
 }

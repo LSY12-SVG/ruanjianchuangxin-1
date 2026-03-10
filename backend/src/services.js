@@ -1,6 +1,6 @@
 const crypto = require('crypto');
-const { ApiError } = require('./errors');
-const { mapProviderStatus, buildViewerPayload, toPublicTask } = require('./jobMapper');
+const {ApiError} = require('./errors');
+const {mapProviderStatus, buildViewerPayload, toPublicTask} = require('./jobMapper');
 
 function buildAssetUrl(taskId, assetIndex) {
   return `/api/v1/image-to-3d/jobs/${taskId}/assets/${assetIndex}`;
@@ -33,9 +33,9 @@ function buildPublicTask(task) {
   };
 }
 
-function createImageTo3DService({ provider, repository, logger, config }) {
+function createImageTo3DService({provider, repository, logger, config}) {
   return {
-    async createTask(file) {
+    async createTask(file, options = {}) {
       const now = new Date().toISOString();
       const taskId = crypto.randomUUID();
 
@@ -52,7 +52,8 @@ function createImageTo3DService({ provider, repository, logger, config }) {
           providerJobId: submission.providerJobId,
           status: 'queued',
           rawStatus: 'WAIT',
-          sourceImageRef: `${file.originalname}:${file.mimetype}:${file.size}`,
+          sourceImageRef:
+            options.sourceImageRef || `${file.originalname}:${file.mimetype}:${file.size}`,
           previewUrl: null,
           previewImageUrl: null,
           downloadUrl: null,
@@ -94,7 +95,7 @@ function createImageTo3DService({ provider, repository, logger, config }) {
 
       if (task.status === 'queued' || task.status === 'processing') {
         try {
-          const providerResult = await provider.getJob({ providerJobId: task.providerJobId });
+          const providerResult = await provider.getJob({providerJobId: task.providerJobId});
           const nextStatus = mapProviderStatus(providerResult.rawStatus);
           const viewerPayload = buildViewerPayload(providerResult.files);
           const now = new Date().toISOString();

@@ -200,3 +200,84 @@ test('returns expired for succeeded jobs whose download url timed out', async ()
     instance.cleanup();
   }
 });
+
+test('creates a capture session, uploads frames, and returns a model asset after generation', async () => {
+  const instance = createTestInstance();
+
+  try {
+    const sessionResponse = await request(instance.app)
+      .post('/api/capture-sessions')
+      .expect(201);
+
+    const sessionId = sessionResponse.body.id;
+    assert.equal(sessionResponse.body.status, 'collecting');
+    assert.equal(sessionResponse.body.suggestedAngleTag, 'front');
+
+    const angles = [
+      'front',
+      'front_right',
+      'right',
+      'back_right',
+      'back',
+      'back_left',
+      'left',
+      'front_left',
+    ];
+
+    for (const angleTag of angles) {
+      const frameResponse = await request(instance.app)
+        .post(`/api/capture-sessions/${sessionId}/frames`)
+        .field('angleTag', angleTag)
+        .field('width', '2200')
+        .field('height', '2200')
+        .field('fileSize', '420000')
+        .attach('image', Buffer.from('fake image'), {
+          filename: `${angleTag}.png`,
+          contentType: 'image/png',
+        })
+        .expect(201);
+
+      assert.equal(frameResponse.body.frame.accepted, true);
+    }
+
+    const readySession = await request(instance.app)
+      .get(`/api/capture-sessions/${sessionId}`)
+      .expect(200);
+    assert.equal(readySession.body.status, 'ready');
+    assert.equal(readySession.body.acceptedFrameCount, 8);
+
+    const generateResponse = await request(instance.app)
+      .post(`/api/capture-sessions/${sessionId}/generate`)
+      .expect(202);
+
+    const taskId = generateResponse.body.taskId;
+
+    await request(instance.app)
+      .get(`/api/reconstruction-tasks/${taskId}`)
+      .expect(200);
+
+    await request(instance.app)
+      .get(`/api/reconstruction-tasks/${taskId}`)
+      .expect(200);
+
+    const finalTask = await request(instance.app)
+      .get(`/api/reconstruction-tasks/${taskId}`)
+      .expect(200);
+
+    assert.equal(finalTask.body.status, 'succeeded');
+    assert.equal(finalTask.body.modelId, taskId);
+
+    const modelResponse = await request(instance.app)
+      .get(`/api/models/${taskId}`)
+      .expect(200);
+
+    assert.equal(modelResponse.body.id, taskId);
+    assert.equal(modelResponse.body.sessionId, sessionId);
+    assert.equal(modelResponse.body.viewerFormat, 'glb');
+    assert.match(modelResponse.body.glbUrl, /\/api\/v1\/image-to-3d\/jobs\//);
+  } finally {
+    instance.cleanup();
+  }
+});
+
+

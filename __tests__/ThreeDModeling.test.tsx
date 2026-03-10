@@ -4,8 +4,12 @@ import {act, fireEvent, render, waitFor} from '@testing-library/react-native';
 
 import ThreeDModeling from '../ThreeDModeling';
 import {
-  createImageTo3DJob,
-  getImageTo3DJob,
+  createCaptureSession,
+  generateCaptureSession,
+  getCaptureSession,
+  getModelAsset,
+  getReconstructionTask,
+  uploadCaptureFrame,
 } from '../ImageTo3DService';
 
 jest.mock('react-native-webview', () => {
@@ -19,31 +23,58 @@ jest.mock('react-native-webview', () => {
 });
 
 jest.mock('react-native-image-picker', () => ({
-  launchImageLibrary: jest.fn(),
+  launchCamera: jest.fn(),
 }));
 
 jest.mock('../ImageTo3DService', () => ({
-  createImageTo3DJob: jest.fn(),
-  getImageTo3DJob: jest.fn(),
+  createCaptureSession: jest.fn(),
+  getCaptureSession: jest.fn(),
+  uploadCaptureFrame: jest.fn(),
+  generateCaptureSession: jest.fn(),
+  getReconstructionTask: jest.fn(),
+  getModelAsset: jest.fn(),
   isTerminalJobStatus: (status: string) =>
     status === 'succeeded' || status === 'failed' || status === 'expired',
 }));
 
-const {launchImageLibrary} = jest.requireMock('react-native-image-picker') as {
-  launchImageLibrary: jest.Mock;
+const {launchCamera} = jest.requireMock('react-native-image-picker') as {
+  launchCamera: jest.Mock;
 };
 
-const createImageTo3DJobMock = createImageTo3DJob as jest.MockedFunction<
-  typeof createImageTo3DJob
+const createCaptureSessionMock = createCaptureSession as jest.MockedFunction<
+  typeof createCaptureSession
 >;
-const getImageTo3DJobMock = getImageTo3DJob as jest.MockedFunction<
-  typeof getImageTo3DJob
+const getCaptureSessionMock = getCaptureSession as jest.MockedFunction<
+  typeof getCaptureSession
 >;
+const uploadCaptureFrameMock = uploadCaptureFrame as jest.MockedFunction<
+  typeof uploadCaptureFrame
+>;
+const generateCaptureSessionMock = generateCaptureSession as jest.MockedFunction<
+  typeof generateCaptureSession
+>;
+const getReconstructionTaskMock = getReconstructionTask as jest.MockedFunction<
+  typeof getReconstructionTask
+>;
+const getModelAssetMock = getModelAsset as jest.MockedFunction<typeof getModelAsset>;
 
-const selectedAsset = {
-  uri: 'file:///tmp/input.jpg',
-  type: 'image/jpeg',
-  fileName: 'input.jpg',
+const baseSession = {
+  id: 'session-1',
+  status: 'collecting' as const,
+  targetFrameCount: 14,
+  minimumFrameCount: 8,
+  acceptedFrameCount: 0,
+  coverFrameId: null,
+  taskId: null,
+  createdAt: '2026-03-09T00:00:00.000Z',
+  updatedAt: '2026-03-09T00:00:00.000Z',
+  lastErrorCode: null,
+  lastErrorMessage: null,
+  frames: [],
+  missingAngleTags: ['front', 'front_right'],
+  suggestedAngleTag: 'front',
+  remainingCount: 14,
+  statusHint: 'Keep the object centered and follow the suggested angle order.',
 };
 
 describe('ThreeDModeling', () => {
@@ -54,13 +85,9 @@ describe('ThreeDModeling', () => {
       configurable: true,
       value: 'android',
     });
-    Object.defineProperty(Platform, 'Version', {
-      configurable: true,
-      value: 32,
-    });
-    jest
-      .spyOn(PermissionsAndroid, 'check')
-      .mockResolvedValue(true);
+    createCaptureSessionMock.mockResolvedValue(baseSession);
+    getCaptureSessionMock.mockResolvedValue(baseSession);
+    jest.spyOn(PermissionsAndroid, 'check').mockResolvedValue(true);
     jest
       .spyOn(PermissionsAndroid, 'request')
       .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED);
@@ -72,208 +99,169 @@ describe('ThreeDModeling', () => {
     jest.restoreAllMocks();
   });
 
-  it('requests permission and shows retry state when photo access is denied', async () => {
-    jest
-      .spyOn(PermissionsAndroid, 'check')
-      .mockResolvedValue(false);
+  it('requests camera permission and shows an error when access is denied', async () => {
+    jest.spyOn(PermissionsAndroid, 'check').mockResolvedValue(false);
     jest
       .spyOn(PermissionsAndroid, 'request')
       .mockResolvedValue(PermissionsAndroid.RESULTS.DENIED);
 
     const screen = render(<ThreeDModeling />);
 
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-guide-card')).toBeTruthy();
+    });
+
     await act(async () => {
-      fireEvent.press(screen.getByTestId('upload-card'));
+      fireEvent.press(screen.getByTestId('capture-button'));
     });
 
     expect(PermissionsAndroid.request).toHaveBeenCalled();
-    expect(screen.getByText('Photo access required')).toBeTruthy();
-    expect(screen.getByTestId('retry-permission-button')).toBeTruthy();
+    expect(screen.getByText('需要相机权限后才能开始多视角采集。')).toBeTruthy();
   });
 
-  it('enables generate after selecting one image from the gallery', async () => {
-    launchImageLibrary.mockResolvedValue({
-      assets: [selectedAsset],
-      didCancel: false,
-    });
-
-    const screen = render(<ThreeDModeling />);
-    const generateButton = screen.getByTestId('generate-button');
-
-    expect(generateButton.props.accessibilityState.disabled).toBe(true);
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('upload-card'));
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId('generate-button').props.accessibilityState.disabled,
-      ).toBe(false);
-    });
-  });
-
-  it('polls until a GLB model becomes previewable', async () => {
-    launchImageLibrary.mockResolvedValue({
-      assets: [selectedAsset],
-      didCancel: false,
-    });
-
-    createImageTo3DJobMock.mockResolvedValue({
-      taskId: 'task-1',
-      status: 'queued',
-      pollAfterMs: 5000,
-      message: null,
-    });
-
-    getImageTo3DJobMock
-      .mockResolvedValueOnce({
-        taskId: 'task-1',
-        status: 'processing',
-        message: 'still working',
-        previewUrl: null,
-        previewImageUrl: null,
-        downloadUrl: null,
-        fileType: null,
-        viewerFormat: null,
-        viewerFiles: [],
-        expiresAt: null,
-      })
-      .mockResolvedValueOnce({
-        taskId: 'task-1',
-        status: 'succeeded',
-        message: 'done',
-        previewUrl: 'https://example.com/model.glb',
-        previewImageUrl: 'https://example.com/model.webp',
-        downloadUrl: 'https://example.com/model.glb',
-        fileType: 'GLB',
-        viewerFormat: 'glb',
-        viewerFiles: [{type: 'GLB', url: 'https://example.com/model.glb'}],
-        expiresAt: '2026-03-09T00:00:00.000Z',
-      });
-
-    const screen = render(<ThreeDModeling />);
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('upload-card'));
-    });
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('generate-button'));
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('model-preview')).toBeTruthy();
-    });
-    expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
-  });
-
-  it('renders an OBJ preview when the backend returns rapid-format metadata', async () => {
-    launchImageLibrary.mockResolvedValue({
-      assets: [selectedAsset],
-      didCancel: false,
-    });
-
-    createImageTo3DJobMock.mockResolvedValue({
-      taskId: 'task-obj',
-      status: 'queued',
-      pollAfterMs: 5000,
-      message: null,
-    });
-
-    getImageTo3DJobMock.mockResolvedValue({
-      taskId: 'task-obj',
-      status: 'succeeded',
-      message: 'done',
-      previewUrl: 'https://example.com/model.obj',
-      previewImageUrl: 'https://example.com/model.webp',
-      downloadUrl: 'https://example.com/model.obj',
-      fileType: 'OBJ',
-      viewerFormat: 'obj',
-      viewerFiles: [
-        {type: 'OBJ', url: 'https://example.com/model.obj'},
-        {type: 'MTL', url: 'https://example.com/model.mtl'},
+  it('uploads an accepted capture frame and advances the guidance angle', async () => {
+    launchCamera.mockResolvedValue({
+      assets: [
+        {
+          uri: 'file:///tmp/capture.jpg',
+          type: 'image/jpeg',
+          fileName: 'capture.jpg',
+          fileSize: 420000,
+          width: 2200,
+          height: 2200,
+        },
       ],
-      expiresAt: '2026-03-09T00:00:00.000Z',
-    });
-
-    const screen = render(<ThreeDModeling />);
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('upload-card'));
-    });
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('generate-button'));
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
-    });
-  });
-
-  it('shows readable preview errors instead of object stringification', async () => {
-    launchImageLibrary.mockResolvedValue({
-      assets: [selectedAsset],
       didCancel: false,
     });
 
-    createImageTo3DJobMock.mockResolvedValue({
-      taskId: 'task-fbx',
-      status: 'succeeded',
-      pollAfterMs: 5000,
-      message: null,
-    });
-
-    getImageTo3DJobMock.mockResolvedValue({
-      taskId: 'task-fbx',
-      status: 'succeeded',
-      message: 'done',
-      previewUrl: 'https://example.com/model.fbx',
-      previewImageUrl: 'https://example.com/model.webp',
-      downloadUrl: 'https://example.com/model.fbx',
-      fileType: 'FBX',
-      viewerFormat: 'fbx',
-      viewerFiles: [{type: 'FBX', url: 'https://example.com/model.fbx'}],
-      expiresAt: '2026-03-09T00:00:00.000Z',
-    });
-
-    const screen = render(<ThreeDModeling />);
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('upload-card'));
-    });
-
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('generate-button'));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
-    });
-
-    fireEvent(screen.getByTestId('model-preview-webview'), 'onMessage', {
-      nativeEvent: {
-        data: JSON.stringify({type: 'error', message: 'Rapid preview failed.'}),
+    uploadCaptureFrameMock.mockResolvedValue({
+      session: {
+        ...baseSession,
+        acceptedFrameCount: 1,
+        frames: [
+          {
+            id: 'frame-1',
+            sessionId: 'session-1',
+            imageUrl: 'http://127.0.0.1:3001/api/capture-sessions/session-1/frames/frame-1/asset',
+            angleTag: 'front',
+            qualityScore: 0.91,
+            qualityIssues: [],
+            accepted: true,
+            width: 2200,
+            height: 2200,
+            capturedAt: '2026-03-09T00:01:00.000Z',
+          },
+        ],
+        missingAngleTags: ['front_right'],
+        suggestedAngleTag: 'front_right',
+        remainingCount: 13,
+        statusHint: 'Keep shooting for fuller coverage.',
+      },
+      frame: {
+        id: 'frame-1',
+        sessionId: 'session-1',
+        imageUrl: 'http://127.0.0.1:3001/api/capture-sessions/session-1/frames/frame-1/asset',
+        angleTag: 'front',
+        qualityScore: 0.91,
+        qualityIssues: [],
+        accepted: true,
+        width: 2200,
+        height: 2200,
+        capturedAt: '2026-03-09T00:01:00.000Z',
       },
     });
 
-    expect(screen.getByText('Rapid preview failed.')).toBeTruthy();
-    expect(screen.queryByText('[object Object]')).toBeNull();
+    const screen = render(<ThreeDModeling />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('capture-guide-card')).toBeTruthy();
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('capture-button'));
+    });
+
+    await waitFor(() => {
+      expect(uploadCaptureFrameMock).toHaveBeenCalledWith(
+        'session-1',
+        expect.objectContaining({uri: 'file:///tmp/capture.jpg'}),
+        expect.objectContaining({angleTag: 'front'}),
+      );
+    });
+
+    expect(screen.getByText(/已接收 正前方 视角/)).toBeTruthy();
+    expect(screen.getByText('拍摄 前右侧')).toBeTruthy();
+  });
+
+  it('starts reconstruction and renders the interactive preview when the model is ready', async () => {
+    createCaptureSessionMock.mockResolvedValue({
+      ...baseSession,
+      status: 'ready',
+      acceptedFrameCount: 8,
+      statusHint: 'Coverage is already good enough to generate.',
+    });
+
+    generateCaptureSessionMock.mockResolvedValue({
+      taskId: 'task-1',
+      modelId: 'task-1',
+      sessionId: 'session-1',
+      status: 'queued',
+      pollAfterMs: 5000,
+    });
+
+    getReconstructionTaskMock.mockResolvedValue({
+      taskId: 'task-1',
+      status: 'succeeded',
+      message: 'done',
+      previewUrl: 'http://127.0.0.1:3001/api/v1/image-to-3d/jobs/task-1/assets/0',
+      previewImageUrl: 'https://example.com/model.webp',
+      downloadUrl: 'http://127.0.0.1:3001/api/v1/image-to-3d/jobs/task-1/assets/0',
+      fileType: 'GLB',
+      viewerFormat: 'glb',
+      viewerFiles: [{type: 'GLB', url: 'http://127.0.0.1:3001/api/v1/image-to-3d/jobs/task-1/assets/0'}],
+      expiresAt: '2026-03-10T00:00:00.000Z',
+      sessionId: 'session-1',
+      modelId: 'task-1',
+    });
+
+    getCaptureSessionMock.mockResolvedValue({
+      ...baseSession,
+      status: 'ready_to_view',
+      acceptedFrameCount: 8,
+      taskId: 'task-1',
+      statusHint: '3D result is ready to view.',
+    });
+
+    getModelAssetMock.mockResolvedValue({
+      id: 'task-1',
+      sessionId: 'session-1',
+      glbUrl: 'http://127.0.0.1:3001/api/v1/image-to-3d/jobs/task-1/assets/0',
+      thumbnailUrl: 'https://example.com/model.webp',
+      boundingBox: {x: 1, y: 1, z: 1},
+      defaultCamera: {
+        position: {x: 2.2, y: 1.6, z: 2.2},
+        target: {x: 0, y: 0, z: 0},
+        fov: 45,
+      },
+      autoRotateSpeed: 0.85,
+      viewerFormat: 'glb',
+      viewerFiles: [{type: 'GLB', url: 'http://127.0.0.1:3001/api/v1/image-to-3d/jobs/task-1/assets/0'}],
+      createdAt: '2026-03-09T00:10:00.000Z',
+    });
+
+    const screen = render(<ThreeDModeling />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-button').props.accessibilityState.disabled).toBe(false);
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('generate-button'));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
+    });
   });
 });
+
