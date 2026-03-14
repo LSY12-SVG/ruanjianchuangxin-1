@@ -32,6 +32,8 @@ export const GlobalAgentSprite: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {width, height} = useWindowDimensions();
   const pushConversation = useAppStore(state => state.pushConversation);
+  const activeMainTab = useAppStore(state => state.activeMainTab);
+  const homeRoute = useAppStore(state => state.homeRoute);
   const {
     panelVisible,
     togglePanel,
@@ -64,6 +66,7 @@ export const GlobalAgentSprite: React.FC = () => {
   const longPressTriggeredRef = useRef(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState('');
+  const isVoiceDisabledInGrading = activeMainTab === 'home' && homeRoute === 'grading';
 
   const recognizerRef = useRef(
     createSpeechRecognizer({
@@ -112,6 +115,10 @@ export const GlobalAgentSprite: React.FC = () => {
   };
 
   const startVoice = async () => {
+    if (isVoiceDisabledInGrading) {
+      setVoiceHint('当前在调色页，请使用调色面板内语音按钮。');
+      return;
+    }
     const granted = await requestRecordAudioPermission();
     if (!granted) {
       setVoiceHint('缺少录音权限');
@@ -186,7 +193,10 @@ export const GlobalAgentSprite: React.FC = () => {
             </View>
 
             <View style={styles.inputWrap}>
-              <TouchableOpacity style={styles.voiceButton} onPress={() => startVoice().catch(() => undefined)}>
+              <TouchableOpacity
+                style={[styles.voiceButton, isVoiceDisabledInGrading && styles.voiceButtonDisabled]}
+                onPress={() => startVoice().catch(() => undefined)}
+                disabled={isVoiceDisabledInGrading}>
                 <Icon name={isVoiceListening ? 'mic' : 'mic-outline'} size={16} color={VISION_THEME.accent.dark} />
               </TouchableOpacity>
               <View style={styles.inputSurface}>
@@ -287,6 +297,9 @@ export const GlobalAgentSprite: React.FC = () => {
           }}
           onLongPress={() => {
             longPressTriggeredRef.current = true;
+            if (isVoiceDisabledInGrading) {
+              return;
+            }
             startVoice().catch(() => undefined);
           }}
           onPressOut={() => {
@@ -395,6 +408,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: VISION_THEME.accent.strong,
+  },
+  voiceButtonDisabled: {
+    opacity: 0.5,
   },
   inputSurface: {
     flex: 1,

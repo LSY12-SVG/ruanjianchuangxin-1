@@ -4,7 +4,7 @@ require('dotenv').config({path: path.resolve(__dirname, '../.env')});
 const cors = require('cors');
 const express = require('express');
 const {validateInterpretRequest, normalizeInterpretResponse} = require('./contracts');
-const {interpretWithProvider} = require('./providers');
+const {interpretWithProvider, fetchProviderModelIds} = require('./providers');
 const {initializeCommunityModule} = require('./community');
 const {initializeAccountModule} = require('./account');
 const {initializeSegmentationModule} = require('./segmentation/controller');
@@ -23,13 +23,21 @@ const {
   runAutoGrade,
   conservativeFallbackResult,
   getAutoGradePhaseRuntimeConfig,
+  getAutoGradeModelConfig,
 } = require('./autoGrade');
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
+const DEFAULT_MODEL_CHECK_TIMEOUT_MS = 6000;
 let communityModule = null;
 let accountModule = null;
 let segmentationModule = null;
+const autoGradeModelState = {
+  refineModelReady: true,
+  missingModelIds: [],
+  lastCheckedAt: null,
+  modelCheckError: null,
+};
 const agentExecutionService = createAgentExecutionService();
 const agentMemoryStore = createAgentMemoryStore({
   filePath: process.env.AGENT_MEMORY_PATH || path.resolve(__dirname, '../data/agent-memory.json'),
@@ -130,8 +138,57 @@ app.use(cors());
 app.use(express.json({limit: '12mb'}));
 
 app.get('/health', (_req, res) => {
-  res.json({ok: true, service: 'visiongenie-color-agent-proxy'});
+  const runtime = getAutoGradePhaseRuntimeConfig();
+  const modelConfig = getAutoGradeModelConfig();
+  res.json({
+    ok: true,
+    service: 'visiongenie-color-agent-proxy',
+    autoGrade: {
+      phaseRuntime: runtime,
+      modelChains: modelConfig,
+      refineModelReady: autoGradeModelState.refineModelReady,
+      missingModelIds: autoGradeModelState.missingModelIds,
+      lastCheckedAt: autoGradeModelState.lastCheckedAt,
+      modelCheckError: autoGradeModelState.modelCheckError,
+    },
+  });
 });
+
+const refreshAutoGradeModelHealth = async () => {
+  const modelConfig = getAutoGradeModelConfig();
+  const refineModels = Array.isArray(modelConfig.refineModelChain)
+    ? modelConfig.refineModelChain.filter(Boolean)
+    : [];
+
+  const checkedAt = new Date().toISOString();
+  if (!refineModels.length) {
+    autoGradeModelState.refineModelReady = false;
+    autoGradeModelState.missingModelIds = [];
+    autoGradeModelState.lastCheckedAt = checkedAt;
+    autoGradeModelState.modelCheckError = 'missing_refine_model_config';
+    return;
+  }
+
+  const probe = await fetchProviderModelIds({
+    timeoutMs: toNumber(process.env.MODEL_LIST_TIMEOUT_MS, DEFAULT_MODEL_CHECK_TIMEOUT_MS),
+  });
+
+  if (!probe.ok) {
+    autoGradeModelState.refineModelReady = false;
+    autoGradeModelState.missingModelIds = refineModels;
+    autoGradeModelState.lastCheckedAt = checkedAt;
+    autoGradeModelState.modelCheckError = probe.error || 'model_list_probe_failed';
+    return;
+  }
+
+  const remoteSet = new Set(probe.modelIds);
+  const missing = refineModels.filter(modelId => !remoteSet.has(modelId));
+  autoGradeModelState.refineModelReady = missing.length === 0;
+  autoGradeModelState.missingModelIds = missing;
+  autoGradeModelState.lastCheckedAt = checkedAt;
+  autoGradeModelState.modelCheckError =
+    missing.length === 0 ? null : 'refine_model_not_in_provider_catalog';
+};
 
 app.post('/v1/color/interpret', async (req, res) => {
   const validation = validateInterpretRequest(req.body);
@@ -213,14 +270,39 @@ app.post('/v1/color/auto-grade', async (req, res) => {
     res.status(400).json({error: validation.message});
     return;
   }
+  const phase = req.body?.phase === 'refine' ? 'refine' : 'fast';
+  if (phase === 'refine' && !autoGradeModelState.refineModelReady) {
+    const fallback = conservativeFallbackResult(req.body, 'model_unavailable');
+    console.warn(
+      '[auto-grade-proxy] fallback',
+      JSON.stringify({
+        phase,
+        fallback_reason: 'model_unavailable',
+        model_check_error: autoGradeModelState.modelCheckError || '',
+        missing_models: autoGradeModelState.missingModelIds,
+        latency_ms: typeof fallback.latencyMs === 'number' ? fallback.latencyMs : -1,
+        phase_timeout_ms:
+          typeof fallback.phaseTimeoutMs === 'number' ? fallback.phaseTimeoutMs : -1,
+        phase_budget_ms:
+          typeof fallback.phaseBudgetMs === 'number' ? fallback.phaseBudgetMs : -1,
+        payload_bytes: typeof fallback.payloadBytes === 'number' ? fallback.payloadBytes : -1,
+        encode_quality: typeof fallback.encodeQuality === 'number' ? fallback.encodeQuality : -1,
+        mime_type: typeof fallback.mimeType === 'string' ? fallback.mimeType : '',
+      }),
+    );
+    res.status(200).json(fallback);
+    return;
+  }
 
   try {
     const result = await runAutoGrade(req.body);
     console.log(
       '[auto-grade-proxy] metrics',
       JSON.stringify({
-        phase: req.body?.phase === 'refine' ? 'refine' : 'fast',
+        phase,
         scene_profile: result.sceneProfile || '',
+        model_used: typeof result.modelUsed === 'string' ? result.modelUsed : '',
+        model_route: typeof result.modelRoute === 'string' ? result.modelRoute : '',
         latency_ms: typeof result.latencyMs === 'number' ? result.latencyMs : -1,
         fallback_used: Boolean(result.fallbackUsed),
         fallback_reason: typeof result.fallbackReason === 'string' ? result.fallbackReason : '',
@@ -481,8 +563,27 @@ const startServer = async () => {
     console.error('[community] module init failed:', error);
   }
 
+  try {
+    await refreshAutoGradeModelHealth();
+    console.log(
+      '[auto-grade-proxy] model-check',
+      JSON.stringify({
+        refine_model_ready: autoGradeModelState.refineModelReady,
+        missing_refine_models: autoGradeModelState.missingModelIds,
+        last_checked_at: autoGradeModelState.lastCheckedAt,
+        model_check_error: autoGradeModelState.modelCheckError || '',
+      }),
+    );
+  } catch (error) {
+    autoGradeModelState.refineModelReady = false;
+    autoGradeModelState.lastCheckedAt = new Date().toISOString();
+    autoGradeModelState.modelCheckError = String(error?.message || 'model_check_failed');
+    console.warn('[auto-grade-proxy] model-check failed:', error);
+  }
+
   app.listen(port, () => {
     const runtime = getAutoGradePhaseRuntimeConfig();
+    const modelConfig = getAutoGradeModelConfig();
     console.log(
       '[auto-grade-proxy] runtime',
       JSON.stringify({
@@ -490,6 +591,11 @@ const startServer = async () => {
         fast_budget_ms: runtime.fast.totalBudgetMs,
         refine_timeout_ms: runtime.refine.timeoutMs,
         refine_budget_ms: runtime.refine.totalBudgetMs,
+        fast_model_chain: modelConfig.fastModelChain,
+        refine_model_chain: modelConfig.refineModelChain,
+        refine_model_ready: autoGradeModelState.refineModelReady,
+        missing_refine_models: autoGradeModelState.missingModelIds,
+        model_check_error: autoGradeModelState.modelCheckError || '',
       }),
     );
     console.log(`[voice-agent-proxy] listening on :${port}`);

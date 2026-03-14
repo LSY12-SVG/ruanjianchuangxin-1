@@ -30,6 +30,7 @@ interface SpeechErrorEvent {
 
 const VoiceRecognition: VoiceRecognitionModuleType | null =
   NativeModules.VoiceRecognition || null;
+let activeRecognizerToken: symbol | null = null;
 
 const pickFirstText = (value: unknown): string => {
   if (!value || !Array.isArray(value)) {
@@ -78,32 +79,75 @@ export const createSpeechRecognizer = (
   const emitter = supportsNativeEmitterContract
     ? new NativeEventEmitter(VoiceRecognition as never)
     : new NativeEventEmitter();
+  const recognizerToken = Symbol('speech_recognizer');
+  const isActiveRecognizer = () => activeRecognizerToken === recognizerToken;
   const subscriptions = [
-    emitter.addListener('VoiceRecognition:onStart', () => callbacks.onStart?.()),
-    emitter.addListener('VoiceRecognition:onEnd', () => callbacks.onEnd?.()),
+    emitter.addListener('VoiceRecognition:onStart', () => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
+      callbacks.onStart?.();
+    }),
+    emitter.addListener('VoiceRecognition:onEnd', () => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
+      callbacks.onEnd?.();
+    }),
     emitter.addListener('VoiceRecognition:onPartialResults', (event: SpeechValueEvent) => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
       const text = pickFirstText(event?.value);
       if (text) {
         callbacks.onPartial?.(text);
       }
     }),
     emitter.addListener('VoiceRecognition:onResults', (event: SpeechValueEvent) => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
       const text = pickFirstText(event?.value);
       if (text) {
         callbacks.onFinal?.(text);
       }
     }),
     emitter.addListener('VoiceRecognition:onError', (event: SpeechErrorEvent) => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
       callbacks.onError?.(event?.message || '语音识别失败，请重试');
     }),
   ];
 
   return {
-    start: (locale: string) => VoiceRecognition.start(locale),
-    stop: () => VoiceRecognition.stop(),
+    start: async (locale: string) => {
+      activeRecognizerToken = recognizerToken;
+      try {
+        await VoiceRecognition.start(locale);
+      } catch (error) {
+        if (isActiveRecognizer()) {
+          activeRecognizerToken = null;
+        }
+        throw error;
+      }
+    },
+    stop: async () => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
+      await VoiceRecognition.stop();
+      activeRecognizerToken = null;
+    },
     destroy: async () => {
       subscriptions.forEach(subscription => subscription.remove());
-      await VoiceRecognition.destroy();
+      const shouldDestroyNative = isActiveRecognizer() || activeRecognizerToken === null;
+      if (isActiveRecognizer()) {
+        activeRecognizerToken = null;
+      }
+      if (shouldDestroyNative) {
+        await VoiceRecognition.destroy();
+      }
     },
   };
 };

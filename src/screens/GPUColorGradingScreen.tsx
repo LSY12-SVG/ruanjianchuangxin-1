@@ -98,6 +98,8 @@ const fallbackReasonLabel = (reason?: string): string => {
       return '主机不可达';
     case 'http_5xx':
       return '服务 5xx';
+    case 'model_unavailable':
+      return '模型不可用';
     case 'bad_payload':
       return '返回格式异常';
     case 'dns_error':
@@ -136,6 +138,8 @@ const recoveryActionLabel = (action?: string): string => {
       return '检查模型密钥与权限';
     case 'wait_or_switch_backup_model':
       return '切换备选模型并重试';
+    case 'check_model_catalog_or_id':
+      return '检查模型 ID 与可用性';
     case 'check_backend_payload_schema':
       return '检查后端返回结构';
     default:
@@ -223,7 +227,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
 }) => {
   const [params, setParams] = useState<ColorGradingParams>(defaultColorGradingParams);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('preset_original');
-  const [showComparison, setShowComparison] = useState(true);
+  const [showComparison, setShowComparison] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [shaderAvailable, setShaderAvailable] = useState(true);
   const [showVoiceDebug, setShowVoiceDebug] = useState(false);
@@ -341,9 +345,49 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
       setSegmentationSummary(`AI 蒙版已就绪: ${summarizeMaskLayers(nextMasks)}`);
     },
   });
+  const resetAutoGradeState = autoGrade.resetAutoGradeState;
 
   const lastVisualKeyRef = useRef('');
+  const lastImageSessionKeyRef = useRef('');
+  const skipAutoGradeForImageKeyRef = useRef('');
   const lastExternalApplyIdRef = useRef<number>(0);
+  const currentImageSessionKey = useMemo(() => {
+    if (!selectedImage?.success) {
+      return '';
+    }
+    return `${selectedImage.uri || ''}_${selectedImage.width || 0}_${selectedImage.height || 0}`;
+  }, [selectedImage?.height, selectedImage?.success, selectedImage?.uri, selectedImage?.width]);
+
+  useEffect(() => {
+    if (!selectedImage?.success) {
+      lastImageSessionKeyRef.current = '';
+      skipAutoGradeForImageKeyRef.current = '';
+      return;
+    }
+    if (lastImageSessionKeyRef.current === currentImageSessionKey) {
+      return;
+    }
+
+    const hasPreviousImage = lastImageSessionKeyRef.current.length > 0;
+    lastImageSessionKeyRef.current = currentImageSessionKey;
+    lastVisualKeyRef.current = '';
+    lastAutoSegmentImageRef.current = '';
+
+    if (!hasPreviousImage) {
+      return;
+    }
+
+    skipAutoGradeForImageKeyRef.current = currentImageSessionKey;
+    setParams(defaultColorGradingParams);
+    setSelectedPresetId('preset_original');
+    setLocalMasks([]);
+    setActiveLut(null);
+    setSegmentationSummary('未启用 AI 局部调色');
+    setSegmentationStatusMeta('');
+    setLastExportSummary('');
+    resetAutoGradeState();
+  }, [currentImageSessionKey, resetAutoGradeState, selectedImage?.success]);
+
   useEffect(() => {
     if (selectedImage?.success) {
       return;
@@ -355,8 +399,8 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     setSegmentationStatusMeta('');
     setLastExportSummary('');
     lastAutoSegmentImageRef.current = '';
-    autoGrade.resetAutoGradeState();
-  }, [selectedImage?.success]);
+    resetAutoGradeState();
+  }, [resetAutoGradeState, selectedImage?.success]);
 
   useEffect(() => {
     if (!workletsRuntimeUnavailable) {
@@ -417,15 +461,18 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   }, [selectedImage]);
 
   useEffect(() => {
-    if (!selectedImage?.success || !skImage || !selectedImage.base64) {
+    if (!selectedImage?.success || !skImage || !selectedImage.base64 || !currentImageSessionKey) {
       lastVisualKeyRef.current = '';
       return;
     }
-    const key = `${selectedImage.uri || ''}_${selectedImage.width || 0}_${selectedImage.height || 0}`;
-    if (lastVisualKeyRef.current === key) {
+    if (skipAutoGradeForImageKeyRef.current === currentImageSessionKey) {
+      skipAutoGradeForImageKeyRef.current = '';
       return;
     }
-    lastVisualKeyRef.current = key;
+    if (lastVisualKeyRef.current === currentImageSessionKey) {
+      return;
+    }
+    lastVisualKeyRef.current = currentImageSessionKey;
     const imageContext = buildVoiceImageContext(selectedImage, skImage);
     if (!imageContext) {
       return;
@@ -445,11 +492,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     autoGrade,
     localMasks,
     params,
+    currentImageSessionKey,
     selectedImage?.base64,
-    selectedImage?.height,
     selectedImage?.success,
-    selectedImage?.uri,
-    selectedImage?.width,
     skImage,
   ]);
 

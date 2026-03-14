@@ -45,10 +45,20 @@ const inferFallbackReasonFromProviderReason = reason => {
     return 'unknown';
   }
   if (
+    normalized.includes('model_unavailable') ||
+    normalized.includes('model unavailable') ||
+    normalized.includes('model does not exist') ||
+    normalized.includes('model not found') ||
+    normalized.includes('does not exist')
+  ) {
+    return 'model_unavailable';
+  }
+  if (
     normalized.includes('timeout') ||
     normalized.includes('budget_exceeded') ||
     normalized.includes('time out') ||
-    normalized.includes('429')
+    normalized.includes('429') ||
+    normalized.includes('rate limit')
   ) {
     return 'timeout';
   }
@@ -87,8 +97,13 @@ const inferFallbackReasonFromProviderReason = reason => {
   if (
     normalized.includes('schema invalid') ||
     normalized.includes('invalid json') ||
+    normalized.includes('response missing message content') ||
+    normalized.includes('provider response missing message content') ||
     normalized.includes('bad payload') ||
     normalized.includes('invalid image') ||
+    normalized.includes('http_400') ||
+    normalized.includes('http_422') ||
+    normalized.includes('invalid_request') ||
     normalized.includes('image_url provided is not a valid image') ||
     normalized.includes('verify image file failed') ||
     normalized.includes('broken png') ||
@@ -100,17 +115,79 @@ const inferFallbackReasonFromProviderReason = reason => {
   return 'unknown';
 };
 
-const appendModelMetadata = (normalized, modelName, route, latencyMs) => ({
-  ...normalized,
-  reasoning_summary: `${normalized.reasoning_summary} | model_used:${modelName} | route:${route}`,
-  fallback_used: Boolean(
-    normalized.fallback_used ||
-      route === 'fallback_model' ||
-      String(route || '').startsWith('fallback_model'),
-  ),
-  model_used: modelName,
-  latency_ms: latencyMs,
-});
+const fetchProviderModelIds = async (options = {}) => {
+  const baseUrl = String(process.env.MODEL_BASE_URL || '').trim();
+  const apiKey = String(process.env.MODEL_API_KEY || '').trim();
+  const timeoutMs = Number(options.timeoutMs || process.env.MODEL_LIST_TIMEOUT_MS || 6000);
+
+  if (!baseUrl || !apiKey) {
+    return {
+      ok: false,
+      modelIds: [],
+      error: 'missing_model_provider_config',
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/$/, '')}/models`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        modelIds: [],
+        error: `http_${response.status}`,
+      };
+    }
+    const payload = await response.json().catch(() => ({}));
+    const modelIds = Array.isArray(payload?.data)
+      ? payload.data
+          .map(item => (item && typeof item.id === 'string' ? item.id.trim() : ''))
+          .filter(Boolean)
+      : [];
+    return {
+      ok: true,
+      modelIds,
+      error: '',
+    };
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      return {
+        ok: false,
+        modelIds: [],
+        error: 'timeout',
+      };
+    }
+    return {
+      ok: false,
+      modelIds: [],
+      error: String(error?.message || 'unknown'),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const appendModelMetadata = (normalized, modelName, route, latencyMs) => {
+  const usesBackupModel =
+    route === 'fallback_model' || String(route || '').startsWith('fallback_model');
+  return {
+    ...normalized,
+    reasoning_summary: `${normalized.reasoning_summary} | model_used:${modelName} | route:${route}`,
+    // "fallback_used" means degraded output (parser/local fallback), not "used backup cloud model".
+    fallback_used: Boolean(normalized.fallback_used || normalized.source === 'fallback'),
+    model_used: modelName,
+    model_route: route,
+    model_fallback_used: usesBackupModel,
+    latency_ms: latencyMs,
+  };
+};
 
 const postProcessInterpretation = (normalized, request) => {
   const mode =
@@ -194,7 +271,13 @@ const invokeModelAndNormalize = async ({
   const normalized = normalizeInterpretResponse(raw);
 
   if (!normalized) {
-    const error = new Error('provider schema invalid');
+    const keyList =
+      raw && typeof raw === 'object'
+        ? Object.keys(raw).slice(0, 12).join(',')
+        : '';
+    const error = new Error(
+      `provider schema invalid${keyList ? ` keys:${keyList}` : ''}`,
+    );
     error.code = 'SCHEMA_INVALID';
     throw error;
   }
@@ -344,4 +427,5 @@ module.exports = {
   interpretWithProvider,
   isRetryableModelError,
   inferFallbackReasonFromProviderReason,
+  fetchProviderModelIds,
 };

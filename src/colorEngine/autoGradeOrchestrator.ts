@@ -92,6 +92,22 @@ const mergeMaskPlans = (
   return [...merged, ...brushMasks];
 };
 
+const hasPreviewDelta = (
+  prevParams: ColorGradingParams,
+  nextParams: ColorGradingParams,
+  prevMasks: LocalMaskLayer[],
+  nextMasks: LocalMaskLayer[],
+): boolean => {
+  try {
+    return (
+      JSON.stringify(prevParams) !== JSON.stringify(nextParams) ||
+      JSON.stringify(prevMasks) !== JSON.stringify(nextMasks)
+    );
+  } catch {
+    return true;
+  }
+};
+
 const toInterpretLike = (result: AutoGradeResult): InterpretResponse => ({
   actions: result.globalActions as never,
   confidence: result.confidence,
@@ -236,6 +252,11 @@ export const useAutoGradeOrchestrator = ({
           payloadBytes: fastResult.payloadBytes || 0,
           encodeQuality: fastResult.encodeQuality || 0,
           mimeType: fastResult.mimeType || '',
+          modelUsed: fastResult.modelUsed || '',
+          modelRoute: fastResult.modelRoute || '',
+          globalActionCount: fastResult.globalActions.length,
+          localMaskCount: fastResult.localMaskPlan.length,
+          appliedToPreview: true,
         }),
       );
 
@@ -292,13 +313,13 @@ export const useAutoGradeOrchestrator = ({
           const hasRefineOps =
             refineResult.globalActions.length > 0 || refineResult.localMaskPlan.length > 0;
 
-          if (refineResult.fallbackUsed || !hasRefineOps) {
+          if (!hasRefineOps) {
             setReport({
               phase: 'refine',
               sceneProfile: fastResult.sceneProfile,
               qualityRiskFlags: fastResult.qualityRiskFlags,
               explanation: refineResult.explanation,
-              fallbackUsed: false,
+              fallbackUsed: refineResult.fallbackUsed,
               refineApplied: false,
               refineFallbackReason: refineResult.fallbackReason,
               cloudState: refineResult.cloudState,
@@ -311,12 +332,12 @@ export const useAutoGradeOrchestrator = ({
               payloadBytes: refineResult.payloadBytes,
               encodeQuality: refineResult.encodeQuality,
             });
-            setStatus('completed');
+            setStatus(refineResult.fallbackUsed ? 'degraded' : 'completed');
             console.log(
               '[auto-grade]',
               JSON.stringify({
                 phase: 'refine',
-                autoGradeStatus: 'completed',
+                autoGradeStatus: refineResult.fallbackUsed ? 'degraded' : 'completed',
                 cloudState: refineResult.cloudState,
                 fallbackReason: refineResult.fallbackReason || '',
                 sceneProfile: fastResult.sceneProfile,
@@ -330,6 +351,11 @@ export const useAutoGradeOrchestrator = ({
                 payloadBytes: refineResult.payloadBytes || 0,
                 encodeQuality: refineResult.encodeQuality || 0,
                 mimeType: refineResult.mimeType || '',
+                modelUsed: refineResult.modelUsed || '',
+                modelRoute: refineResult.modelRoute || '',
+                globalActionCount: refineResult.globalActions.length,
+                localMaskCount: refineResult.localMaskPlan.length,
+                appliedToPreview: false,
               }),
             );
             return;
@@ -339,6 +365,7 @@ export const useAutoGradeOrchestrator = ({
           const refinedMasks = applyLocalSafetyClamp(
             mergeMaskPlans(fastMasks, refineResult.localMaskPlan),
           );
+          const previewChanged = hasPreviewDelta(fastParams, refinedParams, fastMasks, refinedMasks);
           onApply(refinedParams, refinedMasks);
           setReport({
             phase: 'refine',
@@ -346,9 +373,12 @@ export const useAutoGradeOrchestrator = ({
             qualityRiskFlags: Array.from(
               new Set([...fastResult.qualityRiskFlags, ...refineResult.qualityRiskFlags]),
             ),
-            explanation: refineResult.explanation,
-            fallbackUsed: false,
-            refineApplied: true,
+            explanation: previewChanged
+              ? refineResult.explanation
+              : `${refineResult.explanation}（refine 结果与当前参数一致）`,
+            fallbackUsed: refineResult.fallbackUsed,
+            refineApplied: previewChanged,
+            refineFallbackReason: refineResult.fallbackUsed ? refineResult.fallbackReason : undefined,
             cloudState: refineResult.cloudState,
             endpoint: refineResult.endpoint,
             lockedEndpoint: refineResult.lockedEndpoint,
@@ -359,17 +389,17 @@ export const useAutoGradeOrchestrator = ({
             payloadBytes: refineResult.payloadBytes,
             encodeQuality: refineResult.encodeQuality,
           });
-          setStatus('completed');
+          setStatus(refineResult.fallbackUsed ? 'degraded' : 'completed');
           console.log(
             '[auto-grade]',
             JSON.stringify({
               phase: 'refine',
-              autoGradeStatus: 'completed',
+              autoGradeStatus: refineResult.fallbackUsed ? 'degraded' : 'completed',
               cloudState: refineResult.cloudState,
-              fallbackReason: '',
+              fallbackReason: refineResult.fallbackReason || '',
               sceneProfile: refineResult.sceneProfile || fastResult.sceneProfile,
               latencyMs: refineResult.latencyMs,
-              fallbackUsed: false,
+              fallbackUsed: refineResult.fallbackUsed,
               endpoint: refineResult.endpoint || '',
               lockedEndpoint: refineResult.lockedEndpoint || '',
               nextRecoveryAction: refineResult.nextRecoveryAction,
@@ -378,6 +408,11 @@ export const useAutoGradeOrchestrator = ({
               payloadBytes: refineResult.payloadBytes || 0,
               encodeQuality: refineResult.encodeQuality || 0,
               mimeType: refineResult.mimeType || '',
+              modelUsed: refineResult.modelUsed || '',
+              modelRoute: refineResult.modelRoute || '',
+              globalActionCount: refineResult.globalActions.length,
+              localMaskCount: refineResult.localMaskPlan.length,
+              appliedToPreview: previewChanged,
             }),
           );
         } catch (error) {

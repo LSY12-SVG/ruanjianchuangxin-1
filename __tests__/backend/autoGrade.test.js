@@ -84,11 +84,11 @@ describe('backend auto grade phases', () => {
     expect(interpretWithProvider).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
-        timeoutMs: 9000,
-        totalBudgetMs: 12000,
+        timeoutMs: 50000,
+        totalBudgetMs: 50000,
       }),
     );
-    expect(result.phaseTimeoutMs).toBe(9000);
-    expect(result.phaseBudgetMs).toBe(12000);
+    expect(result.phaseTimeoutMs).toBe(50000);
+    expect(result.phaseBudgetMs).toBe(50000);
   });
 });

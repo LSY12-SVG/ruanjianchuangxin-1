@@ -22,8 +22,8 @@ export const AUTO_GRADE_PHASE_RUNTIME: Record<'fast' | 'refine', AutoGradePhaseR
     retries: 0,
   },
   refine: {
-    timeoutMs: 9000,
-    totalBudgetMs: 12000,
+    timeoutMs: 50000,
+    totalBudgetMs: 50000,
     retries: 0,
   },
 };
@@ -168,6 +168,27 @@ const getRequestPayloadDiagnostics = (request: AutoGradeRequest) => ({
   maxEdgeApplied: toNumberOrUndefined(request.image.maxEdgeApplied),
 });
 
+const resolveRecoveryActionForFallbackReason = (reason?: CloudFallbackReason): string => {
+  switch (reason) {
+    case 'timeout':
+      return 'retry_with_backoff';
+    case 'host_unreachable':
+      return 'verify_adb_reverse_or_lan_host';
+    case 'dns_error':
+      return 'check_dns_or_hostname';
+    case 'auth_error':
+      return 'check_model_api_credentials';
+    case 'http_5xx':
+      return 'wait_or_switch_backup_model';
+    case 'bad_payload':
+      return 'check_backend_payload_schema';
+    case 'model_unavailable':
+      return 'check_model_catalog_or_id';
+    default:
+      return 'retry_in_background';
+  }
+};
+
 export const requestAutoGrade = async (
   request: AutoGradeRequest,
   endpoint?: string,
@@ -247,8 +268,20 @@ export const requestAutoGrade = async (
   const payloadFallbackReason =
     (payload.fallbackReason as CloudFallbackReason | undefined) ||
     (payload.fallback_reason as CloudFallbackReason | undefined);
+  const payloadModelUsed =
+    (typeof payload.modelUsed === 'string' && payload.modelUsed) ||
+    (typeof payload.model_used === 'string' && payload.model_used) ||
+    undefined;
+  const payloadModelRoute =
+    (typeof payload.modelRoute === 'string' && payload.modelRoute) ||
+    (typeof payload.model_route === 'string' && payload.model_route) ||
+    undefined;
   const effectiveCloudState =
     payloadFallbackUsed && cloudResult.cloudState === 'healthy' ? 'degraded' : cloudResult.cloudState;
+  const effectiveRecoveryAction =
+    payloadFallbackUsed && payloadFallbackReason
+      ? resolveRecoveryActionForFallbackReason(payloadFallbackReason)
+      : cloudResult.nextRecoveryAction;
   const globalActionsRaw =
     Array.isArray(payload.globalActions) && payload.globalActions.length
       ? payload.globalActions
@@ -331,7 +364,7 @@ export const requestAutoGrade = async (
     latencyMs: cloudResult.latencyMs,
     endpoint: cloudResult.endpoint,
     lockedEndpoint: cloudResult.lockedEndpoint,
-    nextRecoveryAction: cloudResult.nextRecoveryAction,
+    nextRecoveryAction: effectiveRecoveryAction,
     phaseTimeoutMs:
       toNumberOrUndefined(payload.phaseTimeoutMs) ?? phaseRuntime.timeoutMs,
     phaseBudgetMs:
@@ -341,5 +374,7 @@ export const requestAutoGrade = async (
     encodeQuality:
       toNumberOrUndefined(payload.encodeQuality) ?? payloadDiagnostics.encodeQuality,
     mimeType: String(payload.mimeType || payloadDiagnostics.mimeType || ''),
+    modelUsed: payloadModelUsed,
+    modelRoute: payloadModelRoute,
   };
 };

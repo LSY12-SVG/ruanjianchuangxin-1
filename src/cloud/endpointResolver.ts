@@ -227,6 +227,8 @@ const describeRecoveryAction = (
       return 'check_model_api_credentials';
     case 'http_5xx':
       return 'wait_or_switch_backup_model';
+    case 'model_unavailable':
+      return 'check_model_catalog_or_id';
     case 'bad_payload':
       return 'check_backend_payload_schema';
     default:

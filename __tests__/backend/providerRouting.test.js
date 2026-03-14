@@ -68,7 +68,8 @@ describe('backend provider routing', () => {
     expect(providerMock.mock.calls[1][1].model).toBe('fallback-model');
     expect(fallbackParserMock).not.toHaveBeenCalled();
     expect(result.model_used).toBe('fallback-model');
-    expect(result.fallback_used).toBe(true);
+    expect(result.fallback_used).toBe(false);
+    expect(result.model_fallback_used).toBe(true);
     expect(result.reasoning_summary).toContain('route:fallback_model');
   });
 
@@ -215,5 +216,44 @@ describe('backend provider routing', () => {
 
     expect(result.fallback_used).toBe(true);
     expect(result.fallback_reason).toBe('bad_payload');
+  });
+
+  it('classifies missing model as model_unavailable fallback reason', async () => {
+    const providerMock = jest.fn(async () => {
+      const error = new Error('Model does not exist. Please check it carefully.');
+      error.code = 'MODEL_UNAVAILABLE';
+      throw error;
+    });
+
+    jest.doMock('../../backend/src/providers/openaiCompat', () => ({
+      interpretWithOpenAICompat: providerMock,
+    }));
+    jest.doMock('../../backend/src/providers/fallback', () => ({
+      fallbackInterpret: jest.fn(() => ({
+        actions: [
+          {
+            action: 'adjust_param',
+            target: 'brightness',
+            delta: 6,
+          },
+        ],
+        confidence: 0.4,
+        reasoning_summary: 'parser fallback',
+        fallback_used: true,
+        needsConfirmation: true,
+        message: 'fallback',
+        source: 'fallback',
+      })),
+    }));
+
+    const {interpretWithProvider} = require('../../backend/src/providers');
+    const result = await interpretWithProvider({
+      transcript: '快速修图',
+      currentParams: {},
+      locale: 'zh-CN',
+    });
+
+    expect(result.fallback_used).toBe(true);
+    expect(result.fallback_reason).toBe('model_unavailable');
   });
 });

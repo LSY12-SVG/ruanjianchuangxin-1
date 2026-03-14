@@ -126,13 +126,15 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         execute: async action => {
           const args = action.args || {};
           const tab = asTab(args.mainTab ?? args.tab);
+          const hasExplicitHomeRoute =
+            typeof args.homeRoute === 'string' || typeof args.route === 'string';
           setActiveMainTab(tab);
-          if (tab === 'home') {
+          if (tab === 'home' && hasExplicitHomeRoute) {
             setHomeRoute(asHomeRoute(args.homeRoute ?? args.route));
           }
           return {
             ok: true,
-            message: `已跳转到 ${tab}`,
+            message: `已跳转到 ${tab}${tab === 'home' && hasExplicitHomeRoute ? `/${asHomeRoute(args.homeRoute ?? args.route)}` : ''}`,
           };
         },
       }),

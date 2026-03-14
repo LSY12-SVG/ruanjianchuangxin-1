@@ -98,6 +98,8 @@ const describeCloudFallbackReason = (reason?: CloudFallbackReason): string => {
       return '鉴权失败';
     case 'http_5xx':
       return '服务异常';
+    case 'model_unavailable':
+      return '模型不可用';
     case 'bad_payload':
       return '响应格式异常';
     default:
@@ -117,6 +119,8 @@ const describeRecoveryAction = (action?: string): string => {
       return '检查模型 API Key 与权限';
     case 'wait_or_switch_backup_model':
       return '服务繁忙，切换备选模型后重试';
+    case 'check_model_catalog_or_id':
+      return '检查模型 ID 与可用性';
     case 'check_backend_payload_schema':
       return '检查后端返回格式';
     default:
@@ -549,6 +553,11 @@ export const useVoiceColorGrading = ({
     }
     if (queueRef.current.length === 0 && partialTranscriptRef.current.trim()) {
       queueRef.current.push(partialTranscriptRef.current.trim());
+    }
+    if (queueRef.current.length === 0) {
+      setLastError('未识别到有效语音，请重试。');
+      setState('error');
+      return;
     }
     processQueue().catch(() => undefined);
   }, [processQueue]);

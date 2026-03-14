@@ -1,7 +1,6 @@
-import React, {useMemo, useRef, useState} from 'react';
+import React from 'react';
 import {
   Dimensions,
-  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -44,40 +43,26 @@ export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
   lut,
   lutLibrary,
 }) => {
-  const [sliderPosition, setSliderPosition] = useState(50);
-  const dragStartPx = useRef(0);
-
   const screenWidth = Dimensions.get('window').width - 32;
   const maxHeight = Dimensions.get('window').height * 0.46;
 
   const imageAspect = image.width() / image.height();
-  let displayWidth = screenWidth;
-  let displayHeight = screenWidth / imageAspect;
+  const comparePaneWidth = (screenWidth - 1) / 2;
 
-  if (displayHeight > maxHeight) {
-    displayHeight = maxHeight;
-    displayWidth = maxHeight * imageAspect;
+  let singleDisplayWidth = screenWidth;
+  let singleDisplayHeight = screenWidth / imageAspect;
+
+  if (singleDisplayHeight > maxHeight) {
+    singleDisplayHeight = maxHeight;
+    singleDisplayWidth = maxHeight * imageAspect;
   }
 
-  const afterWidthPx = useMemo(
-    () => (displayWidth * sliderPosition) / 100,
-    [displayWidth, sliderPosition],
-  );
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => showComparison,
-      onMoveShouldSetPanResponder: () => showComparison,
-      onPanResponderGrant: () => {
-        dragStartPx.current = afterWidthPx;
-      },
-      onPanResponderMove: (_, gesture) => {
-        const movedPx = dragStartPx.current + gesture.dx;
-        const clamped = Math.max(0, Math.min(displayWidth, movedPx));
-        setSliderPosition((clamped / displayWidth) * 100);
-      },
-    }),
-  ).current;
+  let compareDisplayHeight = comparePaneWidth / imageAspect;
+  if (compareDisplayHeight > maxHeight) {
+    compareDisplayHeight = maxHeight;
+  }
+  const displayWidth = showComparison ? screenWidth : singleDisplayWidth;
+  const displayHeight = showComparison ? compareDisplayHeight : singleDisplayHeight;
 
   return (
     <View style={[styles.container, {width: displayWidth, height: displayHeight}]}>
@@ -95,43 +80,47 @@ export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
           lutLibrary={lutLibrary}
         />
       ) : (
-        <>
-          <Canvas style={styles.canvas}>
-            <SkiaImage
-              image={image}
-              x={0}
-              y={0}
-              width={displayWidth}
-              height={displayHeight}
-              fit="contain"
-            />
-          </Canvas>
+        <View style={styles.compareRow}>
+          <View style={[styles.comparePane, {width: comparePaneWidth, height: displayHeight}]}>
+            <Canvas style={styles.canvas}>
+              <SkiaImage
+                image={image}
+                x={0}
+                y={0}
+                width={comparePaneWidth}
+                height={displayHeight}
+                fit="contain"
+              />
+            </Canvas>
+            <View style={styles.compareTag}>
+              <Text style={styles.compareTagText}>原图</Text>
+            </View>
+          </View>
 
-          <View style={[styles.afterContainer, {width: afterWidthPx}]}> 
+          <View style={styles.compareDivider} />
+
+          <View style={[styles.comparePane, {width: comparePaneWidth, height: displayHeight}]}>
             <GPUColorGradingView
               image={image}
               params={params}
-              displayWidth={displayWidth}
+              displayWidth={comparePaneWidth}
               displayHeight={displayHeight}
               onShaderAvailabilityChange={onShaderAvailabilityChange}
-                engineMode={engineMode}
-                localMasks={localMasks}
-                hsl={hsl}
-                lut={lut}
-                lutLibrary={lutLibrary}
-              />
+              engineMode={engineMode}
+              localMasks={localMasks}
+              hsl={hsl}
+              lut={lut}
+              lutLibrary={lutLibrary}
+            />
+            <View style={styles.compareTag}>
+              <Text style={styles.compareTagText}>调色后</Text>
+            </View>
           </View>
-
-          <View
-            style={[styles.slider, {left: afterWidthPx - 18}]}
-            {...panResponder.panHandlers}>
-            <Text style={styles.sliderText}>||</Text>
-          </View>
-        </>
+        </View>
       )}
 
       <TouchableOpacity style={styles.toggleButton} onPress={onToggleComparison}>
-        <Text style={styles.toggleButtonText}>{showComparison ? '对比预览' : '仅看调色结果'}</Text>
+        <Text style={styles.toggleButtonText}>{showComparison ? '仅看调色结果' : '左右对比'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -145,31 +134,31 @@ const styles = StyleSheet.create({
   canvas: {
     flex: 1,
   },
-  afterContainer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
+  compareRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  comparePane: {
+    height: '100%',
     overflow: 'hidden',
-    borderRightWidth: 2,
-    borderRightColor: '#f0f7ff',
   },
-  slider: {
+  compareDivider: {
+    width: 1,
+    backgroundColor: 'rgba(240,247,255,0.8)',
+  },
+  compareTag: {
     position: 'absolute',
-    top: '50%',
-    marginTop: -18,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(240,247,255,0.95)',
+    top: 10,
+    left: 10,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(10, 20, 38, 0.72)',
   },
-  sliderText: {
-    color: '#0d3a65',
-    fontSize: 12,
+  compareTagText: {
+    color: '#e8f3ff',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 1,
   },
   toggleButton: {
     position: 'absolute',

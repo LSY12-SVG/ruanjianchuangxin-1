@@ -87,10 +87,10 @@ describe('auto grade service', () => {
     expect(requestCloudJson).toHaveBeenCalledWith(
       expect.objectContaining({
         phase: 'refine',
-        timeoutMs: 9000,
+        timeoutMs: 50000,
         retries: 0,
         healthTimeoutMs: 700,
-        totalBudgetMs: 12000,
+        totalBudgetMs: 50000,
       }),
     );
   });
@@ -124,5 +124,6 @@ describe('auto grade service', () => {
     expect(result.fallbackUsed).toBe(true);
     expect(result.fallbackReason).toBe('timeout');
     expect(result.cloudState).toBe('degraded');
+    expect(result.nextRecoveryAction).toBe('retry_with_backoff');
   });
 });

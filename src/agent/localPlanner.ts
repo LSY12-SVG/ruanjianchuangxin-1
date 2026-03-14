@@ -54,6 +54,16 @@ const resolveSnapshotText = (
   return '';
 };
 
+const resolveSnapshotHomeRoute = (
+  snapshot: Record<string, unknown>,
+): 'hub' | 'grading' | 'modeling' | undefined => {
+  const raw = resolveSnapshotText(snapshot, 'currentHomeRoute');
+  if (raw === 'hub' || raw === 'grading' || raw === 'modeling') {
+    return raw;
+  }
+  return undefined;
+};
+
 export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanResponse => {
   const goal = request.intent.goal.trim();
   const lowered = goal.toLowerCase();
@@ -170,10 +180,15 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
   }
 
   if (actions.length === 0) {
+    const currentHomeRoute =
+      request.currentTab === 'home' ? resolveSnapshotHomeRoute(pageSnapshot) : undefined;
     pushAction(request, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: request.currentTab},
+      args:
+        request.currentTab === 'home'
+          ? {tab: request.currentTab, route: currentHomeRoute}
+          : {tab: request.currentTab},
       riskLevel: 'low',
       requiresConfirmation: false,
       idempotent: true,

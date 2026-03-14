@@ -5,9 +5,9 @@ import type {InterpretImagePayload, InterpretImageStats} from './types';
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 const JPEG_FORMAT = 3;
 const CLOUD_MAX_BYTES = 1_800_000;
-const PREVIEW_QUALITY_LADDER = [88, 82, 76] as const;
+const PREVIEW_QUALITY_LADDER = [84, 78, 72] as const;
 const PHASE_FAST_MAX_EDGE = 1280;
-const PHASE_REFINE_MAX_EDGE = 1920;
+const PHASE_REFINE_MAX_EDGE = 1664;
 
 export type CloudPreviewPhase = 'fast' | 'refine';
 
@@ -48,13 +48,13 @@ const resolvePhaseMaxEdge = (
     return Math.min(longEdge, PHASE_FAST_MAX_EDGE);
   }
   if (longEdge >= 6000) {
-    return 1536;
+    return 1280;
   }
   if (longEdge >= 4500) {
-    return 1664;
+    return 1536;
   }
   if (longEdge >= 3200) {
-    return 1792;
+    return 1664;
   }
   return Math.min(longEdge, PHASE_REFINE_MAX_EDGE);
 };

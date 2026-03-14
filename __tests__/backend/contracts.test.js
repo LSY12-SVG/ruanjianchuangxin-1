@@ -69,4 +69,46 @@ describe('backend contracts', () => {
     expect(normalized.analysis_summary).toContain('高光');
     expect(normalized.applied_profile).toBe('landscape');
   });
+
+  it('accepts action items without explicit action field', () => {
+    const normalized = normalizeInterpretResponse({
+      global_actions: [
+        {target: 'exposure', delta: 0.2},
+        {param: 'highlight', change: -10},
+      ],
+      confidence: 0.7,
+      reasoning_summary: 'ok',
+      fallback_used: false,
+      needsConfirmation: false,
+      message: 'ok',
+      source: 'cloud',
+    });
+
+    expect(normalized).not.toBeNull();
+    expect(normalized.intent_actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({action: 'adjust_param', target: 'exposure'}),
+        expect.objectContaining({action: 'adjust_param', target: 'highlights'}),
+      ]),
+    );
+  });
+
+  it('accepts object-style global actions payload', () => {
+    const normalized = normalizeInterpretResponse({
+      globalActions: {
+        exposure: 0.15,
+        contrast: {delta: 8},
+        temp: {value: -4},
+      },
+      confidence: 0.7,
+      reasoning_summary: 'ok',
+      fallback_used: false,
+      needsConfirmation: false,
+      message: 'ok',
+      source: 'cloud',
+    });
+
+    expect(normalized).not.toBeNull();
+    expect(normalized.intent_actions.length).toBeGreaterThanOrEqual(2);
+  });
 });

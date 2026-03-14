@@ -50,18 +50,25 @@ const TARGET_ALIAS = {
   对比: 'contrast',
   对比度: 'contrast',
   highlights: 'highlights',
+  highlight: 'highlights',
   高光: 'highlights',
   亮部: 'highlights',
   shadows: 'shadows',
+  shadow: 'shadows',
   阴影: 'shadows',
   暗部: 'shadows',
   whites: 'whites',
+  white: 'whites',
   白场: 'whites',
   白位: 'whites',
   blacks: 'blacks',
+  black: 'blacks',
   黑场: 'blacks',
   黑位: 'blacks',
   temperature: 'temperature',
+  temp: 'temperature',
+  wb_temp: 'temperature',
+  color_temperature: 'temperature',
   色温: 'temperature',
   tint: 'tint',
   色调: 'tint',
@@ -125,6 +132,26 @@ const STYLE_ALIAS = {
 
 const isObject = value => typeof value === 'object' && value !== null;
 
+const normalizeToken = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-]+/g, '_')
+    .replace(/[^\w\u4e00-\u9fa5]/g, '');
+
+const resolveAlias = (aliasMap, rawValue) => {
+  const raw = String(rawValue || '').trim();
+  if (!raw) {
+    return null;
+  }
+  return (
+    aliasMap[raw] ||
+    aliasMap[raw.toLowerCase()] ||
+    aliasMap[normalizeToken(raw)] ||
+    null
+  );
+};
+
 const toNumberOrNull = value => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -133,27 +160,86 @@ const toNumberOrNull = value => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+const resolveTarget = value => {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return null;
+  }
+  const normalized = normalizeToken(raw);
+  const candidates = [
+    raw,
+    raw.toLowerCase(),
+    normalized,
+    normalized.replace(/(?:_)?(delta|value|amount|adjust|adjustment)$/, ''),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    if (TARGET_ALIAS[candidate]) {
+      return TARGET_ALIAS[candidate];
+    }
+  }
+  return null;
+};
+
 const normalizeAction = value => {
   if (!isObject(value)) {
     return null;
   }
 
-  const rawAction = String(value.action || '').trim().toLowerCase();
-  const action = ACTION_ALIAS[rawAction] || null;
+  const rawAction =
+    value.action ||
+    value.type ||
+    value.op ||
+    value.operation ||
+    value.intent ||
+    '';
+  const rawStyle =
+    typeof value.style === 'string'
+      ? value.style
+      : typeof value.profile === 'string'
+        ? value.profile
+        : typeof value.look === 'string'
+          ? value.look
+          : '';
+  const inferredDelta = toNumberOrNull(
+    value.delta ?? value.amount ?? value.change ?? value.adjustment,
+  );
+  const inferredValue = toNumberOrNull(
+    value.value ?? value.amount ?? value.targetValue ?? value.set,
+  );
+
+  let action = resolveAlias(ACTION_ALIAS, rawAction);
+  if (!action) {
+    if (rawStyle.trim()) {
+      action = 'apply_style';
+    } else if (inferredDelta !== null) {
+      action = 'adjust_param';
+    } else if (inferredValue !== null) {
+      action = 'set_param';
+    }
+  }
   if (!action) {
     return null;
   }
 
-  const rawTarget = String(value.target || '').trim();
-  const target = TARGET_ALIAS[rawTarget] || TARGET_ALIAS[rawTarget.toLowerCase()] || null;
+  const target = resolveTarget(
+    value.target ??
+      value.param ??
+      value.parameter ??
+      value.key ??
+      value.name ??
+      value.channel,
+  );
 
   if (action === 'reset') {
     return {action: 'reset', target: 'style'};
   }
 
   if (action === 'apply_style') {
-    const styleRaw = String(value.style || value.value || value.label || '').trim();
-    const style = STYLE_ALIAS[styleRaw] || STYLE_ALIAS[styleRaw.toLowerCase()] || styleRaw;
+    const styleRaw = String(rawStyle || value.value || value.label || '').trim();
+    const style = resolveAlias(STYLE_ALIAS, styleRaw) || styleRaw;
     if (!style) {
       return null;
     }
@@ -170,7 +256,9 @@ const normalizeAction = value => {
   }
 
   if (action === 'set_param') {
-    const valueNum = toNumberOrNull(value.value ?? value.amount ?? value.delta);
+    const valueNum = toNumberOrNull(
+      value.value ?? value.amount ?? value.targetValue ?? value.set ?? value.delta,
+    );
     if (valueNum === null) {
       return null;
     }
@@ -181,13 +269,16 @@ const normalizeAction = value => {
     };
   }
 
-  const rawDelta = toNumberOrNull(value.delta ?? value.amount ?? value.value);
+  const rawDelta = toNumberOrNull(
+    value.delta ?? value.amount ?? value.change ?? value.adjustment ?? value.value,
+  );
   if (rawDelta === null) {
     return null;
   }
 
-  const isDecrease = rawAction === 'decrease';
-  const isIncrease = rawAction === 'increase';
+  const normalizedAction = normalizeToken(rawAction);
+  const isDecrease = normalizedAction === 'decrease';
+  const isIncrease = normalizedAction === 'increase';
   const delta = isDecrease ? -Math.abs(rawDelta) : isIncrease ? Math.abs(rawDelta) : rawDelta;
 
   return {
@@ -276,11 +367,71 @@ const normalizeInterpretResponse = payload => {
     return null;
   }
 
-  const actionsRaw = Array.isArray(payload.actions)
-    ? payload.actions
-    : Array.isArray(payload.intent_actions)
-      ? payload.intent_actions
-      : [];
+  const mapObjectActions = value => {
+    if (!isObject(value)) {
+      return [];
+    }
+    return Object.entries(value)
+      .map(([target, item]) => {
+        if (item === null || item === undefined) {
+          return null;
+        }
+        if (isObject(item)) {
+          return {
+            ...item,
+            target: item.target || item.param || target,
+          };
+        }
+        const numeric = toNumberOrNull(item);
+        if (numeric === null) {
+          return null;
+        }
+        return {
+          action: 'set_param',
+          target,
+          value: numeric,
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const listCandidates = [
+    payload.actions,
+    payload.intent_actions,
+    payload.intentActions,
+    payload.global_actions,
+    payload.globalActions,
+    payload.operations,
+    payload.ops,
+    payload.adjustments,
+  ];
+  const objectCandidates = [
+    payload.global_actions,
+    payload.globalActions,
+    payload.global,
+    payload.globalAdjustments,
+    payload.global_adjustments,
+    payload.params,
+    payload.paramValues,
+    payload.param_values,
+  ];
+
+  let actionsRaw = [];
+  for (const candidate of listCandidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      actionsRaw = candidate;
+      break;
+    }
+  }
+  if (actionsRaw.length === 0) {
+    for (const candidate of objectCandidates) {
+      const mapped = mapObjectActions(candidate);
+      if (mapped.length > 0) {
+        actionsRaw = mapped;
+        break;
+      }
+    }
+  }
 
   const actions = Array.isArray(actionsRaw)
     ? actionsRaw.map(normalizeAction).filter(item => Boolean(item))

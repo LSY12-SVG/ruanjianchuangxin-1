@@ -42,10 +42,10 @@ describe('voice image context cloud payloads', () => {
     const context = buildVoiceImageContext(
       buildSelectedImage('image/x-adobe-dng'),
       buildFakeSkImage(quality => {
-        if (quality === 88) {
+        if (quality === 84) {
           return 'a'.repeat(2_600_000);
         }
-        if (quality === 82) {
+        if (quality === 78) {
           return 'a'.repeat(1_600_000);
         }
         return 'a'.repeat(1_200_000);
@@ -53,7 +53,7 @@ describe('voice image context cloud payloads', () => {
     );
 
     expect(context).not.toBeNull();
-    expect(context?.cloudPayloads.refine.encodeQuality).toBe(82);
+    expect(context?.cloudPayloads.refine.encodeQuality).toBe(78);
     expect((context?.cloudPayloads.refine.payloadBytes || 0) <= 1_800_000).toBe(true);
     expect(context?.cloudPayloads.refine.mimeType).toBe('image/jpeg');
   });

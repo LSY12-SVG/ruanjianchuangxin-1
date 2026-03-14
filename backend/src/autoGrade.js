@@ -10,8 +10,8 @@ const AUTO_GRADE_PHASE_DEFAULTS = {
     totalBudgetMs: 5500,
   },
   refine: {
-    timeoutMs: 9000,
-    totalBudgetMs: 12000,
+    timeoutMs: 50000,
+    totalBudgetMs: 50000,
   },
 };
 
@@ -259,6 +259,9 @@ const buildFastHeuristicResult = request => {
 
 const dedupe = list => list.filter((item, index, arr) => item && arr.indexOf(item) === index);
 
+const getConfiguredRefineModel = () =>
+  process.env.MODEL_REFINE_NAME || process.env.MODEL_PRIMARY_NAME || process.env.MODEL_NAME;
+
 const getFastModelChain = () =>
   dedupe([
     process.env.MODEL_FAST_NAME,
@@ -268,12 +271,12 @@ const getFastModelChain = () =>
   ]);
 
 const getRefineModelChain = () =>
-  dedupe([
-    process.env.MODEL_PRIMARY_NAME,
-    process.env.MODEL_NAME,
-    process.env.MODEL_FALLBACK_NAME,
-    process.env.MODEL_FAST_NAME,
-  ]);
+  dedupe([getConfiguredRefineModel()]);
+
+const getAutoGradeModelConfig = () => ({
+  fastModelChain: getFastModelChain(),
+  refineModelChain: getRefineModelChain(),
+});
 
 const runAutoGradeFast = async request => {
   const startedAt = Date.now();
@@ -336,6 +339,8 @@ const runAutoGradeFast = async request => {
   const fallbackReason = fallbackUsed
     ? fastPass.fallback_reason || fastPass.fallbackReason || 'unknown'
     : undefined;
+  const modelUsed = typeof fastPass.model_used === 'string' ? fastPass.model_used : undefined;
+  const modelRoute = typeof fastPass.model_route === 'string' ? fastPass.model_route : undefined;
 
   if (!globalActions.length && !localMaskPlan.length) {
     return withRuntimeDiagnostics(
@@ -360,6 +365,8 @@ const runAutoGradeFast = async request => {
       explanation,
       fallbackUsed,
       fallbackReason,
+      modelUsed,
+      modelRoute,
       latencyMs: Date.now() - startedAt,
     },
     request,
@@ -402,6 +409,9 @@ const runAutoGradeRefine = async request => {
   const fallbackReason = fallbackUsed
     ? refinePass.fallback_reason || refinePass.fallbackReason || 'unknown'
     : undefined;
+  const modelUsed = typeof refinePass.model_used === 'string' ? refinePass.model_used : undefined;
+  const modelRoute =
+    typeof refinePass.model_route === 'string' ? refinePass.model_route : undefined;
 
   if (!globalActions.length && !localMaskPlan.length) {
     return withRuntimeDiagnostics(
@@ -422,6 +432,8 @@ const runAutoGradeRefine = async request => {
       explanation,
       fallbackUsed,
       fallbackReason,
+      modelUsed,
+      modelRoute,
       latencyMs: Date.now() - startedAt,
     },
     request,
@@ -442,4 +454,5 @@ module.exports = {
   runAutoGrade,
   conservativeFallbackResult,
   getAutoGradePhaseRuntimeConfig,
+  getAutoGradeModelConfig,
 };

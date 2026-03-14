@@ -23,6 +23,7 @@ export type CloudFallbackReason =
   | 'timeout'
   | 'host_unreachable'
   | 'http_5xx'
+  | 'model_unavailable'
   | 'bad_payload'
   | 'dns_error'
   | 'auth_error'
@@ -348,6 +349,8 @@ export interface AutoGradeResult {
   payloadBytes?: number;
   encodeQuality?: number;
   mimeType?: string;
+  modelUsed?: string;
+  modelRoute?: string;
 }
 
 export interface EngineSelectionResult {
