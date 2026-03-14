@@ -6,6 +6,7 @@ import {createSpeechRecognizer, requestRecordAudioPermission} from './speechReco
 import {matchStyleFromTranscript} from './styleMapper';
 import type {InterpretResponse, VoicePipelineState, VoiceStyleTag} from './types';
 import type {VoiceImageContext} from './imageContext';
+import type {CloudFallbackReason, CloudServiceState} from '../types/colorEngine';
 
 interface UseVoiceColorGradingOptions {
   currentParams: ColorGradingParams;
@@ -41,6 +42,12 @@ interface UseVoiceColorGradingResult {
   visualSummary: string;
   visualProfile: string;
   visualApplySummary: string;
+  cloudState: CloudServiceState;
+  fallbackReason?: CloudFallbackReason;
+  cloudEndpoint?: string;
+  cloudLatencyMs: number;
+  cloudRetrying: boolean;
+  nextRecoveryAction: string;
   requestInitialVisualSuggestion: () => Promise<void>;
   startPressToTalk: () => Promise<void>;
   stopPressToTalk: () => Promise<void>;
@@ -79,7 +86,49 @@ const isRecoverableRecognizerError = (message: string): boolean => {
   );
 };
 
-const buildStyleFallback = (transcript: string): InterpretResponse | null => {
+const describeCloudFallbackReason = (reason?: CloudFallbackReason): string => {
+  switch (reason) {
+    case 'timeout':
+      return '请求超时';
+    case 'host_unreachable':
+      return '主机不可达';
+    case 'dns_error':
+      return 'DNS 解析失败';
+    case 'auth_error':
+      return '鉴权失败';
+    case 'http_5xx':
+      return '服务异常';
+    case 'bad_payload':
+      return '响应格式异常';
+    default:
+      return '未知异常';
+  }
+};
+
+const describeRecoveryAction = (action?: string): string => {
+  switch (action) {
+    case 'retry_with_backoff':
+      return '正在指数退避重试';
+    case 'verify_adb_reverse_or_lan_host':
+      return '检查 adb reverse 或局域网地址';
+    case 'check_dns_or_hostname':
+      return '检查主机名与 DNS 配置';
+    case 'check_model_api_credentials':
+      return '检查模型 API Key 与权限';
+    case 'wait_or_switch_backup_model':
+      return '服务繁忙，切换备选模型后重试';
+    case 'check_backend_payload_schema':
+      return '检查后端返回格式';
+    default:
+      return '后台探活中，恢复后自动回切云端';
+  }
+};
+
+const buildStyleFallback = (
+  transcript: string,
+  fallbackReason?: CloudFallbackReason,
+  cloudState: CloudServiceState = 'offline',
+): InterpretResponse | null => {
   const matchedStyle = matchStyleFromTranscript(transcript);
   if (!matchedStyle) {
     return null;
@@ -108,6 +157,8 @@ const buildStyleFallback = (transcript: string): InterpretResponse | null => {
     analysisSummary: '云端暂不可用，改用风格模板增量修正',
     recommendedIntensity: 'normal',
     qualityRiskFlags: [],
+    fallbackReason,
+    cloudState,
   };
 };
 
@@ -196,6 +247,12 @@ export const useVoiceColorGrading = ({
   const [visualSummary, setVisualSummary] = useState('');
   const [visualProfile, setVisualProfile] = useState('');
   const [visualApplySummary, setVisualApplySummary] = useState('');
+  const [cloudState, setCloudState] = useState<CloudServiceState>('healthy');
+  const [fallbackReason, setFallbackReason] = useState<CloudFallbackReason | undefined>(undefined);
+  const [cloudEndpointState, setCloudEndpointState] = useState<string | undefined>(undefined);
+  const [cloudLatencyMs, setCloudLatencyMs] = useState(0);
+  const [cloudRetrying, setCloudRetrying] = useState(false);
+  const [nextRecoveryAction, setNextRecoveryAction] = useState('cloud_available');
 
   const paramsRef = useRef(currentParams);
   paramsRef.current = currentParams;
@@ -248,6 +305,8 @@ export const useVoiceColorGrading = ({
           action_count: interpretation.actions.length,
           action_magnitude: estimateActionMagnitude(interpretation),
           can_undo_session: Boolean(sessionRef.current?.history.length),
+          cloud_state: interpretation.cloudState || 'healthy',
+          fallback_reason: interpretation.fallbackReason || '',
         }),
       );
     },
@@ -272,10 +331,37 @@ export const useVoiceColorGrading = ({
         },
         cloudEndpoint,
       );
-      if (cloud) {
-        return cloud;
+      if (cloud.response) {
+        setCloudState(cloud.cloudState);
+        setFallbackReason(undefined);
+        setCloudEndpointState(cloud.endpoint);
+        setCloudLatencyMs(cloud.latencyMs);
+        setCloudRetrying(cloud.retrying);
+        setNextRecoveryAction(cloud.nextRecoveryAction);
+        return cloud.response;
       }
-      return buildStyleFallback(text);
+      setCloudState(cloud.cloudState);
+      setFallbackReason(cloud.fallbackReason);
+      setCloudEndpointState(cloud.endpoint);
+      setCloudLatencyMs(cloud.latencyMs);
+      setCloudRetrying(cloud.retrying);
+      setNextRecoveryAction(cloud.nextRecoveryAction);
+      const fallback = buildStyleFallback(text, cloud.fallbackReason, cloud.cloudState);
+      setLastError(
+        `语音云端暂不可用（${describeCloudFallbackReason(cloud.fallbackReason)}），已降级本地模板；${describeRecoveryAction(cloud.nextRecoveryAction)}。`,
+      );
+      console.warn(
+        '[voice-cloud] voice_cloud_fallback_used',
+        JSON.stringify({
+          cloudState: cloud.cloudState,
+          fallbackReason: cloud.fallbackReason || 'unknown',
+          endpoint: cloud.endpoint || '',
+          latencyMs: cloud.latencyMs,
+          retrying: cloud.retrying,
+          nextRecoveryAction: cloud.nextRecoveryAction,
+        }),
+      );
+      return fallback;
     },
     [cloudEndpoint, getImageContext, locale],
   );
@@ -372,19 +458,32 @@ export const useVoiceColorGrading = ({
     setLastError('');
 
     try {
+      const cloud = await interpretWithCloud(
+        {
+          mode: 'initial_visual_suggest',
+          transcript: '',
+          currentParams: paramsRef.current,
+          locale,
+          image: imageContext.image,
+          imageStats: imageContext.imageStats,
+          sceneHints: ['initial_visual_pass'],
+        },
+        cloudEndpoint,
+      );
+
       const interpretation =
-        (await interpretWithCloud(
-          {
-            mode: 'initial_visual_suggest',
-            transcript: '',
-            currentParams: paramsRef.current,
-            locale,
-            image: imageContext.image,
-            imageStats: imageContext.imageStats,
-            sceneHints: ['initial_visual_pass'],
-          },
-          cloudEndpoint,
-        )) || buildStyleFallback('清新明亮');
+        cloud.response || buildStyleFallback('清新明亮', cloud.fallbackReason, cloud.cloudState);
+      setCloudState(cloud.cloudState);
+      setFallbackReason(cloud.fallbackReason);
+      setCloudEndpointState(cloud.endpoint);
+      setCloudLatencyMs(cloud.latencyMs);
+      setCloudRetrying(cloud.retrying);
+      setNextRecoveryAction(cloud.nextRecoveryAction);
+      if (!cloud.response) {
+        setLastError(
+          `视觉云端暂不可用（${describeCloudFallbackReason(cloud.fallbackReason)}），已降级本地模板；${describeRecoveryAction(cloud.nextRecoveryAction)}。`,
+        );
+      }
 
       if (!interpretation || interpretation.actions.length === 0) {
         setVisualState('visual_error');
@@ -538,6 +637,7 @@ export const useVoiceColorGrading = ({
   }, [onApplyParams]);
 
   useEffect(() => {
+    const recognizer = recognizerRef.current;
     return () => {
       if (restartTimerRef.current) {
         clearTimeout(restartTimerRef.current);
@@ -545,7 +645,7 @@ export const useVoiceColorGrading = ({
       if (undoTimerRef.current) {
         clearTimeout(undoTimerRef.current);
       }
-      recognizerRef.current.destroy().catch(() => undefined);
+      recognizer.destroy().catch(() => undefined);
     };
   }, []);
 
@@ -562,6 +662,12 @@ export const useVoiceColorGrading = ({
     visualSummary,
     visualProfile,
     visualApplySummary,
+    cloudState,
+    fallbackReason,
+    cloudEndpoint: cloudEndpointState,
+    cloudLatencyMs,
+    cloudRetrying,
+    nextRecoveryAction,
     requestInitialVisualSuggestion,
     startPressToTalk,
     stopPressToTalk,

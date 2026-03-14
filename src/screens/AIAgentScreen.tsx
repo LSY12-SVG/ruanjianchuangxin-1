@@ -1,15 +1,17 @@
-import React, {useState} from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, {useMemo, useState} from 'react';
+import {StyleSheet, View} from 'react-native';
+import {FlashList} from '@shopify/flash-list';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import {MotiView} from 'moti';
+import {Text} from 'react-native-paper';
 import {VISION_THEME} from '../theme/visionTheme';
 import {useAgentRuntime} from '../agent/runtimeContext';
+import {useAppStore} from '../store/appStore';
+import {AppCard} from '../components/ui/AppCard';
+import {AppButton} from '../components/ui/AppButton';
+import {TopSegment} from '../components/ui/TopSegment';
+import {StatusChip} from '../components/ui/StatusChip';
 
 const QUICK_PROMPTS = [
   '帮我规划夜景拍摄参数',
@@ -21,104 +23,114 @@ const QUICK_PROMPTS = [
 const AGENT_CAPS = [
   {label: '拍摄建议', icon: 'camera-outline'},
   {label: '调色指导', icon: 'color-filter-outline'},
-  {label: '3D流程编排', icon: 'cube-outline'},
-  {label: '内容发布助手', icon: 'megaphone-outline'},
+  {label: '3D编排', icon: 'cube-outline'},
+  {label: '发布助手', icon: 'megaphone-outline'},
 ];
 
 export const AIAgentScreen: React.FC = () => {
+  const [segment, setSegment] = useState('ability');
   const [activePrompt, setActivePrompt] = useState(0);
   const {phase, pendingActions, memory, lastMessage, lastError, openPanel} = useAgentRuntime();
+  const conversation = useAppStore(state => state.conversation);
+
+  const listData = useMemo(() => {
+    if (segment === 'conversation') {
+      return conversation.length > 0
+        ? conversation.map(item => `${item.role === 'assistant' ? '助手' : '你'}: ${item.content}`)
+        : ['暂无会话记录，长按动漫助手开始语音对话'];
+    }
+    if (segment === 'status') {
+      return [
+        `阶段: ${phase}`,
+        `待确认动作: ${pendingActions.length}`,
+        `历史任务: ${memory.history.length}`,
+        lastMessage || '暂无最新消息',
+        lastError || '系统稳定运行中',
+      ];
+    }
+    return AGENT_CAPS.map(item => item.label);
+  }, [conversation, lastError, lastMessage, memory.history.length, pendingActions.length, phase, segment]);
 
   return (
     <LinearGradient
-      colors={[
-        VISION_THEME.background.top,
-        VISION_THEME.background.mid,
-        VISION_THEME.background.bottom,
-      ]}
+      colors={[VISION_THEME.background.top, VISION_THEME.background.mid, VISION_THEME.background.bottom]}
       style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroCard}>
+      <FlashList
+        data={listData}
+        estimatedItemSize={92}
+        keyExtractor={(item, index) => `${item}_${index}`}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={
           <View>
-            <Text style={styles.heroTitle}>Vision Agent</Text>
-            <Text style={styles.heroSubtitle}>贯穿拍摄、调色、建模与发布的智能中枢</Text>
-          </View>
-          <View style={styles.statusPill}>
-            <View style={styles.statusDot} />
-            <Text style={styles.statusText}>在线</Text>
-          </View>
-        </View>
+            <MotiView from={{opacity: 0, translateY: 16}} animate={{opacity: 1, translateY: 0}}>
+              <AppCard style={styles.heroCard}>
+                <View style={styles.heroRow}>
+                  <View>
+                    <Text style={styles.heroTitle}>Vision Agent</Text>
+                    <Text style={styles.heroSubtitle}>跨页面策略中枢与创作执行代理</Text>
+                  </View>
+                  <StatusChip label="在线" tone="success" />
+                </View>
+              </AppCard>
+            </MotiView>
 
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>核心能力</Text>
-          <View style={styles.capGrid}>
-            {AGENT_CAPS.map(item => (
-              <View key={item.label} style={styles.capCard}>
-                <Icon name={item.icon} size={20} color={VISION_THEME.accent.main} />
-                <Text style={styles.capText}>{item.label}</Text>
+            <TopSegment
+              value={segment}
+              onValueChange={setSegment}
+              items={[
+                {value: 'ability', label: '能力'},
+                {value: 'conversation', label: '会话'},
+                {value: 'status', label: '状态'},
+              ]}
+            />
+
+            {segment === 'ability' ? (
+              <AppCard style={styles.abilityCard}>
+                <View style={styles.capGrid}>
+                  {AGENT_CAPS.map(item => (
+                    <View key={item.label} style={styles.capItem}>
+                      <Icon name={item.icon} size={18} color={VISION_THEME.accent.strong} />
+                      <Text style={styles.capText}>{item.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </AppCard>
+            ) : null}
+
+            <AppCard title="快捷任务" subtitle="一键注入任务目标">
+              <View style={styles.promptList}>
+                {QUICK_PROMPTS.map((prompt, idx) => {
+                  const active = idx === activePrompt;
+                  return (
+                    <AppButton
+                      key={prompt}
+                      label={prompt}
+                      mode={active ? 'contained' : 'outlined'}
+                      onPress={() => setActivePrompt(idx)}
+                      style={styles.promptButton}
+                    />
+                  );
+                })}
               </View>
-            ))}
-          </View>
-        </View>
+            </AppCard>
 
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>智能会话</Text>
-          <View style={styles.chatCard}>
-            <View style={styles.bubbleAgent}>
-              <Text style={styles.bubbleLabel}>Agent</Text>
-              <Text style={styles.bubbleText}>
-                我已分析你最近 12 组样片。建议优先处理曝光回收与肤色一致性，我可以直接生成批处理方案。
-              </Text>
-            </View>
-            <View style={styles.bubbleUser}>
-              <Text style={styles.bubbleLabel}>你</Text>
-              <Text style={styles.bubbleText}>{QUICK_PROMPTS[activePrompt]}</Text>
+            <View style={styles.actionRow}>
+              <AppButton label="打开小精灵面板" icon="flash-outline" onPress={openPanel} style={styles.flexBtn} />
+              <AppButton label="语音对话" icon="mic-outline" mode="outlined" style={styles.flexBtn} />
             </View>
           </View>
-        </View>
-
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>运行时状态</Text>
-          <View style={styles.statusPanel}>
-            <Text style={styles.statusLine}>阶段: {phase}</Text>
-            <Text style={styles.statusLine}>待确认动作: {pendingActions.length}</Text>
-            <Text style={styles.statusLine}>历史任务: {memory.history.length}</Text>
-            {lastMessage ? <Text style={styles.statusLine}>{lastMessage}</Text> : null}
-            {lastError ? <Text style={styles.statusError}>{lastError}</Text> : null}
-          </View>
-        </View>
-
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>快捷任务</Text>
-          <View style={styles.promptList}>
-            {QUICK_PROMPTS.map((prompt, idx) => {
-              const active = idx === activePrompt;
-              return (
-                <TouchableOpacity
-                  key={prompt}
-                  style={[styles.promptItem, active && styles.promptItemActive]}
-                  onPress={() => setActivePrompt(idx)}
-                  activeOpacity={0.86}>
-                  <Text style={[styles.promptText, active && styles.promptTextActive]}>
-                    {prompt}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.88}>
-            <Icon name="mic-outline" size={17} color={VISION_THEME.accent.main} />
-            <Text style={styles.secondaryButtonText}>语音对话</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9} onPress={openPanel}>
-            <Icon name="flash-outline" size={17} color={VISION_THEME.accent.dark} />
-            <Text style={styles.primaryButtonText}>打开小精灵面板</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        }
+        renderItem={({item, index}) => (
+          <MotiView
+            from={{opacity: 0, translateY: 10}}
+            animate={{opacity: 1, translateY: 0}}
+            transition={{type: 'timing', duration: 320, delay: index * 40}}>
+            <AppCard style={styles.logCard}>
+              <Text style={styles.logText}>{item}</Text>
+            </AppCard>
+          </MotiView>
+        )}
+      />
     </LinearGradient>
   );
 };
@@ -128,15 +140,12 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 22,
+    paddingBottom: 92,
   },
   heroCard: {
-    borderRadius: 16,
-    backgroundColor: VISION_THEME.surface.base,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    padding: 14,
     marginBottom: 10,
+  },
+  heroRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -144,174 +153,58 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: VISION_THEME.text.primary,
-    fontSize: 21,
+    fontSize: 22,
     fontWeight: '800',
   },
   heroSubtitle: {
-    marginTop: 3,
+    marginTop: 4,
     color: VISION_THEME.text.secondary,
     fontSize: 12,
   },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 232, 200, 0.38)',
-    backgroundColor: 'rgba(139, 232, 200, 0.12)',
-    gap: 5,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: VISION_THEME.feedback.success,
-  },
-  statusText: {
-    color: VISION_THEME.feedback.success,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  block: {
+  abilityCard: {
     marginBottom: 10,
-    borderRadius: 14,
-    backgroundColor: VISION_THEME.surface.card,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    padding: 11,
-  },
-  blockTitle: {
-    color: VISION_THEME.text.primary,
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 8,
   },
   capGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  capCard: {
+  capItem: {
     width: '48.5%',
-    borderRadius: 11,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(10, 39, 62, 0.78)',
-    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingVertical: 11,
     alignItems: 'center',
     gap: 5,
   },
   capText: {
     color: VISION_THEME.text.secondary,
     fontSize: 12,
-    fontWeight: '600',
-  },
-  chatCard: {
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(9, 35, 56, 0.8)',
-    padding: 10,
-    gap: 8,
-  },
-  bubbleAgent: {
-    borderRadius: 10,
-    backgroundColor: 'rgba(20, 73, 111, 0.65)',
-    padding: 9,
-  },
-  bubbleUser: {
-    borderRadius: 10,
-    backgroundColor: 'rgba(26, 85, 128, 0.65)',
-    padding: 9,
-  },
-  bubbleLabel: {
-    color: VISION_THEME.text.muted,
-    fontSize: 10,
     fontWeight: '700',
-  },
-  bubbleText: {
-    marginTop: 3,
-    color: VISION_THEME.text.primary,
-    fontSize: 12,
-    lineHeight: 18,
   },
   promptList: {
     gap: 7,
   },
-  promptItem: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(10, 37, 58, 0.72)',
-    paddingVertical: 8,
-    paddingHorizontal: 9,
-  },
-  promptItemActive: {
-    backgroundColor: VISION_THEME.surface.active,
-    borderColor: VISION_THEME.border.strong,
-  },
-  promptText: {
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
-  },
-  promptTextActive: {
-    color: VISION_THEME.accent.strong,
-    fontWeight: '700',
+  promptButton: {
+    width: '100%',
   },
   actionRow: {
+    marginTop: 10,
+    marginBottom: 10,
     flexDirection: 'row',
-    gap: 9,
-    marginTop: 2,
+    gap: 8,
   },
-  statusPanel: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(10, 37, 58, 0.75)',
-    padding: 10,
-    gap: 4,
+  flexBtn: {
+    flex: 1,
   },
-  statusLine: {
+  logCard: {
+    paddingVertical: 11,
+  },
+  logText: {
     color: VISION_THEME.text.secondary,
     fontSize: 12,
-  },
-  statusError: {
-    color: VISION_THEME.feedback.danger,
-    fontSize: 12,
-  },
-  secondaryButton: {
-    flex: 1,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(10, 38, 60, 0.82)',
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  secondaryButtonText: {
-    color: VISION_THEME.accent.main,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 13,
-    backgroundColor: VISION_THEME.accent.strong,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  primaryButtonText: {
-    color: VISION_THEME.accent.dark,
-    fontSize: 14,
-    fontWeight: '800',
+    lineHeight: 18,
   },
 });
-

@@ -1,7 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {StatusBar, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import {SafeAreaProvider, useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import GPUColorGradingScreen, {
   type GPUColorGradingAgentBridge,
 } from './src/screens/GPUColorGradingScreen';
@@ -18,45 +18,57 @@ import {
   ProfileSettingsScreen,
   type ProfileSettingsAgentBridge,
 } from './src/screens/ProfileSettingsScreen';
+import {HomeHubScreen} from './src/screens/HomeHubScreen';
+import {HomeModuleShell} from './src/components/home/HomeModuleShell';
 import {VISION_THEME} from './src/theme/visionTheme';
 import {AgentRuntimeProvider, useAgentRuntime} from './src/agent/runtimeContext';
 import type {AgentAppTab} from './src/agent/types';
+import type {HomeRouteKey, MainTabKey} from './src/types/navigation';
 import {GlobalAgentSprite} from './src/components/agent/GlobalAgentSprite';
 import type {ColorGradingParams} from './src/types/colorGrading';
+import {RootProviders} from './src/providers/RootProviders';
+import {useAppStore} from './src/store/appStore';
 
 interface TabConfig {
-  key: AgentAppTab;
+  key: MainTabKey;
   label: string;
   icon: string;
 }
 
 const TABS: TabConfig[] = [
-  {key: 'grading', label: '智能调色', icon: 'color-filter-outline'},
-  {key: 'convert', label: '2D转3D', icon: 'cube-outline'},
-  {key: 'agent', label: 'AI助手', icon: 'sparkles-outline'},
+  {key: 'home', label: '首页', icon: 'home-outline'},
+  {key: 'agent', label: '助手', icon: 'sparkles-outline'},
   {key: 'community', label: '社区', icon: 'people-outline'},
   {key: 'profile', label: '我的', icon: 'person-outline'},
 ];
 
 interface AppShellContentProps {
-  activeTab: AgentAppTab;
-  setActiveTab: React.Dispatch<React.SetStateAction<AgentAppTab>>;
+  activeMainTab: MainTabKey;
+  setActiveMainTab: (tab: MainTabKey) => void;
+  homeRoute: HomeRouteKey;
+  setHomeRoute: (route: HomeRouteKey) => void;
 }
 
-const asTab = (value: unknown): AgentAppTab => {
-  if (
-    value === 'grading' ||
-    value === 'convert' ||
-    value === 'agent' ||
-    value === 'community' ||
-    value === 'profile'
-  ) {
+const asTab = (value: unknown): MainTabKey => {
+  if (value === 'home' || value === 'agent' || value === 'community' || value === 'profile') {
     return value;
   }
   return 'agent';
 };
 
-const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTab}) => {
+const asHomeRoute = (value: unknown): HomeRouteKey => {
+  if (value === 'hub' || value === 'grading' || value === 'modeling') {
+    return value;
+  }
+  return 'hub';
+};
+
+const AppShellContent: React.FC<AppShellContentProps> = ({
+  activeMainTab,
+  setActiveMainTab,
+  homeRoute,
+  setHomeRoute,
+}) => {
   const insets = useSafeAreaInsets();
   const {registerOperation} = useAgentRuntime();
 
@@ -80,7 +92,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         defaultRisk: 'low',
         execute: async action => {
           const tab = asTab(action.args?.tab);
-          setActiveTab(tab);
+          setActiveMainTab(tab);
+          if (tab === 'home') {
+            setHomeRoute(asHomeRoute(action.args?.route));
+          }
           return {
             ok: true,
             message: `已跳转到 ${tab}`,
@@ -96,7 +111,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         description: '执行调色视觉首轮建议',
         defaultRisk: 'low',
         execute: async () => {
-          setActiveTab('grading');
+          setActiveMainTab('home');
+          setHomeRoute('grading');
           const bridge = gradingBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '调色页面未就绪'};
@@ -114,7 +130,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         defaultRisk: 'medium',
         defaultRequiresConfirmation: true,
         execute: async () => {
-          setActiveTab('grading');
+          setActiveMainTab('home');
+          setHomeRoute('grading');
           const bridge = gradingBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '调色页面未就绪'};
@@ -132,7 +149,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         defaultRisk: 'medium',
         defaultRequiresConfirmation: true,
         execute: async action => {
-          setActiveTab('convert');
+          setActiveMainTab('home');
+          setHomeRoute('modeling');
           const bridge = convertBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '2D转3D页面未就绪'};
@@ -150,7 +168,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         description: '生成社区草稿',
         defaultRisk: 'low',
         execute: async action => {
-          setActiveTab('community');
+          setActiveMainTab('community');
           const bridge = communityBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '社区页面未就绪'};
@@ -175,7 +193,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         defaultRisk: 'high',
         defaultRequiresConfirmation: true,
         execute: async () => {
-          setActiveTab('community');
+          setActiveMainTab('community');
           const bridge = communityBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '社区页面未就绪'};
@@ -193,15 +211,14 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         defaultRisk: 'medium',
         defaultRequiresConfirmation: true,
         execute: async action => {
-          setActiveTab('profile');
+          setActiveMainTab('profile');
           const bridge = profileBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '设置页面未就绪'};
           }
           const args = action.args || {};
           return bridge.applyPatch({
-            syncOnWifi:
-              typeof args.syncOnWifi === 'boolean' ? args.syncOnWifi : undefined,
+            syncOnWifi: typeof args.syncOnWifi === 'boolean' ? args.syncOnWifi : undefined,
             communityNotify:
               typeof args.communityNotify === 'boolean' ? args.communityNotify : undefined,
             voiceAutoApply:
@@ -219,7 +236,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
         defaultRisk: 'low',
         execute: async () => ({
           ok: true,
-          message: `当前页面: ${activeTab}`,
+          message: `当前页面: ${activeMainTab}${activeMainTab === 'home' ? `/${homeRoute}` : ''}`,
         }),
       }),
     );
@@ -227,27 +244,39 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
     return () => {
       unregisterList.forEach(unregister => unregister());
     };
-  }, [activeTab, registerOperation, setActiveTab]);
+  }, [activeMainTab, homeRoute, registerOperation, setActiveMainTab, setHomeRoute]);
 
-  const screen = useMemo(() => {
-    switch (activeTab) {
-      case 'grading':
-        return (
+  const homeScreen = useMemo(() => {
+    if (homeRoute === 'hub') {
+      return <HomeHubScreen onNavigateModule={route => setHomeRoute(route)} />;
+    }
+    if (homeRoute === 'grading') {
+      return (
+        <HomeModuleShell route={homeRoute} onRouteChange={setHomeRoute}>
           <GPUColorGradingScreen
             onAgentBridgeReady={bridge => {
               gradingBridgeRef.current = bridge;
             }}
             externalApplyParamsRequest={reuseRequest}
           />
-        );
-      case 'convert':
-        return (
-          <TwoDToThreeDScreen
-            onAgentBridgeReady={bridge => {
-              convertBridgeRef.current = bridge;
-            }}
-          />
-        );
+        </HomeModuleShell>
+      );
+    }
+    return (
+      <HomeModuleShell route={homeRoute} onRouteChange={setHomeRoute}>
+        <TwoDToThreeDScreen
+          onAgentBridgeReady={bridge => {
+            convertBridgeRef.current = bridge;
+          }}
+        />
+      </HomeModuleShell>
+    );
+  }, [homeRoute, reuseRequest, setHomeRoute]);
+
+  const screen = useMemo(() => {
+    switch (activeMainTab) {
+      case 'home':
+        return homeScreen;
       case 'agent':
         return <AIAgentScreen />;
       case 'community':
@@ -261,7 +290,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
                 id: Date.now(),
                 params,
               });
-              setActiveTab('grading');
+              setActiveMainTab('home');
+              setHomeRoute('grading');
             }}
           />
         );
@@ -274,9 +304,9 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
           />
         );
       default:
-        return <GPUColorGradingScreen />;
+        return homeScreen;
     }
-  }, [activeTab]);
+  }, [activeMainTab, homeScreen, setActiveMainTab, setHomeRoute]);
 
   return (
     <View style={styles.root}>
@@ -290,13 +320,13 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
           },
         ]}>
         {TABS.map(tab => {
-          const active = activeTab === tab.key;
+          const active = activeMainTab === tab.key;
           return (
             <TouchableOpacity
               key={tab.key}
               style={styles.tabItem}
-              activeOpacity={0.82}
-              onPress={() => setActiveTab(tab.key)}>
+              activeOpacity={0.85}
+              onPress={() => setActiveMainTab(tab.key)}>
               <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
                 <Icon
                   name={tab.icon}
@@ -315,20 +345,28 @@ const AppShellContent: React.FC<AppShellContentProps> = ({activeTab, setActiveTa
 };
 
 const AppShell: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<AgentAppTab>('grading');
+  const activeMainTab = useAppStore(state => state.activeMainTab);
+  const setActiveMainTab = useAppStore(state => state.setActiveMainTab);
+  const homeRoute = useAppStore(state => state.homeRoute);
+  const setHomeRoute = useAppStore(state => state.setHomeRoute);
 
   return (
-    <AgentRuntimeProvider currentTab={activeTab}>
-      <AppShellContent activeTab={activeTab} setActiveTab={setActiveTab} />
+    <AgentRuntimeProvider currentTab={activeMainTab as AgentAppTab}>
+      <AppShellContent
+        activeMainTab={activeMainTab}
+        setActiveMainTab={setActiveMainTab}
+        homeRoute={homeRoute}
+        setHomeRoute={setHomeRoute}
+      />
     </AgentRuntimeProvider>
   );
 };
 
 function App() {
   return (
-    <SafeAreaProvider>
+    <RootProviders>
       <AppShell />
-    </SafeAreaProvider>
+    </RootProviders>
   );
 }
 

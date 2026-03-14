@@ -63,16 +63,28 @@ const feedFilterWhereClause = filter => {
   return '';
 };
 
+const normalizeUserId = value => {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized === 'guest') {
+    return '';
+  }
+  return normalized.slice(0, 64);
+};
+
 const createCommunityRepository = db => {
   const ensureUser = async userId => {
-    const fallbackName = `user_${String(userId).slice(0, 12)}`;
+    const normalizedUserId = normalizeUserId(userId);
+    if (!normalizedUserId) {
+      return;
+    }
+    const fallbackName = `user_${normalizedUserId.slice(0, 12)}`;
     await db.query(
       `
       INSERT INTO community_users(id, display_name)
       VALUES (?, ?)
       ON CONFLICT(id) DO NOTHING
     `,
-      [userId, fallbackName],
+      [normalizedUserId, fallbackName],
     );
   };
 
@@ -91,7 +103,8 @@ const createCommunityRepository = db => {
   };
 
   const createDraft = async (userId, payload) => {
-    await ensureUser(userId);
+    const normalizedUserId = normalizeUserId(userId);
+    await ensureUser(normalizedUserId);
     const result = await db.query(
       `
       INSERT INTO community_posts(
@@ -100,7 +113,7 @@ const createCommunityRepository = db => {
       VALUES (?, 'draft', ?, ?, ?, ?, ?, ?)
     `,
       [
-        userId,
+        normalizedUserId,
         payload.title,
         payload.content,
         payload.beforeUrl,
@@ -114,6 +127,7 @@ const createCommunityRepository = db => {
   };
 
   const updateDraft = async (userId, draftId, payload) => {
+    const normalizedUserId = normalizeUserId(userId);
     await db.query(
       `
       UPDATE community_posts
@@ -135,24 +149,25 @@ const createCommunityRepository = db => {
         JSON.stringify(payload.tags || []),
         JSON.stringify(payload.gradingParams || {}),
         Number(draftId),
-        userId,
+        normalizedUserId,
       ],
     );
     const row = await fetchPostById(draftId);
-    if (!row || row.author_id !== userId || row.status !== 'draft') {
+    if (!row || row.author_id !== normalizedUserId || row.status !== 'draft') {
       return null;
     }
     return toPostView(row);
   };
 
   const publishDraft = async (userId, draftId) => {
+    const normalizedUserId = normalizeUserId(userId);
     const result = await db.query(
       `
       UPDATE community_posts
       SET status = 'published', published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND author_id = ? AND status = 'draft'
     `,
-      [Number(draftId), userId],
+      [Number(draftId), normalizedUserId],
     );
     if (!result.affectedRows) {
       return null;
@@ -162,7 +177,11 @@ const createCommunityRepository = db => {
   };
 
   const getFeed = async (userId, {filter, size, offset, page}) => {
-    await ensureUser(userId);
+    const normalizedUserId = normalizeUserId(userId);
+    if (normalizedUserId) {
+      await ensureUser(normalizedUserId);
+    }
+    const readUserId = normalizedUserId || '__guest__';
     const filterClause = feedFilterWhereClause(filter);
 
     const totalRows = await db.query(
@@ -196,7 +215,7 @@ const createCommunityRepository = db => {
       ORDER BY p.published_at DESC, p.created_at DESC
       LIMIT ? OFFSET ?
     `,
-      [userId, userId, size, offset],
+      [readUserId, readUserId, size, offset],
     );
 
     return {
@@ -209,14 +228,15 @@ const createCommunityRepository = db => {
   };
 
   const getMyPosts = async (userId, {status, size, offset, page}) => {
-    await ensureUser(userId);
+    const normalizedUserId = normalizeUserId(userId);
+    await ensureUser(normalizedUserId);
     const totalRows = await db.query(
       `
       SELECT COUNT(*) AS total
       FROM community_posts
       WHERE author_id = ? AND status = ?
     `,
-      [userId, status],
+      [normalizedUserId, status],
     );
     const total = Number(totalRows[0]?.total || 0);
 
@@ -234,7 +254,7 @@ const createCommunityRepository = db => {
       ORDER BY p.updated_at DESC
       LIMIT ? OFFSET ?
     `,
-      [userId, status, size, offset],
+      [normalizedUserId, status, size, offset],
     );
 
     return {
@@ -246,20 +266,27 @@ const createCommunityRepository = db => {
     };
   };
 
-  const countPublishedByAuthor = async authorId => {
+  const countPublishedByAuthorIdentity = async ({userId, username}) => {
+    const candidates = [normalizeUserId(userId), normalizeUserId(username)].filter(Boolean);
+    const uniqueCandidates = Array.from(new Set(candidates));
+    if (!uniqueCandidates.length) {
+      return 0;
+    }
+    const placeholders = uniqueCandidates.map(() => '?').join(', ');
     const totalRows = await db.query(
       `
       SELECT COUNT(*) AS total
       FROM community_posts
-      WHERE author_id = ? AND status = 'published'
+      WHERE status = 'published' AND author_id IN (${placeholders})
     `,
-      [authorId],
+      uniqueCandidates,
     );
     return Number(totalRows[0]?.total || 0);
   };
 
   const toggleLike = async (userId, postId, liked) => {
-    await ensureUser(userId);
+    const normalizedUserId = normalizeUserId(userId);
+    await ensureUser(normalizedUserId);
     return db.withTransaction(async client => {
       const postRows = await client.query(
         'SELECT id, status FROM community_posts WHERE id = ? LIMIT 1',
@@ -279,12 +306,12 @@ const createCommunityRepository = db => {
           VALUES (?, ?)
           ON CONFLICT(post_id, user_id) DO NOTHING
         `,
-          [Number(postId), userId],
+          [Number(postId), normalizedUserId],
         );
       } else {
         await client.query(
           'DELETE FROM community_post_likes WHERE post_id = ? AND user_id = ?',
-          [Number(postId), userId],
+          [Number(postId), normalizedUserId],
         );
       }
 
@@ -310,7 +337,8 @@ const createCommunityRepository = db => {
   };
 
   const toggleSave = async (userId, postId, saved) => {
-    await ensureUser(userId);
+    const normalizedUserId = normalizeUserId(userId);
+    await ensureUser(normalizedUserId);
     return db.withTransaction(async client => {
       const postRows = await client.query(
         'SELECT id, status FROM community_posts WHERE id = ? LIMIT 1',
@@ -330,12 +358,12 @@ const createCommunityRepository = db => {
           VALUES (?, ?)
           ON CONFLICT(post_id, user_id) DO NOTHING
         `,
-          [Number(postId), userId],
+          [Number(postId), normalizedUserId],
         );
       } else {
         await client.query(
           'DELETE FROM community_post_saves WHERE post_id = ? AND user_id = ?',
-          [Number(postId), userId],
+          [Number(postId), normalizedUserId],
         );
       }
 
@@ -361,7 +389,7 @@ const createCommunityRepository = db => {
   };
 
   const getComments = async (userId, postId, {size, offset, page}) => {
-    await ensureUser(userId);
+    await ensureUser(normalizeUserId(userId));
     const postRows = await db.query(
       'SELECT id FROM community_posts WHERE id = ? AND status = ? LIMIT 1',
       [Number(postId), 'published'],
@@ -397,7 +425,8 @@ const createCommunityRepository = db => {
   };
 
   const createComment = async (userId, postId, {content, parentId}) => {
-    await ensureUser(userId);
+    const normalizedUserId = normalizeUserId(userId);
+    await ensureUser(normalizedUserId);
     return db.withTransaction(async client => {
       const postRows = await client.query(
         'SELECT id, status FROM community_posts WHERE id = ? LIMIT 1',
@@ -435,7 +464,7 @@ const createCommunityRepository = db => {
         INSERT INTO community_comments(post_id, author_id, parent_id, content)
         VALUES (?, ?, ?, ?)
       `,
-        [Number(postId), userId, parentValue, content],
+        [Number(postId), normalizedUserId, parentValue, content],
       );
 
       await client.query(
@@ -451,18 +480,18 @@ const createCommunityRepository = db => {
 
       const userRows = await client.query(
         'SELECT display_name, avatar_url FROM community_users WHERE id = ? LIMIT 1',
-        [userId],
+        [normalizedUserId],
       );
 
       return toCommentView({
         id: inserted.insertId,
         post_id: Number(postId),
-        author_id: userId,
+        author_id: normalizedUserId,
         parent_id: parentValue,
         content,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        display_name: userRows[0]?.display_name || userId,
+        display_name: userRows[0]?.display_name || normalizedUserId,
         avatar_url: userRows[0]?.avatar_url || '',
       });
     });
@@ -474,7 +503,7 @@ const createCommunityRepository = db => {
     publishDraft,
     getFeed,
     getMyPosts,
-    countPublishedByAuthor,
+    countPublishedByAuthorIdentity,
     toggleLike,
     toggleSave,
     getComments,

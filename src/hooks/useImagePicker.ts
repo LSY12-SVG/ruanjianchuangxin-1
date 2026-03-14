@@ -1,5 +1,5 @@
 import {useState, useCallback} from 'react';
-import {Platform, PermissionsAndroid} from 'react-native';
+import {Platform, PermissionsAndroid, NativeModules} from 'react-native';
 import {
   launchCamera,
   launchImageLibrary,
@@ -16,8 +16,28 @@ export interface ImagePickerResult {
   fileSize?: number;
   type?: string;
   base64?: string;
+  originalPath?: string;
+  nativeSourcePath?: string;
+  workingSpaceHint?: 'linear_prophoto' | 'linear_srgb';
+  decodeStrategy?: 'picker' | 'native_raw' | 'native_bitmap';
+  isRaw?: boolean;
+  bitDepthHint?: 8 | 10 | 12 | 14 | 16;
   error?: string;
 }
+
+interface ProColorEngineNativeModule {
+  decodeSource?: (uri: string, maxDimension: number) => Promise<{
+    width: number;
+    height: number;
+    previewBase64: string;
+    nativeSourcePath: string;
+    bitDepthHint: number;
+    workingSpace: 'linear_prophoto' | 'linear_srgb';
+    sourceType: string;
+  }>;
+}
+
+const proColorEngine = NativeModules?.ProColorEngine as ProColorEngineNativeModule | undefined;
 
 interface UseImagePickerOptions {
   onImageSelected?: (result: ImagePickerResult) => void;
@@ -27,23 +47,32 @@ interface UseImagePickerOptions {
 const pickerOptions: ImageLibraryOptions = {
   mediaType: 'photo',
   quality: 1,
-  maxWidth: 2048,
-  maxHeight: 2048,
+  includeExtra: true,
   includeBase64: true,
   selectionLimit: 1,
+  // 基础 RAW 支持：Android 端允许 DNG 与常见 RAW mime 类型选择
+  restrictMimeTypes: [
+    'image/jpeg',
+    'image/png',
+    'image/heic',
+    'image/heif',
+    'image/x-adobe-dng',
+    'image/x-canon-cr2',
+    'image/x-nikon-nef',
+    'image/x-sony-arw',
+  ],
 };
 
 const cameraOptions: CameraOptions = {
   mediaType: 'photo',
   quality: 1,
-  maxWidth: 2048,
-  maxHeight: 2048,
+  includeExtra: true,
   includeBase64: true,
   cameraType: 'back',
   saveToPhotos: true,
 };
 
-const processImageResult = (result: any): ImagePickerResult => {
+const processImageResult = async (result: any): Promise<ImagePickerResult> => {
   if (result.didCancel) {
     return {success: false, error: '用户取消了选择'};
   }
@@ -57,7 +86,7 @@ const processImageResult = (result: any): ImagePickerResult => {
     return {success: false, error: '未选择图片'};
   }
 
-  return {
+  const processedResult: ImagePickerResult = {
     success: true,
     uri: asset.uri,
     width: asset.width,
@@ -66,6 +95,67 @@ const processImageResult = (result: any): ImagePickerResult => {
     fileSize: asset.fileSize,
     type: asset.type,
     base64: asset.base64,
+    originalPath: asset.originalPath,
+    isRaw: Boolean(asset.type && /dng|cr2|nef|arw|raw/i.test(asset.type)),
+    bitDepthHint: asset.type && /dng|cr2|nef|arw|raw/i.test(asset.type) ? 12 : 8,
+  };
+
+  const isHeif = Boolean(
+    (asset.type && /heic|heif/i.test(asset.type)) ||
+      (asset.fileName && /\.(heic|heif)$/i.test(asset.fileName)) ||
+      (asset.uri && /\.(heic|heif)(\?|$)/i.test(asset.uri)),
+  );
+  const requiresNativeDecode = processedResult.isRaw || isHeif;
+  const canAttemptNativeDecode = Boolean(asset.uri && proColorEngine?.decodeSource);
+
+  if (requiresNativeDecode && !canAttemptNativeDecode) {
+    return {
+      success: false,
+      error: isHeif
+        ? '当前设备缺少 HEIF 原生解码能力（需 Android 9+ ImageDecoder）。'
+        : 'RAW 仅支持原生解码链路，请检查 Pro 引擎是否可用。',
+    };
+  }
+
+  if (canAttemptNativeDecode && asset.uri && proColorEngine?.decodeSource) {
+    try {
+      const nativeDecode = await proColorEngine.decodeSource(asset.uri, 2048);
+      return {
+        ...processedResult,
+        width: nativeDecode.width || processedResult.width,
+        height: nativeDecode.height || processedResult.height,
+        base64: nativeDecode.previewBase64,
+        nativeSourcePath: nativeDecode.nativeSourcePath,
+        bitDepthHint:
+          nativeDecode.bitDepthHint === 10 ||
+          nativeDecode.bitDepthHint === 12 ||
+          nativeDecode.bitDepthHint === 14 ||
+          nativeDecode.bitDepthHint === 16
+            ? nativeDecode.bitDepthHint
+            : processedResult.bitDepthHint,
+        workingSpaceHint: nativeDecode.workingSpace,
+        decodeStrategy: nativeDecode.sourceType === 'raw' ? 'native_raw' : 'native_bitmap',
+      };
+    } catch (error) {
+      console.warn('native source decode failed:', error);
+      if (!requiresNativeDecode) {
+        return {
+          ...processedResult,
+          decodeStrategy: 'picker',
+        };
+      }
+      return {
+        success: false,
+        error: isHeif
+          ? 'HEIF 原生解码失败，请更换图片或设备后重试。'
+          : 'RAW 原生解码失败，请更换样片或重试。',
+      };
+    }
+  }
+
+  return {
+    ...processedResult,
+    decodeStrategy: 'picker',
   };
 };
 
@@ -130,7 +220,7 @@ export const useImagePicker = ({
     setIsLoading(true);
     try {
       const result = await launchImageLibrary(pickerOptions);
-      const processedResult = processImageResult(result);
+      const processedResult = await processImageResult(result);
 
       if (processedResult.success) {
         setSelectedImage(processedResult);
@@ -158,7 +248,7 @@ export const useImagePicker = ({
     setIsLoading(true);
     try {
       const result = await launchCamera(cameraOptions);
-      const processedResult = processImageResult(result);
+      const processedResult = await processImageResult(result);
 
       if (processedResult.success) {
         setSelectedImage(processedResult);

@@ -77,7 +77,16 @@ Community endpoints:
 - `GET /v1/community/posts/:id/comments?page&size`
 - `POST /v1/community/posts/:id/comments`
 
-Write endpoints require header `X-User-Id`.
+Auth policy:
+
+- Public read: `GET /v1/community/feed`, `GET /v1/community/posts/:id/comments`
+- Login required: `GET /v1/community/me/posts` and all `POST`/`PUT` community endpoints
+
+Login-required endpoints must include header:
+
+- `Authorization: Bearer <token>`
+
+Use `/v1/auth/register` or `/v1/auth/login` to obtain token.
 
 ## Account + Profile (SQLite + JWT)
 

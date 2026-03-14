@@ -4,23 +4,33 @@ import {
   PanResponder,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import LottieView from 'lottie-react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useAgentRuntime} from '../../agent/runtimeContext';
 import {requestRecordAudioPermission, createSpeechRecognizer} from '../../voice/speechRecognizer';
 import {VISION_THEME} from '../../theme/visionTheme';
+import {useAppStore} from '../../store/appStore';
 
-const BUBBLE_SIZE = 58;
+const CARD_WIDTH = 88;
+const CARD_HEIGHT = 106;
 const EDGE_GAP = 10;
+
+const stateAnimation = {
+  idle: require('../../assets/lottie/assistant_idle.json'),
+  planning: require('../../assets/lottie/assistant_thinking.json'),
+  executing: require('../../assets/lottie/assistant_thinking.json'),
+  confirm: require('../../assets/lottie/assistant_confirm.json'),
+} as const;
 
 export const GlobalAgentSprite: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {width, height} = useWindowDimensions();
+  const pushConversation = useAppStore(state => state.pushConversation);
   const {
     panelVisible,
     togglePanel,
@@ -45,8 +55,8 @@ export const GlobalAgentSprite: React.FC = () => {
 
   const position = useRef(
     new Animated.ValueXY({
-      x: Math.max(EDGE_GAP, width - BUBBLE_SIZE - EDGE_GAP),
-      y: Math.max(80, height - 260),
+      x: Math.max(EDGE_GAP, width - CARD_WIDTH - EDGE_GAP),
+      y: Math.max(80, height - 300),
     }),
   ).current;
 
@@ -57,7 +67,8 @@ export const GlobalAgentSprite: React.FC = () => {
   const recognizerRef = useRef(
     createSpeechRecognizer({
       onStart: () => {
-        setVoiceHint('语音输入中...');
+        setVoiceHint('正在聆听你的指令...');
+        pushConversation({role: 'system', content: '语音输入开始', state: 'listening'});
       },
       onFinal: text => {
         if (!text?.trim()) {
@@ -65,10 +76,16 @@ export const GlobalAgentSprite: React.FC = () => {
         }
         setVoiceHint(`识别: ${text}`);
         setGoalInput(text);
-        submitGoal(text).catch(() => undefined);
+        pushConversation({role: 'user', content: text, state: 'normal'});
+        submitGoal(text)
+          .then(() => {
+            pushConversation({role: 'assistant', content: '已收到，我正在执行你的目标。', state: 'thinking'});
+          })
+          .catch(() => undefined);
       },
       onError: message => {
         setVoiceHint(message);
+        pushConversation({role: 'system', content: message, state: 'error'});
       },
       onEnd: () => {
         setIsVoiceListening(false);
@@ -77,8 +94,9 @@ export const GlobalAgentSprite: React.FC = () => {
   );
 
   useEffect(() => {
+    const recognizer = recognizerRef.current;
     return () => {
-      recognizerRef.current.destroy().catch(() => undefined);
+      recognizer.destroy().catch(() => undefined);
     };
   }, []);
 
@@ -122,18 +140,16 @@ export const GlobalAgentSprite: React.FC = () => {
         }),
         onPanResponderRelease: (_event, gestureState) => {
           position.flattenOffset();
-          const currentX = gestureState.moveX;
-          const snapRight = currentX > width / 2;
-          const targetX = snapRight
-            ? width - BUBBLE_SIZE - EDGE_GAP
-            : EDGE_GAP;
+          const snapRight = gestureState.moveX > width / 2;
+          const targetX = snapRight ? width - CARD_WIDTH - EDGE_GAP : EDGE_GAP;
           const targetY = Math.min(
-            Math.max(insets.top + 28, gestureState.moveY - BUBBLE_SIZE / 2),
-            height - insets.bottom - BUBBLE_SIZE - 90,
+            Math.max(insets.top + 26, gestureState.moveY - CARD_HEIGHT / 2),
+            height - insets.bottom - CARD_HEIGHT - 92,
           );
           Animated.spring(position, {
             toValue: {x: targetX, y: targetY},
             useNativeDriver: false,
+            bounciness: 8,
           }).start();
         },
       }),
@@ -142,22 +158,26 @@ export const GlobalAgentSprite: React.FC = () => {
 
   const statusColor =
     spriteState === 'confirm'
-      ? '#ffd6a2'
+      ? VISION_THEME.feedback.warning
       : spriteState === 'planning'
-        ? '#79C9FF'
+        ? VISION_THEME.accent.main
         : spriteState === 'executing'
-          ? '#8be8c8'
-          : '#9ab6d0';
+          ? VISION_THEME.feedback.success
+          : VISION_THEME.text.muted;
+
+  const activeAnimation = isVoiceListening
+    ? require('../../assets/lottie/assistant_listening.json')
+    : stateAnimation[spriteState];
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       {panelVisible ? (
-        <View style={[styles.panelWrap, {paddingBottom: insets.bottom + 70}]}>
+        <View style={[styles.panelWrap, {paddingBottom: insets.bottom + 72}]}>
           <View style={styles.panelCard}>
             <View style={styles.panelHeader}>
               <View>
-                <Text style={styles.panelTitle}>Vision 小精灵</Text>
-                <Text style={styles.panelSub}>状态: {phase} · 当前页: {currentTab}</Text>
+                <Text style={styles.panelTitle}>Anime Assistant</Text>
+                <Text style={styles.panelSub}>状态: {phase} · 页面: {currentTab}</Text>
               </View>
               <TouchableOpacity onPress={closePanel} style={styles.iconButton} activeOpacity={0.85}>
                 <Icon name="close-outline" size={18} color={VISION_THEME.text.secondary} />
@@ -165,13 +185,12 @@ export const GlobalAgentSprite: React.FC = () => {
             </View>
 
             <View style={styles.inputWrap}>
-              <TextInput
-                value={goalInput}
-                onChangeText={setGoalInput}
-                placeholder="告诉小精灵你要完成什么任务"
-                placeholderTextColor={VISION_THEME.text.muted}
-                style={styles.input}
-              />
+              <TouchableOpacity style={styles.voiceButton} onPress={() => startVoice().catch(() => undefined)}>
+                <Icon name={isVoiceListening ? 'mic' : 'mic-outline'} size={16} color={VISION_THEME.accent.dark} />
+              </TouchableOpacity>
+              <View style={styles.inputSurface}>
+                <Text style={styles.inputText}>{goalInput || '说出你的目标，或点击发送当前任务'}</Text>
+              </View>
               <TouchableOpacity
                 style={styles.sendButton}
                 activeOpacity={0.86}
@@ -187,13 +206,13 @@ export const GlobalAgentSprite: React.FC = () => {
                 style={styles.quickButton}
                 activeOpacity={0.86}
                 onPress={() => runQuickOptimizeCurrentPage().catch(() => undefined)}>
-                <Text style={styles.quickText}>一键优化当前页</Text>
+                <Text style={styles.quickText}>优化当前页</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.quickButton}
                 activeOpacity={0.86}
                 onPress={() => continueLastTask().catch(() => undefined)}>
-                <Text style={styles.quickText}>继续上次任务</Text>
+                <Text style={styles.quickText}>继续任务</Text>
               </TouchableOpacity>
             </View>
 
@@ -241,16 +260,16 @@ export const GlobalAgentSprite: React.FC = () => {
 
       <Animated.View
         style={[
-          styles.bubble,
+          styles.card,
           {
             transform: [{translateX: position.x}, {translateY: position.y}],
-            borderColor: statusColor,
+            borderColor: `${statusColor}AA`,
           },
         ]}
         {...panResponder.panHandlers}>
         <TouchableOpacity
-          style={styles.bubbleTouch}
-          activeOpacity={0.9}
+          style={styles.cardTouch}
+          activeOpacity={0.92}
           delayLongPress={180}
           onPress={() => {
             if (longPressTriggeredRef.current) {
@@ -268,12 +287,11 @@ export const GlobalAgentSprite: React.FC = () => {
               stopVoice().catch(() => undefined);
             }
           }}>
-          <View style={[styles.statusDot, {backgroundColor: statusColor}]} />
-          <Icon
-            name={isVoiceListening ? 'mic' : 'sparkles-outline'}
-            size={24}
-            color={VISION_THEME.accent.strong}
-          />
+          <LottieView source={activeAnimation} autoPlay loop style={styles.avatar} />
+          <View style={styles.statusBar}>
+            <View style={[styles.statusDot, {backgroundColor: statusColor}]} />
+            <Text style={styles.statusText}>{isVoiceListening ? '聆听中' : '在线'}</Text>
+          </View>
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -281,44 +299,57 @@ export const GlobalAgentSprite: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  bubble: {
+  card: {
     position: 'absolute',
-    width: BUBBLE_SIZE,
-    height: BUBBLE_SIZE,
-    borderRadius: BUBBLE_SIZE / 2,
-    backgroundColor: 'rgba(8, 31, 50, 0.95)',
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    borderRadius: 20,
     borderWidth: 1,
+    backgroundColor: 'rgba(34, 10, 19, 0.94)',
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: {width: 0, height: 3},
-    elevation: 8,
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: {width: 0, height: 4},
+    elevation: 10,
     overflow: 'hidden',
   },
-  bubbleTouch: {
+  cardTouch: {
     flex: 1,
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 6,
+  },
+  avatar: {
+    width: 72,
+    height: 72,
+  },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
   },
   statusDot: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    color: VISION_THEME.text.secondary,
+    fontSize: 10,
+    fontWeight: '700',
   },
   panelWrap: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(3, 12, 20, 0.45)',
+    backgroundColor: 'rgba(20, 8, 14, 0.6)',
     paddingHorizontal: 12,
   },
   panelCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(7, 28, 45, 0.96)',
+    backgroundColor: 'rgba(45, 13, 24, 0.98)',
     padding: 12,
     gap: 8,
   },
@@ -343,23 +374,33 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(14, 49, 77, 0.72)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  input: {
+  voiceButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: VISION_THEME.accent.strong,
+  },
+  inputSurface: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(10, 40, 64, 0.86)',
-    color: VISION_THEME.text.primary,
-    fontSize: 13,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 9,
+  },
+  inputText: {
+    color: VISION_THEME.text.secondary,
+    fontSize: 12,
   },
   sendButton: {
     width: 34,
@@ -367,7 +408,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: VISION_THEME.accent.strong,
+    backgroundColor: VISION_THEME.accent.main,
   },
   quickRow: {
     flexDirection: 'row',
@@ -378,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(13, 47, 73, 0.84)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
     paddingVertical: 8,
   },
@@ -391,7 +432,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 214, 162, 0.45)',
-    backgroundColor: 'rgba(79, 57, 32, 0.44)',
+    backgroundColor: 'rgba(122, 72, 36, 0.28)',
     padding: 9,
     gap: 6,
   },
@@ -435,7 +476,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   errorText: {
-    color: '#ffb8b8',
+    color: VISION_THEME.feedback.danger,
     fontSize: 11,
     lineHeight: 17,
   },

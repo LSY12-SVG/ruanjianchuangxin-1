@@ -221,6 +221,7 @@ export const restoreAuthToken = async (): Promise<string> => {
 };
 
 export const hasAuthToken = (): boolean => Boolean(authTokenCache);
+export const getAuthToken = (): string => authTokenCache;
 
 export const register = async (
   payload: AuthRegisterRequest,

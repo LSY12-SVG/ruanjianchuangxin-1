@@ -44,6 +44,15 @@ yarn-error.log
 backend/.env
 backend/data/*.db
 backend/data/*.sqlite
+backend/.env.backup
+backend/test_request.json
+*.log
+*.err
+*.out
+*.tmp
+.tmp/
+device-screen*.png
+backend/test_image.png
 
 # fastlane
 #

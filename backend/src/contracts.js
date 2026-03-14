@@ -353,6 +353,12 @@ const normalizeInterpretResponse = payload => {
     scene_confidence: sceneConfidence,
     quality_risk_flags: qualityRiskFlags,
     recommended_intensity: recommendedIntensity,
+    fallback_reason:
+      typeof payload.fallback_reason === 'string'
+        ? payload.fallback_reason
+        : typeof payload.fallbackReason === 'string'
+          ? payload.fallbackReason
+          : undefined,
   };
 };
 

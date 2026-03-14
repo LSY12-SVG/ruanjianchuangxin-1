@@ -4,7 +4,7 @@ const {runAccountMigrations} = require('./migrations');
 const {createAccountRepository} = require('./repository');
 const {createTokenTools} = require('./token');
 const {createAuthService} = require('./auth');
-const {createAuthMiddleware} = require('./middleware');
+const {createAuthMiddleware, createOptionalAuthMiddleware} = require('./middleware');
 const {createAccountRouter, createProfileRouter} = require('./routes');
 
 const initializeAccountModule = async ({getCommunityPostsCount}) => {
@@ -24,11 +24,14 @@ const initializeAccountModule = async ({getCommunityPostsCount}) => {
   const tokenTools = createTokenTools(config);
   const authService = createAuthService({repo, tokenTools});
   const authMiddleware = createAuthMiddleware(tokenTools);
+  const optionalAuthMiddleware = createOptionalAuthMiddleware(tokenTools);
 
   return {
     enabled: true,
     authRouter: createAccountRouter({authService}),
     profileRouter: createProfileRouter({repo, authMiddleware}),
+    authMiddleware,
+    optionalAuthMiddleware,
     close: async () => {
       await db.close();
     },

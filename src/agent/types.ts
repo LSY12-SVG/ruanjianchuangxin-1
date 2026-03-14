@@ -1,4 +1,4 @@
-export type AgentAppTab = 'grading' | 'convert' | 'agent' | 'community' | 'profile';
+export type AgentAppTab = 'home' | 'agent' | 'community' | 'profile';
 
 export type AgentDomain =
   | 'navigation'

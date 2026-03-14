@@ -143,5 +143,77 @@ describe('backend provider routing', () => {
     expect(result.model_used).toBe('local_fallback_parser');
     expect(result.reasoning_summary).toContain('route:fallback_parser');
     expect(result.fallback_used).toBe(true);
+    expect(result.fallback_reason).toBe('http_5xx');
+  });
+
+  it('caps per-model timeout by remaining total budget', async () => {
+    const providerMock = jest.fn(async (_request, options) => {
+      return makeValidProviderPayload(`timeout:${options.timeoutMs}`);
+    });
+
+    jest.doMock('../../backend/src/providers/openaiCompat', () => ({
+      interpretWithOpenAICompat: providerMock,
+    }));
+    jest.doMock('../../backend/src/providers/fallback', () => ({
+      fallbackInterpret: jest.fn(),
+    }));
+
+    const {interpretWithProvider} = require('../../backend/src/providers');
+    const result = await interpretWithProvider(
+      {
+        transcript: '快速首版',
+        currentParams: {},
+        locale: 'zh-CN',
+      },
+      {
+        timeoutMs: 2000,
+        totalBudgetMs: 450,
+        modelChain: ['primary-model'],
+      },
+    );
+
+    expect(providerMock).toHaveBeenCalledTimes(1);
+    expect(providerMock.mock.calls[0][1].timeoutMs).toBeLessThanOrEqual(450);
+    expect(result.model_used).toBe('primary-model');
+  });
+
+  it('classifies invalid image payload as bad_payload fallback reason', async () => {
+    const providerMock = jest.fn(async () => {
+      const error = new Error('image_url provided is not a valid image.');
+      error.code = 'HTTP_400';
+      error.status = 400;
+      throw error;
+    });
+
+    jest.doMock('../../backend/src/providers/openaiCompat', () => ({
+      interpretWithOpenAICompat: providerMock,
+    }));
+    jest.doMock('../../backend/src/providers/fallback', () => ({
+      fallbackInterpret: jest.fn(() => ({
+        actions: [
+          {
+            action: 'adjust_param',
+            target: 'brightness',
+            delta: 6,
+          },
+        ],
+        confidence: 0.4,
+        reasoning_summary: 'parser fallback',
+        fallback_used: true,
+        needsConfirmation: true,
+        message: 'fallback',
+        source: 'fallback',
+      })),
+    }));
+
+    const {interpretWithProvider} = require('../../backend/src/providers');
+    const result = await interpretWithProvider({
+      transcript: '快速修图',
+      currentParams: {},
+      locale: 'zh-CN',
+    });
+
+    expect(result.fallback_used).toBe(true);
+    expect(result.fallback_reason).toBe('bad_payload');
   });
 });

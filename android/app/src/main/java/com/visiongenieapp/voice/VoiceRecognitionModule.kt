@@ -59,33 +59,47 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   fun start(locale: String?, promise: Promise) {
     currentLocale = if (locale.isNullOrBlank()) "zh-CN" else locale
     retriedWithActivityFallback = false
-
+    
+    android.util.Log.d("VoiceRecognitionModule", "start() called with locale: $currentLocale")
+    
     Handler(Looper.getMainLooper()).post {
       try {
+        android.util.Log.d("VoiceRecognitionModule", "Checking speech recognition availability...")
+        
         if (canUseSpeechRecognizer()) {
+          android.util.Log.d("VoiceRecognitionModule", "Using SpeechRecognizer API")
           ensureRecognizer()
           val intent = createRecognitionIntent()
           usingActivityFallback = false
           speechRecognizer?.startListening(intent)
+          android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer started successfully")
           promise.resolve(null)
           return@post
         }
 
         if (canLaunchRecognitionActivity()) {
+          android.util.Log.d("VoiceRecognitionModule", "Using Activity fallback")
           if (!launchActivityFallback()) {
-            emitError("当前页面不可用，无法打开系统语音识别")
-            promise.reject("E_NO_ACTIVITY", "No active screen for voice recognition")
+            val errorMsg = "当前页面不可用，无法打开系统语音识别"
+            android.util.Log.e("VoiceRecognitionModule", errorMsg)
+            emitError(errorMsg)
+            promise.reject("E_NO_ACTIVITY", errorMsg)
             return@post
           }
+          android.util.Log.d("VoiceRecognitionModule", "Recognition activity launched")
           promise.resolve(null)
           return@post
         }
 
-        emitError("No speech recognition service available on device")
-        promise.reject("E_UNAVAILABLE", "No speech recognition service available on device")
+        val errorMsg = "No speech recognition service available on device"
+        android.util.Log.e("VoiceRecognitionModule", errorMsg)
+        emitError(errorMsg)
+        promise.reject("E_UNAVAILABLE", errorMsg)
       } catch (error: Exception) {
-        emitError(error.message ?: "start failed")
-        promise.reject("E_START", error)
+        val errorMsg = "start failed: ${error.message ?: "Unknown error"}"
+        android.util.Log.e("VoiceRecognitionModule", errorMsg, error)
+        emitError(errorMsg)
+        promise.reject("E_START", errorMsg)
       }
     }
   }
@@ -128,7 +142,13 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       } else {
         SpeechRecognizer.createSpeechRecognizer(reactContext)
       }
-      speechRecognizer?.setRecognitionListener(this)
+      if (speechRecognizer != null) {
+        speechRecognizer?.setRecognitionListener(this)
+        android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer initialized successfully")
+      } else {
+        android.util.Log.e("VoiceRecognitionModule", "Failed to initialize SpeechRecognizer")
+        throw Exception("Failed to initialize SpeechRecognizer")
+      }
     }
   }
 
@@ -143,9 +163,16 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
 
   private fun canUseSpeechRecognizer(): Boolean {
     if (SpeechRecognizer.isRecognitionAvailable(reactContext)) {
+      android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer.isRecognitionAvailable() = true")
       return true
     }
-    return resolveSpeechServiceComponent() != null
+    val explicitService = resolveSpeechServiceComponent()
+    if (explicitService != null) {
+      android.util.Log.d("VoiceRecognitionModule", "Using explicit speech service: $explicitService")
+      return true
+    }
+    android.util.Log.w("VoiceRecognitionModule", "SpeechRecognizer not available, no explicit service configured")
+    return false
   }
 
   private fun createRecognitionIntent(): Intent {
@@ -161,7 +188,11 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
 
   private fun canLaunchRecognitionActivity(): Boolean {
     val handlers = reactContext.packageManager.queryIntentActivities(createRecognitionIntent(), 0)
-    return handlers.isNotEmpty()
+    val canLaunch = handlers.isNotEmpty()
+    
+    android.util.Log.d("VoiceRecognitionModule", "canLaunchRecognitionActivity() = $canLaunch, found ${handlers.size} handlers")
+    
+    return canLaunch
   }
 
   private fun emit(eventName: String, payload: Any? = null) {

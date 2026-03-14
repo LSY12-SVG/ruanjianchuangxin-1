@@ -100,7 +100,10 @@ const createAccountRepository = ({db, getCommunityPostsCount}) => {
 
     let communityPostsCount = Number(statsRows[0]?.community_posts_count || 0);
     if (typeof getCommunityPostsCount === 'function') {
-      const counted = await getCommunityPostsCount(user.username);
+      const counted = await getCommunityPostsCount({
+        userId: String(user.id),
+        username: user.username,
+      });
       if (Number.isFinite(counted) && counted >= 0) {
         communityPostsCount = Math.floor(counted);
         await db.query(

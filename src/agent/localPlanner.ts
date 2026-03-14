@@ -18,7 +18,7 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
     actions.push({
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: 'grading'},
+      args: {tab: 'home', route: 'grading'},
       riskLevel: 'low',
       requiresConfirmation: false,
     });
@@ -34,7 +34,7 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
     actions.push({
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: 'convert'},
+      args: {tab: 'home', route: 'modeling'},
       riskLevel: 'low',
       requiresConfirmation: false,
     });

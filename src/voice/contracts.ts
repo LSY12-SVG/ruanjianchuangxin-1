@@ -322,6 +322,7 @@ export const normalizeInterpretResponse = (value: unknown): InterpretResponse | 
   const sceneConfidenceRaw = Number(value.sceneConfidence ?? value.scene_confidence);
   const riskFlagsRaw = value.qualityRiskFlags ?? value.quality_risk_flags;
   const intensityRaw = value.recommendedIntensity ?? value.recommended_intensity;
+  const fallbackReasonRaw = value.fallbackReason ?? value.fallback_reason;
   const globalBaseRaw = value.globalBase ?? value.global_base;
   const sceneRefineRaw = value.sceneRefine ?? value.scene_refine;
   const safetyClampRaw = value.safetyClamp ?? value.safety_clamp;
@@ -379,6 +380,10 @@ export const normalizeInterpretResponse = (value: unknown): InterpretResponse | 
     recommendedIntensity:
       intensityRaw === 'soft' || intensityRaw === 'normal' || intensityRaw === 'strong'
         ? intensityRaw
+        : undefined,
+    fallbackReason:
+      typeof fallbackReasonRaw === 'string' && fallbackReasonRaw.length > 0
+        ? fallbackReasonRaw
         : undefined,
   };
 

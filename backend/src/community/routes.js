@@ -7,14 +7,6 @@ const {
   validateFeedFilter,
 } = require('./validators');
 
-const requireUserId = req => {
-  const fromHeader = req.header('X-User-Id');
-  if (typeof fromHeader !== 'string' || !fromHeader.trim()) {
-    return null;
-  }
-  return fromHeader.trim().slice(0, 64);
-};
-
 const asBoolean = (value, fallback) => {
   if (typeof value === 'boolean') {
     return value;
@@ -31,12 +23,19 @@ const asBoolean = (value, fallback) => {
 };
 
 const isNonEmpty = value => typeof value === 'string' && value.trim().length > 0;
+const resolveUserId = req => String(req.user?.id || '').trim();
 
-const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
+const createCommunityRouter = ({
+  repo,
+  authMiddleware,
+  optionalAuthMiddleware,
+  pageSizeDefault,
+  pageSizeMax,
+}) => {
   const router = express.Router();
 
-  router.get('/feed', async (req, res) => {
-    const userId = requireUserId(req) || 'guest';
+  router.get('/feed', optionalAuthMiddleware, async (req, res) => {
+    const userId = resolveUserId(req) || 'guest';
     const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);
     const filter = validateFeedFilter(req.query.filter);
     try {
@@ -48,12 +47,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.get('/me/posts', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.get('/me/posts', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);
     const status = validateStatus(req.query.status);
     try {
@@ -65,12 +60,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.post('/drafts', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.post('/drafts', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     const payload = sanitizePostPayload(req.body);
     if (!isNonEmpty(payload.title)) {
       res.status(400).json({error: 'title_required'});
@@ -85,12 +76,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.put('/drafts/:id', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.put('/drafts/:id', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     const payload = sanitizePostPayload(req.body);
     if (!isNonEmpty(payload.title)) {
       res.status(400).json({error: 'title_required'});
@@ -109,12 +96,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.post('/drafts/:id/publish', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.post('/drafts/:id/publish', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     try {
       const published = await repo.publishDraft(userId, req.params.id);
       if (!published) {
@@ -128,12 +111,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.post('/posts/:id/like', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.post('/posts/:id/like', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     const liked = asBoolean(req.body?.liked, true);
     try {
       const result = await repo.toggleLike(userId, req.params.id, liked);
@@ -152,12 +131,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.post('/posts/:id/save', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.post('/posts/:id/save', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     const saved = asBoolean(req.body?.saved, true);
     try {
       const result = await repo.toggleSave(userId, req.params.id, saved);
@@ -176,8 +151,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.get('/posts/:id/comments', async (req, res) => {
-    const userId = requireUserId(req) || 'guest';
+  router.get('/posts/:id/comments', optionalAuthMiddleware, async (req, res) => {
+    const userId = resolveUserId(req) || 'guest';
     const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);
     try {
       const result = await repo.getComments(userId, req.params.id, pagination);
@@ -192,12 +167,8 @@ const createCommunityRouter = ({repo, pageSizeDefault, pageSizeMax}) => {
     }
   });
 
-  router.post('/posts/:id/comments', async (req, res) => {
-    const userId = requireUserId(req);
-    if (!userId) {
-      res.status(401).json({error: 'missing_x_user_id'});
-      return;
-    }
+  router.post('/posts/:id/comments', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
     const payload = sanitizeCommentPayload(req.body);
     if (!isNonEmpty(payload.content)) {
       res.status(400).json({error: 'comment_content_required'});

@@ -1,7 +1,8 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {Component, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,8 +28,31 @@ import {
   type ColorGradingParams,
   type ColorPreset,
 } from '../types/colorGrading.ts';
+import {
+  type AutoGradeStatus,
+  defaultHslSecondaryAdjustments,
+  type EngineSelectionResult,
+  type HslSecondaryAdjustments,
+  type IccProfile,
+  type Lut3D,
+  type LutSlot,
+  type LocalMaskLayer,
+} from '../types/colorEngine';
+import {useAppStore} from '../store/appStore';
+import {selectColorEngine} from '../colorEngine/engineSelector';
+import {requestSegmentation} from '../colorEngine/segmentationService';
+import {composeMaskLayers, summarizeMaskLayers} from '../colorEngine/masks/maskComposer';
+import {buildPresetBundle} from '../colorEngine/core/operators';
+import {exportGradedResult} from '../colorEngine/exportService';
+import {buildFilmicLut, buildIdentityLut} from '../colorEngine/lut/runtime';
 import {useVoiceColorGrading} from '../voice/useVoiceColorGrading';
 import {buildVoiceImageContext} from '../voice/imageContext';
+import {useAutoGradeOrchestrator} from '../colorEngine/autoGradeOrchestrator';
+import {
+  getCloudRuntimeState,
+  subscribeCloudRuntimeState,
+  type CloudRuntimeState,
+} from '../cloud/endpointResolver';
 
 interface AgentActionResult {
   ok: boolean;
@@ -52,6 +76,129 @@ interface GPUColorGradingScreenProps {
     id: number;
     params: ColorGradingParams;
   } | null;
+}
+
+const isWorkletsRuntimeError = (error: unknown): boolean => {
+  if (!error) {
+    return false;
+  }
+  const message = String((error as {message?: string}).message ?? error);
+  return (
+    message.includes('runOnUI can only be used with worklets') ||
+    message.includes('`runOnUI` can only be used with worklets') ||
+    message.includes('Should not already be working')
+  );
+};
+
+const fallbackReasonLabel = (reason?: string): string => {
+  switch (reason) {
+    case 'timeout':
+      return '请求超时';
+    case 'host_unreachable':
+      return '主机不可达';
+    case 'http_5xx':
+      return '服务 5xx';
+    case 'bad_payload':
+      return '返回格式异常';
+    case 'dns_error':
+      return 'DNS 解析失败';
+    case 'auth_error':
+      return '鉴权失败';
+    case 'unknown':
+      return '未知异常';
+    default:
+      return '云端可用';
+  }
+};
+
+const cloudStateLabel = (state: string): string => {
+  switch (state) {
+    case 'healthy':
+      return '可用';
+    case 'degraded':
+      return '降级';
+    case 'offline':
+      return '离线';
+    default:
+      return state;
+  }
+};
+
+const recoveryActionLabel = (action?: string): string => {
+  switch (action) {
+    case 'retry_with_backoff':
+      return '指数退避重试中';
+    case 'verify_adb_reverse_or_lan_host':
+      return '检查 adb reverse/局域网地址';
+    case 'check_dns_or_hostname':
+      return '检查 DNS 与主机名';
+    case 'check_model_api_credentials':
+      return '检查模型密钥与权限';
+    case 'wait_or_switch_backup_model':
+      return '切换备选模型并重试';
+    case 'check_backend_payload_schema':
+      return '检查后端返回结构';
+    default:
+      return '后台探活，恢复后自动回切';
+  }
+};
+
+const autoGradeStatusLabel = (status: AutoGradeStatus): string => {
+  switch (status) {
+    case 'idle':
+      return '待执行';
+    case 'analyzing':
+      return '分析中';
+    case 'refining':
+      return 'Refine 中';
+    case 'applying':
+      return '应用中';
+    case 'completed':
+      return '已完成';
+    case 'degraded':
+      return '降级完成';
+    case 'failed':
+      return '失败';
+    default:
+      return status;
+  }
+};
+
+interface ViewerErrorBoundaryProps {
+  children: React.ReactNode;
+  resetKey: string;
+  onRuntimeError: (error: unknown) => void;
+}
+
+interface ViewerErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ViewerErrorBoundary extends Component<ViewerErrorBoundaryProps, ViewerErrorBoundaryState> {
+  state: ViewerErrorBoundaryState = {
+    hasError: false,
+  };
+
+  static getDerivedStateFromError(): ViewerErrorBoundaryState {
+    return {hasError: true};
+  }
+
+  componentDidCatch(error: unknown): void {
+    this.props.onRuntimeError(error);
+  }
+
+  componentDidUpdate(prevProps: ViewerErrorBoundaryProps): void {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({hasError: false});
+    }
+  }
+
+  render(): React.ReactNode {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
 }
 
 const COLORS = {
@@ -82,11 +229,85 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   const [showVoiceDebug, setShowVoiceDebug] = useState(false);
   const [manualVoiceCommand, setManualVoiceCommand] = useState('');
   const [isApplyingManualVoiceCommand, setIsApplyingManualVoiceCommand] = useState(false);
+  const [engineSelection, setEngineSelection] = useState<EngineSelectionResult | null>(null);
+  const [workletsRuntimeUnavailable, setWorkletsRuntimeUnavailable] = useState(false);
+  const [localMasks, setLocalMasks] = useState<LocalMaskLayer[]>([]);
+  const [hslAdjustments] = useState<HslSecondaryAdjustments>(defaultHslSecondaryAdjustments());
+  const lutLibrary = useMemo<Record<string, Lut3D>>(
+    () => ({
+      lut_identity_16: buildIdentityLut(16, 'lut_identity_16', 'Identity 16'),
+      lut_filmic_soft_16: buildFilmicLut(16, 'lut_filmic_soft_16', 'Filmic Soft 16'),
+    }),
+    [],
+  );
+  const [activeLut, setActiveLut] = useState<LutSlot | null>(null);
+  const [isSegmenting, setIsSegmenting] = useState(false);
+  const [segmentationSummary, setSegmentationSummary] = useState('未启用 AI 局部调色');
+  const [segmentationStatusMeta, setSegmentationStatusMeta] = useState('');
+  const [cloudRuntimeState, setCloudRuntimeState] = useState<CloudRuntimeState>(
+    getCloudRuntimeState(),
+  );
+  const [lastExportSummary, setLastExportSummary] = useState('');
+  const viewerRef = useRef<View | null>(null);
+  const lastAutoSegmentImageRef = useRef('');
+
+  const colorEngineMode = useAppStore(state => state.colorEngineMode);
+  const preferredWorkingSpace = useAppStore(state => state.preferredWorkingSpace);
+  const resolvedColorEngineMode = useAppStore(state => state.resolvedColorEngineMode);
+  const setResolvedColorEngineMode = useAppStore(state => state.setResolvedColorEngineMode);
+  const setPreferredWorkingSpace = useAppStore(state => state.setPreferredWorkingSpace);
+  const setColorEngineMode = useAppStore(state => state.setColorEngineMode);
+  const setLastColorEngineFallbackReason = useAppStore(
+    state => state.setLastColorEngineFallbackReason,
+  );
 
   const {selectedImage, isLoading, pickFromGallery, pickFromCamera, clearImage} =
     useImagePicker({
       onImageError: error => Alert.alert('图片错误', error),
     });
+
+  useEffect(() => {
+    const unsubscribe = subscribeCloudRuntimeState(setCloudRuntimeState);
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveEngine = async () => {
+      const selection = await selectColorEngine({
+        preferredMode: colorEngineMode,
+        preferredWorkingSpace,
+        image: selectedImage,
+      });
+
+      if (cancelled) {
+        return;
+      }
+
+      setEngineSelection(selection);
+      setResolvedColorEngineMode(selection.resolvedMode);
+      if (selection.workingSpace !== preferredWorkingSpace) {
+        setPreferredWorkingSpace(selection.workingSpace);
+      }
+      setLastColorEngineFallbackReason(selection.diagnostics.fallbackReason || null);
+    };
+
+    resolveEngine().catch(error => {
+      console.warn('resolve engine failed:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    colorEngineMode,
+    preferredWorkingSpace,
+    selectedImage,
+    setLastColorEngineFallbackReason,
+    setPreferredWorkingSpace,
+    setResolvedColorEngineMode,
+  ]);
 
   const skImage = useMemo<SkImage | null>(() => {
     if (!selectedImage?.success || !selectedImage.base64) {
@@ -112,8 +333,89 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     getImageContext: () => buildVoiceImageContext(selectedImage, skImage),
   });
 
+  const autoGrade = useAutoGradeOrchestrator({
+    onApply: (nextParams, nextMasks) => {
+      setParams(nextParams);
+      setLocalMasks(nextMasks);
+      setSelectedPresetId('preset_original');
+      setSegmentationSummary(`AI 蒙版已就绪: ${summarizeMaskLayers(nextMasks)}`);
+    },
+  });
+
   const lastVisualKeyRef = useRef('');
   const lastExternalApplyIdRef = useRef<number>(0);
+  useEffect(() => {
+    if (selectedImage?.success) {
+      return;
+    }
+    setWorkletsRuntimeUnavailable(false);
+    setLocalMasks([]);
+    setActiveLut(null);
+    setSegmentationSummary('未启用 AI 局部调色');
+    setSegmentationStatusMeta('');
+    setLastExportSummary('');
+    lastAutoSegmentImageRef.current = '';
+    autoGrade.resetAutoGradeState();
+  }, [selectedImage?.success]);
+
+  useEffect(() => {
+    if (!workletsRuntimeUnavailable) {
+      return;
+    }
+    setResolvedColorEngineMode('legacy');
+    setLastColorEngineFallbackReason('worklets_runtime_unavailable');
+    setShaderAvailable(false);
+  }, [
+    setLastColorEngineFallbackReason,
+    setResolvedColorEngineMode,
+    workletsRuntimeUnavailable,
+  ]);
+
+  const effectiveEngineMode = workletsRuntimeUnavailable ? 'legacy' : resolvedColorEngineMode;
+
+  useEffect(() => {
+    console.log(
+      '[cloud-runtime]',
+      JSON.stringify({
+        phase: cloudRuntimeState.phase || '',
+        cloudState: cloudRuntimeState.cloudState,
+        fallbackReason: cloudRuntimeState.fallbackReason || '',
+        fallbackUsed: cloudRuntimeState.cloudState !== 'healthy',
+        endpoint: cloudRuntimeState.endpoint || '',
+        lockedEndpoint: cloudRuntimeState.lockedEndpoint || '',
+        latencyMs: cloudRuntimeState.latencyMs,
+        retrying: cloudRuntimeState.retrying,
+        nextRecoveryAction: cloudRuntimeState.nextRecoveryAction,
+        resolvedEngineMode: effectiveEngineMode,
+      }),
+    );
+  }, [cloudRuntimeState, effectiveEngineMode]);
+
+  const handleViewerRuntimeError = useCallback(
+    (error: unknown) => {
+      if (!isWorkletsRuntimeError(error)) {
+        return;
+      }
+      console.warn('worklets runtime unavailable, forcing legacy preview mode:', error);
+      setWorkletsRuntimeUnavailable(true);
+    },
+    [],
+  );
+
+  const fallbackPreviewUri = useMemo(() => {
+    if (!selectedImage?.success) {
+      return '';
+    }
+    if (selectedImage.base64) {
+      if (selectedImage.base64.startsWith('data:image/')) {
+        return selectedImage.base64;
+      }
+      const mime = selectedImage.type || 'image/jpeg';
+      return `data:${mime};base64,${selectedImage.base64}`;
+    }
+    return selectedImage.uri || '';
+  }, [selectedImage]);
+
   useEffect(() => {
     if (!selectedImage?.success || !skImage || !selectedImage.base64) {
       lastVisualKeyRef.current = '';
@@ -124,17 +426,31 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
       return;
     }
     lastVisualKeyRef.current = key;
-    voice.requestInitialVisualSuggestion().catch(error => {
-      console.warn('initial visual suggestion failed:', error);
-    });
+    const imageContext = buildVoiceImageContext(selectedImage, skImage);
+    if (!imageContext) {
+      return;
+    }
+    autoGrade
+      .runAutoGrade({
+        image: selectedImage,
+        imageContext,
+        currentParams: params,
+        currentMasks: localMasks,
+        locale: 'zh-CN',
+      })
+      .catch(error => {
+        console.warn('auto grade failed:', error);
+      });
   }, [
+    autoGrade,
+    localMasks,
+    params,
     selectedImage?.base64,
     selectedImage?.height,
     selectedImage?.success,
     selectedImage?.uri,
     selectedImage?.width,
     skImage,
-    voice,
   ]);
 
   useEffect(() => {
@@ -148,6 +464,54 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     setParams(externalApplyParamsRequest.params);
     setSelectedPresetId('preset_original');
   }, [externalApplyParamsRequest]);
+
+  const handleRunSegmentation = useCallback(async () => {
+    if (!selectedImage?.success) {
+      Alert.alert('提示', '请先选择一张图片');
+      return;
+    }
+
+    setIsSegmenting(true);
+    try {
+      const result = await requestSegmentation({image: selectedImage});
+      const nextMasks = composeMaskLayers(result, localMasks);
+      setLocalMasks(nextMasks);
+      setSegmentationSummary(
+        result.fallbackUsed
+          ? `局部分割已降级: ${summarizeMaskLayers(nextMasks)}`
+          : `AI 蒙版已就绪: ${summarizeMaskLayers(nextMasks)}`,
+      );
+      setSegmentationStatusMeta(
+        `云端: ${cloudStateLabel(result.cloudState)} | 原因: ${fallbackReasonLabel(
+          result.fallbackReason,
+        )} | 恢复: ${recoveryActionLabel(result.nextRecoveryAction)}`,
+      );
+    } catch (error) {
+      console.warn('segmentation failed:', error);
+      const fallback = composeMaskLayers(null, localMasks);
+      setLocalMasks(fallback);
+      setSegmentationSummary(`局部分割异常，已保留手动画笔: ${summarizeMaskLayers(fallback)}`);
+      setSegmentationStatusMeta('云端: 离线 | 原因: 未知异常 | 恢复: 后台探活，恢复后自动回切');
+    } finally {
+      setIsSegmenting(false);
+    }
+  }, [localMasks, selectedImage]);
+
+  useEffect(() => {
+    if (!selectedImage?.success || effectiveEngineMode !== 'pro') {
+      return;
+    }
+
+    const imageKey = `${selectedImage.uri || ''}_${selectedImage.width || 0}_${selectedImage.height || 0}`;
+    if (!imageKey || lastAutoSegmentImageRef.current === imageKey) {
+      return;
+    }
+
+    lastAutoSegmentImageRef.current = imageKey;
+    handleRunSegmentation().catch(error => {
+      console.warn('auto segmentation failed:', error);
+    });
+  }, [effectiveEngineMode, handleRunSegmentation, selectedImage]);
 
   const handleBasicChange = useCallback(
     (basic: ColorGradingParams['basic']) => {
@@ -197,21 +561,82 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   const handleResetAll = useCallback(() => {
     setParams(defaultColorGradingParams);
     setSelectedPresetId('preset_original');
-  }, []);
+    setLocalMasks([]);
+    setActiveLut(null);
+    setSegmentationSummary('未启用 AI 局部调色');
+    setSegmentationStatusMeta('');
+    setLastExportSummary('');
+    lastAutoSegmentImageRef.current = '';
+    autoGrade.resetAutoGradeState();
+  }, [autoGrade]);
 
   const handleSave = useCallback(async () => {
-    if (!selectedImage?.success || !skImage) {
+    if (!selectedImage?.success || !skImage || !viewerRef.current) {
       Alert.alert('提示', '请先选择一张图片');
       return;
     }
 
     try {
       setIsSaving(true);
-      Alert.alert('保存功能', 'GPU 导出将在下一步接入系统相册。');
+      const exportSpec =
+        effectiveEngineMode === 'pro' || selectedImage.isRaw
+          ? {
+              format: 'png16' as const,
+              bitDepth: 16 as const,
+              iccProfile: (
+                engineSelection?.workingSpace === 'linear_prophoto' ? 'display_p3' : 'srgb'
+              ) as IccProfile,
+              sourcePolicy: 'original_only' as const,
+              quality: 1,
+            }
+          : {
+              format: 'jpeg' as const,
+              bitDepth: 8 as const,
+              iccProfile: 'srgb' as const,
+              sourcePolicy: 'allow_fallback' as const,
+              quality: 0.94,
+            };
+
+      const result = await exportGradedResult({
+        targetRef: viewerRef,
+        spec: exportSpec,
+        metadata: {
+          engineMode: effectiveEngineMode,
+          workingSpace: engineSelection?.workingSpace,
+          sourceUri: selectedImage.uri,
+          nativeSourcePath: selectedImage.nativeSourcePath,
+          isRawSource: selectedImage.isRaw,
+        },
+        params,
+        hsl: hslAdjustments,
+        lut: activeLut,
+        lutData: activeLut ? lutLibrary[activeLut.lutId] || null : null,
+        localMasks,
+      });
+
+      const warningText = result.warnings.length > 0 ? `\n${result.warnings.join('\n')}` : '';
+      const summary = `${result.spec.format} / ${result.spec.bitDepth}-bit / ${result.spec.iccProfile}`;
+      setLastExportSummary(summary);
+      Alert.alert('导出完成', `已生成临时文件:\n${result.uri}\n${summary}${warningText}`);
+    } catch (error) {
+      Alert.alert(
+        '导出失败',
+        error instanceof Error ? error.message : '导出流程异常，请稍后重试。',
+      );
     } finally {
       setIsSaving(false);
     }
-  }, [selectedImage?.success, skImage]);
+  }, [
+    activeLut,
+    effectiveEngineMode,
+    engineSelection?.workingSpace,
+    hslAdjustments,
+    localMasks,
+    lutLibrary,
+    params,
+    selectedImage,
+    skImage,
+  ]);
 
   const handleVoiceToggle = useCallback(() => {
     const task = voice.isRecording ? voice.stopPressToTalk() : voice.startPressToTalk();
@@ -269,6 +694,11 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     [handleSelectPreset],
   );
 
+  const activePresetBundle = useMemo(
+    () => buildPresetBundle(params, localMasks),
+    [localMasks, params],
+  );
+
   useEffect(() => {
     if (!onAgentBridgeReady) {
       return;
@@ -320,6 +750,148 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
           </TouchableOpacity>
         </View>
 
+        <View style={styles.engineCard}>
+          <View style={styles.engineRow}>
+            <View>
+              <Text style={styles.engineTitle}>Pro Engine 灰度</Text>
+              <Text style={styles.engineMeta}>
+                当前: {effectiveEngineMode.toUpperCase()} | 工作空间:{' '}
+                {engineSelection?.workingSpace || preferredWorkingSpace}
+              </Text>
+            </View>
+            <View style={styles.engineModeGroup}>
+              {(['auto', 'pro', 'legacy'] as const).map(mode => (
+                <TouchableOpacity
+                  key={mode}
+                  style={[
+                    styles.engineModeButton,
+                    colorEngineMode === mode && styles.engineModeButtonActive,
+                  ]}
+                  onPress={() => setColorEngineMode(mode)}>
+                  <Text
+                    style={[
+                      styles.engineModeButtonText,
+                      colorEngineMode === mode && styles.engineModeButtonTextActive,
+                    ]}>
+                    {mode}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+          <Text style={styles.engineMeta}>
+            预览预算: {engineSelection?.diagnostics.maxPreviewDimension || 0}px | 推荐导出:{' '}
+            {engineSelection?.diagnostics.recommendedExportFormat || 'png16'}
+          </Text>
+          {engineSelection?.diagnostics.fallbackReason ? (
+            <Text style={styles.engineWarning}>
+              自动降级原因: {engineSelection.diagnostics.fallbackReason}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.cloudStatusCard}>
+          <View style={styles.cloudStatusHeader}>
+            <Text style={styles.cloudStatusTitle}>云端状态</Text>
+            <Text
+              style={[
+                styles.cloudStatusBadge,
+                cloudRuntimeState.cloudState === 'healthy'
+                  ? styles.cloudStatusHealthy
+                  : styles.cloudStatusFallback,
+              ]}>
+              {cloudStateLabel(cloudRuntimeState.cloudState)}
+            </Text>
+          </View>
+          <Text style={styles.cloudStatusMeta}>
+            原因: {fallbackReasonLabel(cloudRuntimeState.fallbackReason)}
+          </Text>
+          <Text style={styles.cloudStatusMeta}>
+            动作: {recoveryActionLabel(cloudRuntimeState.nextRecoveryAction)}
+          </Text>
+          <Text style={styles.cloudStatusMeta}>
+            重试: {cloudRuntimeState.retrying ? '是' : '否'} | 延迟: {cloudRuntimeState.latencyMs}ms
+          </Text>
+          <Text style={styles.cloudStatusMeta}>
+            端点: {cloudRuntimeState.endpoint || '未命中'}
+          </Text>
+        </View>
+
+        <View style={styles.autoGradeCard}>
+          <View style={styles.autoGradeHeader}>
+            <Text style={styles.autoGradeTitle}>上传首版智能调色</Text>
+            <Text
+              style={[
+                styles.autoGradeBadge,
+                autoGrade.status === 'completed'
+                  ? styles.autoGradeBadgeDone
+                  : autoGrade.status === 'degraded'
+                    ? styles.autoGradeBadgeDegraded
+                    : styles.autoGradeBadgePending,
+              ]}>
+              {autoGradeStatusLabel(autoGrade.status)}
+            </Text>
+          </View>
+              <Text style={styles.autoGradeMeta}>
+                首次应用: {autoGrade.firstAutoGradeAppliedAt || '尚未完成'}
+              </Text>
+              {autoGrade.report ? (
+                <>
+                  <Text style={styles.autoGradeMeta}>
+                    阶段: {autoGrade.report.phase === 'refine' ? 'refine' : 'fast'}
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>场景: {autoGrade.report.sceneProfile}</Text>
+                  <Text style={styles.autoGradeMeta}>
+                    风险: {autoGrade.report.qualityRiskFlags.join(', ') || '无'}
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>
+                    解释: {autoGrade.report.explanation}
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>
+                    云端: {cloudStateLabel(autoGrade.report.cloudState)} | 原因:{' '}
+                    {fallbackReasonLabel(autoGrade.report.fallbackReason)}
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>
+                    refine: {autoGrade.report.refineApplied ? '已自动叠加' : '未叠加'}
+                    {autoGrade.report.refineFallbackReason
+                      ? ` | 原因: ${fallbackReasonLabel(autoGrade.report.refineFallbackReason)}`
+                      : ''}
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>
+                    恢复: {recoveryActionLabel(autoGrade.report.nextRecoveryAction)} | 延迟:{' '}
+                    {autoGrade.report.latencyMs}ms
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>
+                    超时/预算: {autoGrade.report.phaseTimeoutMs || 0} /{' '}
+                    {autoGrade.report.phaseBudgetMs || 0} ms | payload:{' '}
+                    {autoGrade.report.payloadBytes || 0} bytes | quality:{' '}
+                    {autoGrade.report.encodeQuality || 0}
+                  </Text>
+                  <Text style={styles.autoGradeMeta}>
+                    端点: {autoGrade.report.endpoint || 'N/A'}
+                    {autoGrade.report.lockedEndpoint
+                      ? ` | 锁定: ${autoGrade.report.lockedEndpoint}`
+                      : ''}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.autoGradeMeta}>上传后将自动分析并应用首版建议。</Text>
+              )}
+          {autoGrade.firstAutoGradeUndoToken ? (
+            <TouchableOpacity
+              style={styles.autoGradeUndoButton}
+              onPress={() => {
+                const undone = autoGrade.undoFirstAutoGrade();
+                if (undone) {
+                  setSegmentationSummary('已撤销首版自动调色，恢复上传初始状态');
+                }
+              }}>
+              <Icon name="arrow-undo-outline" size={16} color={COLORS.textMain} />
+              <Text style={styles.autoGradeUndoText}>撤销首版自动调色</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         <ImagePickerComponent
           selectedImage={selectedImage}
           isLoading={isLoading}
@@ -350,24 +922,136 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <View style={styles.viewerCard}>
-              <GPUBeforeAfterViewer
-                image={skImage}
-                params={params}
-                showComparison={showComparison}
-                onToggleComparison={() => setShowComparison(v => !v)}
-                onShaderAvailabilityChange={setShaderAvailable}
-              />
+            <View style={styles.viewerCard} ref={viewerRef}>
+              {workletsRuntimeUnavailable && fallbackPreviewUri ? (
+                <View style={styles.runtimeFallbackViewer}>
+                  <Image
+                    source={{uri: fallbackPreviewUri}}
+                    resizeMode="contain"
+                    style={styles.runtimeFallbackImage}
+                  />
+                </View>
+              ) : (
+                <ViewerErrorBoundary
+                  resetKey={`${selectedImage?.uri || ''}_${effectiveEngineMode}`}
+                  onRuntimeError={handleViewerRuntimeError}>
+                  <GPUBeforeAfterViewer
+                    image={skImage}
+                    params={params}
+                    showComparison={showComparison}
+                    onToggleComparison={() => setShowComparison(v => !v)}
+                    onShaderAvailabilityChange={setShaderAvailable}
+                    engineMode={effectiveEngineMode}
+                    localMasks={localMasks}
+                    hsl={hslAdjustments}
+                    lut={activeLut}
+                    lutLibrary={lutLibrary}
+                  />
+                </ViewerErrorBoundary>
+              )}
+            </View>
+
+            <View style={styles.blockCard}>
+              <Text style={styles.blockTitle}>LUT 风格</Text>
+              <View style={styles.engineModeGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.engineModeButton,
+                    !activeLut && styles.engineModeButtonActive,
+                  ]}
+                  onPress={() => setActiveLut(null)}>
+                  <Text
+                    style={[
+                      styles.engineModeButtonText,
+                      !activeLut && styles.engineModeButtonTextActive,
+                    ]}>
+                    OFF
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.engineModeButton,
+                    activeLut?.lutId === 'lut_filmic_soft_16' &&
+                      styles.engineModeButtonActive,
+                  ]}
+                  onPress={() =>
+                    setActiveLut({
+                      enabled: true,
+                      lutId: 'lut_filmic_soft_16',
+                      strength: 0.38,
+                    })
+                  }>
+                  <Text
+                    style={[
+                      styles.engineModeButtonText,
+                      activeLut?.lutId === 'lut_filmic_soft_16' &&
+                        styles.engineModeButtonTextActive,
+                    ]}>
+                    FILMIC
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.engineModeButton,
+                    activeLut?.lutId === 'lut_identity_16' &&
+                      styles.engineModeButtonActive,
+                  ]}
+                  onPress={() =>
+                    setActiveLut({
+                      enabled: true,
+                      lutId: 'lut_identity_16',
+                      strength: 1,
+                    })
+                  }>
+                  <Text
+                    style={[
+                      styles.engineModeButtonText,
+                      activeLut?.lutId === 'lut_identity_16' &&
+                        styles.engineModeButtonTextActive,
+                    ]}>
+                    IDENTITY
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.engineMeta}>
+                当前: {activeLut ? `${activeLut.lutId} (${Math.round(activeLut.strength * 100)}%)` : '未启用'}
+              </Text>
             </View>
 
             {!shaderAvailable ? (
               <View style={styles.shaderWarningCard}>
                 <Icon name="warning-outline" size={15} color={COLORS.warning} />
                 <Text style={styles.shaderWarningText}>
-                  当前设备不支持 Runtime Shader，已回退到基础矩阵模式。进阶参数效果会受限。
+                  {workletsRuntimeUnavailable
+                    ? 'Worklets 运行时不可用，已自动降级到 legacy 预览链路。'
+                    : '当前设备不支持 Runtime Shader，已回退到基础矩阵模式。进阶参数效果会受限。'}
                 </Text>
               </View>
             ) : null}
+
+            <View style={styles.blockCard}>
+              <View style={styles.localMaskHeader}>
+                <Text style={styles.blockTitle}>AI 局部调色</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.localMaskButton,
+                    isSegmenting && styles.localMaskButtonDisabled,
+                  ]}
+                  onPress={handleRunSegmentation}
+                  disabled={isSegmenting}>
+                  <Text style={styles.localMaskButtonText}>
+                    {isSegmenting ? '分析中...' : '刷新蒙版'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.localMaskSummary}>{segmentationSummary}</Text>
+              <Text style={styles.localMaskMeta}>
+                蒙版数: {localMasks.length} | 预设版本: {activePresetBundle.metadata.version}
+              </Text>
+              {segmentationStatusMeta ? (
+                <Text style={styles.localMaskStatusMeta}>{segmentationStatusMeta}</Text>
+              ) : null}
+            </View>
 
             <View style={styles.voiceCard}>
               <View style={styles.voiceHeader}>
@@ -380,6 +1064,16 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
                 <Text style={styles.voiceSummaryMeta}>
                   状态: {voice.visualState}
                   {voice.visualProfile ? ` | 场景: ${voice.visualProfile}` : ''}
+                </Text>
+                <Text style={styles.voiceSummaryMeta}>
+                  云端: {cloudStateLabel(voice.cloudState)} | 原因:{' '}
+                  {fallbackReasonLabel(voice.fallbackReason)}
+                </Text>
+                <Text style={styles.voiceSummaryMeta}>
+                  恢复: {recoveryActionLabel(voice.nextRecoveryAction)}
+                </Text>
+                <Text style={styles.voiceSummaryMeta}>
+                  延迟: {voice.cloudLatencyMs}ms | 自动重试: {voice.cloudRetrying ? '是' : '否'}
                 </Text>
                 {voice.visualSummary ? (
                   <Text style={styles.voiceSummaryText}>{voice.visualSummary}</Text>
@@ -417,7 +1111,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
 
               {voice.lastError ? <Text style={styles.voiceError}>{voice.lastError}</Text> : null}
 
-              {voice.lastError.includes('网络') ? (
+              {voice.cloudState !== 'healthy' ? (
                 <View style={styles.textFallbackCard}>
                   <Text style={styles.textFallbackTitle}>语音网络不稳定时，改用文本命令</Text>
                   <TextInput
@@ -529,6 +1223,12 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               )}
               <Text style={styles.saveButtonText}>{isSaving ? '处理中...' : '导出结果'}</Text>
             </TouchableOpacity>
+
+            {lastExportSummary ? (
+              <View style={styles.exportSummaryCard}>
+                <Text style={styles.exportSummaryText}>最近导出: {lastExportSummary}</Text>
+              </View>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -583,6 +1283,158 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  engineCard: {
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: 'rgba(9, 34, 56, 0.92)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 8,
+  },
+  engineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  engineTitle: {
+    color: COLORS.textMain,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  engineMeta: {
+    color: COLORS.textSub,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  engineWarning: {
+    color: COLORS.warning,
+    fontSize: 11,
+  },
+  cloudStatusCard: {
+    marginTop: 8,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardSoft,
+  },
+  cloudStatusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  cloudStatusTitle: {
+    color: COLORS.textMain,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cloudStatusBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 9,
+  },
+  cloudStatusHealthy: {
+    backgroundColor: 'rgba(112, 208, 162, 0.24)',
+    color: '#9af0cb',
+  },
+  cloudStatusFallback: {
+    backgroundColor: 'rgba(255, 214, 162, 0.24)',
+    color: '#ffe1bc',
+  },
+  cloudStatusMeta: {
+    color: COLORS.textSub,
+    fontSize: 11,
+    marginTop: 3,
+  },
+  autoGradeCard: {
+    marginTop: 8,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.cardSoft,
+  },
+  autoGradeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  autoGradeTitle: {
+    color: COLORS.textMain,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  autoGradeBadge: {
+    borderRadius: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  autoGradeBadgeDone: {
+    backgroundColor: 'rgba(117, 216, 174, 0.24)',
+    color: '#a8f7d2',
+  },
+  autoGradeBadgeDegraded: {
+    backgroundColor: 'rgba(255, 214, 162, 0.24)',
+    color: '#ffe4c0',
+  },
+  autoGradeBadgePending: {
+    backgroundColor: 'rgba(151, 203, 245, 0.24)',
+    color: '#d7ecff',
+  },
+  autoGradeMeta: {
+    color: COLORS.textSub,
+    fontSize: 11,
+    marginTop: 4,
+  },
+  autoGradeUndoButton: {
+    marginTop: 8,
+    borderRadius: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(157, 208, 245, 0.34)',
+    backgroundColor: 'rgba(24, 70, 106, 0.85)',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  autoGradeUndoText: {
+    color: COLORS.textMain,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  engineModeGroup: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  engineModeButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(141, 197, 236, 0.24)',
+    backgroundColor: 'rgba(18, 60, 92, 0.74)',
+  },
+  engineModeButtonActive: {
+    backgroundColor: COLORS.primaryStrong,
+    borderColor: '#caecff',
+  },
+  engineModeButtonText: {
+    color: COLORS.textMain,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  engineModeButtonTextActive: {
+    color: '#0a2a47',
+  },
   loadingCard: {
     marginTop: 8,
     borderRadius: 12,
@@ -633,6 +1485,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: '#041224',
+  },
+  runtimeFallbackViewer: {
+    width: '100%',
+    aspectRatio: 1,
+    maxHeight: 420,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#051a30',
+  },
+  runtimeFallbackImage: {
+    width: '100%',
+    height: '100%',
   },
   shaderWarningCard: {
     marginTop: 8,
@@ -849,6 +1713,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 4,
   },
+  localMaskHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  localMaskButton: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(124, 206, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: '#bfe7ff',
+  },
+  localMaskButtonDisabled: {
+    opacity: 0.65,
+  },
+  localMaskButtonText: {
+    color: '#0a2943',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  localMaskSummary: {
+    color: COLORS.textMain,
+    fontSize: 12,
+    marginTop: 6,
+  },
+  localMaskMeta: {
+    color: COLORS.textMute,
+    fontSize: 11,
+    marginTop: 5,
+  },
+  localMaskStatusMeta: {
+    color: COLORS.textSub,
+    fontSize: 11,
+    marginTop: 5,
+  },
   saveButton: {
     marginTop: 14,
     borderRadius: 14,
@@ -867,6 +1768,19 @@ const styles = StyleSheet.create({
     color: '#0b2a47',
     fontSize: 15,
     fontWeight: '700',
+  },
+  exportSummaryCard: {
+    marginTop: 8,
+    marginBottom: 8,
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: 'rgba(8, 33, 55, 0.86)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  exportSummaryText: {
+    color: COLORS.textSub,
+    fontSize: 12,
   },
 });
 

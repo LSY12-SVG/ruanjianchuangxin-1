@@ -1,4 +1,5 @@
 import type {ColorGradingParams} from '../types/colorGrading.ts';
+import type {CloudFallbackReason, CloudServiceState} from '../types/colorEngine';
 
 export type VoiceIntentActionType =
   | 'set_param'
@@ -92,6 +93,8 @@ export interface InterpretResponse {
   sceneConfidence?: number;
   qualityRiskFlags?: string[];
   recommendedIntensity?: 'soft' | 'normal' | 'strong';
+  fallbackReason?: CloudFallbackReason;
+  cloudState?: CloudServiceState;
 }
 
 export interface SpeechRecognitionResult {

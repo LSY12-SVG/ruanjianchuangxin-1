@@ -1,5 +1,6 @@
 import {NativeModules} from 'react-native';
 import type {ColorGradingParams} from '../types/colorGrading';
+import {getAuthToken} from '../profile/api';
 
 export type FeedFilter = 'all' | 'portrait' | 'cinema' | 'vintage';
 export type PostStatus = 'draft' | 'published';
@@ -113,6 +114,12 @@ const resolveBaseCandidates = (): string[] => {
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+const parseErrorCode = (value: unknown): string => {
+  if (isObject(value) && typeof value.error === 'string') {
+    return value.error;
+  }
+  return '';
+};
 
 const parsePost = (value: unknown): CommunityPost | null => {
   if (!isObject(value) || !isObject(value.author)) {
@@ -173,7 +180,7 @@ const parseComment = (value: unknown): CommunityComment | null => {
 const requestCommunity = async (
   path: string,
   init: RequestInit,
-  userId?: string,
+  _userId?: string,
 ): Promise<unknown> => {
   const candidates = resolveBaseCandidates();
   let lastError: Error | null = null;
@@ -184,17 +191,19 @@ const requestCommunity = async (
         'Content-Type': 'application/json',
         ...(init.headers as Record<string, string>),
       };
-      if (userId) {
-        headers['X-User-Id'] = userId;
+      const token = getAuthToken();
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
       }
       const response = await fetch(`${base}${path}`, {
         ...init,
         headers,
       });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(`community_http_${response.status}`);
+        throw new Error(parseErrorCode(data) || `community_http_${response.status}`);
       }
-      return await response.json();
+      return data;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('community_request_failed');
     }

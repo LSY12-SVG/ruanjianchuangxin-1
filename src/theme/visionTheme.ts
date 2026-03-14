@@ -1,33 +1,34 @@
+import {BRAND_THEME_TOKENS} from './brandTheme';
+
 export const VISION_THEME = {
   background: {
-    top: '#061426',
-    mid: '#0b2a45',
-    bottom: '#071b30',
+    top: '#3d0a1f',
+    mid: '#5a1230',
+    bottom: '#2b1018',
   },
   surface: {
-    base: 'rgba(11, 42, 68, 0.86)',
-    elevated: 'rgba(8, 29, 48, 0.98)',
-    card: 'rgba(13, 48, 76, 0.88)',
-    active: 'rgba(122, 201, 255, 0.14)',
+    base: 'rgba(111, 21, 55, 0.74)',
+    elevated: 'rgba(56, 17, 31, 0.96)',
+    card: 'rgba(78, 24, 42, 0.9)',
+    active: 'rgba(255, 122, 69, 0.18)',
   },
   border: {
-    soft: 'rgba(137, 190, 232, 0.23)',
-    strong: 'rgba(155, 210, 248, 0.38)',
+    soft: 'rgba(255, 188, 160, 0.24)',
+    strong: 'rgba(255, 176, 137, 0.46)',
   },
   text: {
-    primary: '#e7f3ff',
-    secondary: '#aac9e7',
-    muted: '#7ea4c6',
+    primary: BRAND_THEME_TOKENS.text.headline,
+    secondary: BRAND_THEME_TOKENS.text.body,
+    muted: BRAND_THEME_TOKENS.text.muted,
   },
   accent: {
-    main: '#7ac9ff',
-    strong: '#9ad9ff',
-    dark: '#0d2a46',
+    main: BRAND_THEME_TOKENS.palette.sunset,
+    strong: BRAND_THEME_TOKENS.palette.sunsetSoft,
+    dark: BRAND_THEME_TOKENS.palette.merlotDeep,
   },
   feedback: {
-    success: '#8be8c8',
-    warning: '#ffd7a2',
-    danger: '#ffb8b8',
+    success: BRAND_THEME_TOKENS.semantic.success,
+    warning: BRAND_THEME_TOKENS.semantic.warning,
+    danger: BRAND_THEME_TOKENS.semantic.error,
   },
 } as const;
-

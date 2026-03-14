@@ -11,6 +11,13 @@ import {Canvas, Image as SkiaImage} from '@shopify/react-native-skia';
 import type {SkImage} from '@shopify/react-native-skia';
 import {GPUColorGradingView} from './GPUColorGradingView';
 import type {ColorGradingParams} from '../../types/colorGrading.ts';
+import type {
+  HslSecondaryAdjustments,
+  Lut3D,
+  LutSlot,
+  LocalMaskLayer,
+  ResolvedColorEngineMode,
+} from '../../types/colorEngine';
 
 interface GPUBeforeAfterViewerProps {
   image: SkImage;
@@ -18,6 +25,11 @@ interface GPUBeforeAfterViewerProps {
   showComparison: boolean;
   onToggleComparison: () => void;
   onShaderAvailabilityChange?: (available: boolean) => void;
+  engineMode?: ResolvedColorEngineMode;
+  localMasks?: LocalMaskLayer[];
+  hsl?: HslSecondaryAdjustments;
+  lut?: LutSlot | null;
+  lutLibrary?: Record<string, Lut3D>;
 }
 
 export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
@@ -26,6 +38,11 @@ export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
   showComparison,
   onToggleComparison,
   onShaderAvailabilityChange,
+  engineMode,
+  localMasks,
+  hsl,
+  lut,
+  lutLibrary,
 }) => {
   const [sliderPosition, setSliderPosition] = useState(50);
   const dragStartPx = useRef(0);
@@ -63,7 +80,7 @@ export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
   ).current;
 
   return (
-    <View style={[styles.container, {width: displayWidth, height: displayHeight}]}> 
+    <View style={[styles.container, {width: displayWidth, height: displayHeight}]}>
       {!showComparison ? (
         <GPUColorGradingView
           image={image}
@@ -71,6 +88,11 @@ export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
           displayWidth={displayWidth}
           displayHeight={displayHeight}
           onShaderAvailabilityChange={onShaderAvailabilityChange}
+          engineMode={engineMode}
+          localMasks={localMasks}
+          hsl={hsl}
+          lut={lut}
+          lutLibrary={lutLibrary}
         />
       ) : (
         <>
@@ -92,7 +114,12 @@ export const GPUBeforeAfterViewer: React.FC<GPUBeforeAfterViewerProps> = ({
               displayWidth={displayWidth}
               displayHeight={displayHeight}
               onShaderAvailabilityChange={onShaderAvailabilityChange}
-            />
+                engineMode={engineMode}
+                localMasks={localMasks}
+                hsl={hsl}
+                lut={lut}
+                lutLibrary={lutLibrary}
+              />
           </View>
 
           <View

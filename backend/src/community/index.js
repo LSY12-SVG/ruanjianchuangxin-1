@@ -4,7 +4,7 @@ const {runCommunityMigrations} = require('./migrations');
 const {createCommunityRepository} = require('./repository');
 const {createCommunityRouter} = require('./routes');
 
-const initializeCommunityModule = async () => {
+const initializeCommunityModule = async ({authMiddleware, optionalAuthMiddleware} = {}) => {
   const config = readCommunityConfig();
   if (!config.enabled) {
     return {
@@ -21,12 +21,22 @@ const initializeCommunityModule = async () => {
       reason: 'missing_database_url',
     };
   }
+  if (typeof authMiddleware !== 'function' || typeof optionalAuthMiddleware !== 'function') {
+    return {
+      enabled: false,
+      router: null,
+      close: async () => undefined,
+      reason: 'missing_auth_middleware',
+    };
+  }
 
   const db = createCommunityDb(config);
   await runCommunityMigrations(db);
   const repo = createCommunityRepository(db);
   const router = createCommunityRouter({
     repo,
+    authMiddleware,
+    optionalAuthMiddleware,
     pageSizeDefault: config.pageSizeDefault,
     pageSizeMax: config.pageSizeMax,
   });

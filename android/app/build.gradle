@@ -84,6 +84,12 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++20 -frtti -fexceptions"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
         
         // react-native-vector-icons 字体配置
         resValue "string", "build_config_package", "com.visiongenieapp"
@@ -106,6 +112,16 @@ android {
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging false
         }
     }
 }

@@ -12,6 +12,8 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import {VISION_THEME} from '../theme/visionTheme';
+import {TopSegment} from '../components/ui/TopSegment';
+import {AdvancedImageCard} from '../components/media/AdvancedImageCard';
 import type {ColorGradingParams} from '../types/colorGrading';
 import {defaultColorGradingParams} from '../types/colorGrading';
 import {
@@ -29,6 +31,7 @@ import {
   toggleCommunitySave,
   updateCommunityDraft,
 } from '../community/api';
+import {useCommunityFeedQuery} from '../hooks/queries/useCommunityFeedQuery';
 
 interface AgentActionResult {
   ok: boolean;
@@ -125,6 +128,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
   const [commentInputByPostId, setCommentInputByPostId] = useState<Record<string, string>>({});
   const [replyTargetByPostId, setReplyTargetByPostId] = useState<Record<string, string | null>>({});
   const [sendingCommentByPostId, setSendingCommentByPostId] = useState<Record<string, boolean>>({});
+  const feedQuery = useCommunityFeedQuery(filter);
 
   const parseDraftTags = useCallback(
     () =>
@@ -170,6 +174,20 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    if (feedQuery.data) {
+      setPosts(feedQuery.data.items);
+      setPage(feedQuery.data.page);
+      setHasMore(feedQuery.data.hasMore);
+      setLoading(false);
+      setRefreshing(false);
+    }
+    if (feedQuery.error) {
+      const message = feedQuery.error instanceof Error ? feedQuery.error.message : '社区加载失败';
+      setErrorMessage(message);
+    }
+  }, [feedQuery.data, feedQuery.error]);
 
   useEffect(() => {
     loadFeed(filter, 1, false).catch(() => undefined);
@@ -280,10 +298,13 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             : item,
         ),
       );
-    } catch {
+    } catch (error) {
       setPosts(prev =>
         prev.map(item => (item.id === post.id ? post : item)),
       );
+      if (error instanceof Error && error.message === 'unauthorized') {
+        setErrorMessage('unauthorized');
+      }
     }
   }, []);
 
@@ -309,10 +330,13 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             : item,
         ),
       );
-    } catch {
+    } catch (error) {
       setPosts(prev =>
         prev.map(item => (item.id === post.id ? post : item)),
       );
+      if (error instanceof Error && error.message === 'unauthorized') {
+        setErrorMessage('unauthorized');
+      }
     }
   }, []);
 
@@ -356,8 +380,10 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             ),
           );
         }
-      } catch {
-        // ignore
+      } catch (error) {
+        if (error instanceof Error && error.message === 'unauthorized') {
+          setErrorMessage('unauthorized');
+        }
       } finally {
         setCommentInputByPostId(prev => ({...prev, [post.id]: ''}));
         setReplyTargetByPostId(prev => ({...prev, [post.id]: null}));
@@ -474,22 +500,11 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
           {draftMessage ? <Text style={styles.draftMessage}>{draftMessage}</Text> : null}
         </View>
 
-        <View style={styles.filterRow}>
-          {FILTERS.map(item => {
-            const active = item.key === filter;
-            return (
-              <TouchableOpacity
-                key={item.key}
-                onPress={() => setFilter(item.key)}
-                style={[styles.filterChip, active && styles.filterChipActive]}
-                activeOpacity={0.85}>
-                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <TopSegment
+          value={filter}
+          onValueChange={value => setFilter(value as FeedFilter)}
+          items={FILTERS.map(item => ({value: item.key, label: item.label}))}
+        />
 
         {loading ? (
           <View style={styles.loadingCard}>
@@ -519,16 +534,18 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
                 <Text style={styles.contentText}>{post.content || '暂无详细描述'}</Text>
 
                 <View style={styles.previewRow}>
-                  <View style={styles.previewBefore}>
-                    <Text style={styles.previewLabel}>
-                      {post.beforeUrl ? 'Before URL' : 'Before'}
-                    </Text>
-                  </View>
-                  <View style={styles.previewAfter}>
-                    <Text style={styles.previewLabel}>
-                      {post.afterUrl ? 'After URL' : 'After'}
-                    </Text>
-                  </View>
+                  <AdvancedImageCard
+                    source={post.beforeUrl ? {uri: post.beforeUrl} : undefined}
+                    style={styles.previewBefore}
+                    label="Before"
+                    preset="clean"
+                  />
+                  <AdvancedImageCard
+                    source={post.afterUrl ? {uri: post.afterUrl} : undefined}
+                    style={styles.previewAfter}
+                    label="After"
+                    preset="vivid"
+                  />
                 </View>
 
                 <View style={styles.tagRow}>

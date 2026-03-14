@@ -49,11 +49,8 @@ interface AgentRuntimeContextValue {
 const AgentRuntimeContext = createContext<AgentRuntimeContextValue | null>(null);
 
 const quickGoalByTab = (tab: AgentAppTab): string => {
-  if (tab === 'grading') {
-    return '优化当前调色效果并给出可执行建议';
-  }
-  if (tab === 'convert') {
-    return '根据当前页面状态准备并启动2D转3D任务';
+  if (tab === 'home') {
+    return '根据首页上下文选择调色或建模模块并执行优化';
   }
   if (tab === 'community') {
     return '生成当前内容的社区发布草稿';
@@ -83,7 +80,6 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
   const [latestExecution, setLatestExecution] = useState<AgentExecutionResult | null>(null);
   const [pendingActions, setPendingActions] = useState<AgentAction[]>([]);
   const [memory, setMemory] = useState<AgentMemorySnapshot>(memoryStoreRef.current.snapshot());
-  const [registryVersion, setRegistryVersion] = useState(0);
 
   const commitHistory = useCallback(
     async (goal: string, plan: AgentPlanResponse, execution: AgentExecutionResult) => {
@@ -189,7 +185,7 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       const remotePlan = await planAgentWithCloud(request, endpoint);
       return remotePlan || buildLocalAgentPlan(request);
     },
-    [currentTab, endpoint, registryVersion],
+    [currentTab, endpoint],
   );
 
   const submitGoal = useCallback(
@@ -274,10 +270,8 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
 
   const registerOperation = useCallback((operation: AgentRegisteredOperation) => {
     const unregister = toolRegistryRef.current.register(operation);
-    setRegistryVersion(value => value + 1);
     return () => {
       unregister();
-      setRegistryVersion(value => value + 1);
     };
   }, []);
 

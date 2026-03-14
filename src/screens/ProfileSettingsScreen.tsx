@@ -12,6 +12,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import {VISION_THEME} from '../theme/visionTheme';
+import {TopSegment} from '../components/ui/TopSegment';
 import {
   ProfileApiError,
   clearAuthToken,
@@ -24,6 +25,7 @@ import {
   updateMySettings,
   type MyProfileResponse,
 } from '../profile/api';
+import {useMyProfileQuery} from '../hooks/queries/useMyProfileQuery';
 
 interface AgentActionResult {
   ok: boolean;
@@ -69,6 +71,7 @@ const defaultStats: MyProfileResponse['stats'] = {
 export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
   onAgentBridgeReady,
 }) => {
+  const [segment, setSegment] = useState<'account' | 'profile' | 'prefs'>('account');
   const [booting, setBooting] = useState(true);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
@@ -87,6 +90,7 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [editTier, setEditTier] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const profileQuery = useMyProfileQuery();
 
   const authenticated = useMemo(() => Boolean(profile.id) && hasAuthToken(), [profile.id]);
 
@@ -116,6 +120,12 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
       setLoadingProfile(false);
     }
   }, [syncFromResponse]);
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      syncFromResponse(profileQuery.data);
+    }
+  }, [profileQuery.data, syncFromResponse]);
 
   useEffect(() => {
     let active = true;
@@ -315,6 +325,15 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
       ]}
       style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <TopSegment
+          value={segment}
+          onValueChange={value => setSegment(value as 'account' | 'profile' | 'prefs')}
+          items={[
+            {value: 'account', label: '账号'},
+            {value: 'profile', label: '资料'},
+            {value: 'prefs', label: '偏好'},
+          ]}
+        />
         {booting ? (
           <View style={styles.loadingCard}>
             <ActivityIndicator size="small" color={VISION_THEME.accent.main} />
