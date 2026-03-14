@@ -53,6 +53,8 @@ backend/test_request.json
 .tmp/
 device-screen*.png
 backend/test_image.png
+android/app/src/main/cpp/third_party/lcms2/.git.embedded.backup/
+android/app/src/main/cpp/third_party/libraw/.git.embedded.backup/
 
 # fastlane
 #
