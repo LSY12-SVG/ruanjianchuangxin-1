@@ -57,6 +57,7 @@ export interface UpdateSettingsRequest {
 
 const TOKEN_KEY = 'visiongenie.auth.token';
 const DEFAULT_BASE_URL = 'http://127.0.0.1:8787';
+const DEBUG_AUTH_BYPASS = typeof __DEV__ === 'boolean' && __DEV__;
 
 let authTokenCache = '';
 
@@ -220,7 +221,7 @@ export const restoreAuthToken = async (): Promise<string> => {
   return token;
 };
 
-export const hasAuthToken = (): boolean => Boolean(authTokenCache);
+export const hasAuthToken = (): boolean => Boolean(authTokenCache) || DEBUG_AUTH_BYPASS;
 export const getAuthToken = (): string => authTokenCache;
 
 export const register = async (

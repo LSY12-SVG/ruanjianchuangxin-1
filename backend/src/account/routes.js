@@ -51,6 +51,16 @@ const createAccountRouter = ({authService}) => {
 const createProfileRouter = ({repo, authMiddleware}) => {
   const router = express.Router();
   router.use(authMiddleware);
+  router.use(async (req, res, next) => {
+    try {
+      if (req.user && typeof repo.ensureAuthUser === 'function') {
+        await repo.ensureAuthUser(req.user);
+      }
+      next();
+    } catch {
+      res.status(500).json({error: 'profile_bootstrap_failed'});
+    }
+  });
 
   router.get('/me', async (req, res) => {
     const item = await repo.getMyProfile(req.user.id);

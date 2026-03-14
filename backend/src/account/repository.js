@@ -14,6 +14,8 @@ const toSettingsShape = row => ({
   voiceAutoApply: toBoolean(row?.voice_auto_apply ?? 1),
 });
 
+const DEBUG_PASSWORD_HASH = '$2a$10$n8cEs4p8qlQ4eeA8vwfN8u95fY7f9.q8n9wYk7YwYyBr7H2x1A9y2';
+
 const createAccountRepository = ({db, getCommunityPostsCount}) => {
   const ensureUserRows = async userId => {
     await db.query(
@@ -58,6 +60,38 @@ const createAccountRepository = ({db, getCommunityPostsCount}) => {
       [Number(userId)],
     );
     return rows[0] || null;
+  };
+
+  const normalizeDebugUsername = (userId, usernameHint) => {
+    const fallback = `debug_user_${userId}`;
+    const normalized = String(usernameHint || fallback)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .slice(0, 64);
+    return normalized || fallback;
+  };
+
+  const ensureAuthUser = async ({id, username, isBypass}) => {
+    const userId = Number(id);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return null;
+    }
+
+    if (isBypass) {
+      const debugUsername = normalizeDebugUsername(userId, username);
+      await db.query(
+        `
+        INSERT INTO users(id, username, password_hash, display_name)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+      `,
+        [userId, debugUsername, DEBUG_PASSWORD_HASH, debugUsername],
+      );
+      await ensureUserRows(userId);
+    }
+
+    return findUserById(userId);
   };
 
   const createUser = async ({username, passwordHash}) => {
@@ -213,6 +247,7 @@ const createAccountRepository = ({db, getCommunityPostsCount}) => {
     findUserByUsername,
     createUser,
     findUserById,
+    ensureAuthUser,
     getMyProfile,
     updateMyProfile,
     updateMySettings,

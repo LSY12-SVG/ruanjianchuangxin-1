@@ -111,3 +111,15 @@ Profile endpoints (require `Authorization: Bearer <token>`):
 - `GET /v1/profile/me`
 - `PATCH /v1/profile/me` (`displayName`, `avatarUrl`, `tier`)
 - `PATCH /v1/profile/me/settings` (`syncOnWifi`, `communityNotify`, `voiceAutoApply`)
+
+## Debug no-login mode
+
+For local debugging, auth can be bypassed so all features are available without manual login:
+
+```bash
+AUTH_BYPASS=true
+AUTH_BYPASS_USER_ID=1
+AUTH_BYPASS_USERNAME=debug_user_1
+```
+
+When `AUTH_BYPASS` is enabled, protected endpoints automatically run under the debug user.
