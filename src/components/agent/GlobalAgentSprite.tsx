@@ -4,6 +4,7 @@ import {
   PanResponder,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -189,7 +190,13 @@ export const GlobalAgentSprite: React.FC = () => {
                 <Icon name={isVoiceListening ? 'mic' : 'mic-outline'} size={16} color={VISION_THEME.accent.dark} />
               </TouchableOpacity>
               <View style={styles.inputSurface}>
-                <Text style={styles.inputText}>{goalInput || '说出你的目标，或点击发送当前任务'}</Text>
+                <TextInput
+                  value={goalInput}
+                  onChangeText={setGoalInput}
+                  placeholder="说出或输入你的目标，然后点击发送"
+                  placeholderTextColor={VISION_THEME.text.muted}
+                  style={styles.inputText}
+                />
               </View>
               <TouchableOpacity
                 style={styles.sendButton}
@@ -401,6 +408,7 @@ const styles = StyleSheet.create({
   inputText: {
     color: VISION_THEME.text.secondary,
     fontSize: 12,
+    paddingVertical: 0,
   },
   sendButton: {
     width: 34,

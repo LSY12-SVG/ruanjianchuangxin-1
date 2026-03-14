@@ -30,7 +30,23 @@ export class AgentToolRegistry {
       description: operation.description,
       riskLevel: operation.defaultRisk,
       requiresConfirmation: Boolean(operation.defaultRequiresConfirmation),
+      idempotent: Boolean(operation.defaultIdempotent),
     }));
+  }
+
+  collectSnapshots(): Record<string, Record<string, unknown>> {
+    const snapshot: Record<string, Record<string, unknown>> = {};
+    for (const operation of this.operations.values()) {
+      if (!operation.snapshot) {
+        continue;
+      }
+      const data = operation.snapshot();
+      if (!data) {
+        continue;
+      }
+      snapshot[keyOf(operation.domain, operation.operation)] = data;
+    }
+    return snapshot;
   }
 
   has(action: AgentAction): boolean {
@@ -39,17 +55,34 @@ export class AgentToolRegistry {
 
   toExecutableAction(action: AgentAction): AgentAction {
     const operation = this.operations.get(keyOf(action.domain, action.operation));
+    const actionId = action.actionId || action.id || `${action.domain}.${action.operation}.${Date.now()}`;
     if (!operation) {
-      return action;
+      return {
+        ...action,
+        actionId,
+      };
     }
 
     return {
       ...action,
+      actionId,
       riskLevel: action.riskLevel || operation.defaultRisk,
       requiresConfirmation:
         typeof action.requiresConfirmation === 'boolean'
           ? action.requiresConfirmation
           : Boolean(operation.defaultRequiresConfirmation),
+      idempotent:
+        typeof action.idempotent === 'boolean'
+          ? action.idempotent
+          : Boolean(operation.defaultIdempotent),
+      requiredScopes:
+        Array.isArray(action.requiredScopes) && action.requiredScopes.length
+          ? action.requiredScopes
+          : operation.defaultRequiredScopes || [],
+      skillName:
+        typeof action.skillName === 'string' && action.skillName
+          ? action.skillName
+          : operation.defaultSkillName || 'agent-tool-router',
     };
   }
 

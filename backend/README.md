@@ -123,3 +123,26 @@ AUTH_BYPASS_USERNAME=debug_user_1
 ```
 
 When `AUTH_BYPASS` is enabled, protected endpoints automatically run under the debug user.
+
+## AI Agent API
+
+Agent plan request now uses app-level tabs:
+
+- `currentTab`: `home | agent | community | profile`
+- optional context: `pageSnapshot`, `lastExecution`
+
+Agent plan response shape:
+
+- `planId`, `plannerSource`, `actions`, `reasoningSummary`, `estimatedSteps`, `undoPlan`
+
+Agent execute endpoint:
+
+- `POST /v1/agent/execute`
+- body: `planId`, `actions`, optional `actionIds`, optional `idempotencyKey`
+- response: action-level statuses with `appliedActions`, `failedActions`, `pendingActions`
+
+Agent memory endpoints (auth-aware and scoped):
+
+- `POST /v1/agent/memory/upsert` with `namespace`, `key`, `value`, optional `ttlSeconds`
+- `POST /v1/agent/memory/query` with `namespace`, `key`
+- response includes `version` and `updatedAt`

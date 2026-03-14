@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {StatusBar, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -42,6 +42,19 @@ const TABS: TabConfig[] = [
   {key: 'profile', label: '我的', icon: 'person-outline'},
 ];
 
+const AGENT_RUNTIME_USER_ID = 'local_debug_user';
+const AGENT_RUNTIME_NAMESPACE = 'app.agent';
+const AGENT_DEBUG_PERMISSION_OVERRIDE = (globalThis as {__DEV__?: boolean}).__DEV__ === true;
+const AGENT_DEFAULT_GRANTED_SCOPES = [
+  'app:navigate',
+  'app:read',
+  'grading:write',
+  'convert:write',
+  'community:write',
+  'community:publish',
+  'settings:write',
+];
+
 interface AppShellContentProps {
   activeMainTab: MainTabKey;
   setActiveMainTab: (tab: MainTabKey) => void;
@@ -81,6 +94,22 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     params: ColorGradingParams;
   } | null>(null);
 
+  const collectAgentSnapshot = useCallback(() => {
+    const grading = gradingBridgeRef.current?.getSnapshot() || null;
+    const convert = convertBridgeRef.current?.getSnapshot() || null;
+    const community = communityBridgeRef.current?.getSnapshot() || null;
+    const profile = profileBridgeRef.current?.getSnapshot() || null;
+    return {
+      currentMainTab: activeMainTab,
+      currentHomeRoute: homeRoute,
+      'home.grading': grading || undefined,
+      'home.modeling': convert || undefined,
+      'community.snapshot': community || undefined,
+      'profile.snapshot': profile || undefined,
+      'community.lastDraftTitle': community?.draftTitle || '',
+    };
+  }, [activeMainTab, homeRoute]);
+
   useEffect(() => {
     const unregisterList: Array<() => void> = [];
 
@@ -90,11 +119,16 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         operation: 'navigate_tab',
         description: '页面跳转',
         defaultRisk: 'low',
+        defaultIdempotent: true,
+        defaultRequiredScopes: ['app:navigate'],
+        defaultSkillName: 'agent-tool-router',
+        snapshot: collectAgentSnapshot,
         execute: async action => {
-          const tab = asTab(action.args?.tab);
+          const args = action.args || {};
+          const tab = asTab(args.mainTab ?? args.tab);
           setActiveMainTab(tab);
           if (tab === 'home') {
-            setHomeRoute(asHomeRoute(action.args?.route));
+            setHomeRoute(asHomeRoute(args.homeRoute ?? args.route));
           }
           return {
             ok: true,
@@ -110,6 +144,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         operation: 'apply_visual_suggest',
         description: '执行调色视觉首轮建议',
         defaultRisk: 'low',
+        defaultIdempotent: false,
+        defaultRequiredScopes: ['grading:write'],
+        defaultSkillName: 'agent-tool-router',
+        snapshot: () => gradingBridgeRef.current?.getSnapshot() || null,
         execute: async () => {
           setActiveMainTab('home');
           setHomeRoute('grading');
@@ -129,6 +167,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         description: '重置调色参数',
         defaultRisk: 'medium',
         defaultRequiresConfirmation: true,
+        defaultIdempotent: true,
+        defaultRequiredScopes: ['grading:write'],
+        defaultSkillName: 'agent-permission-gate',
+        snapshot: () => gradingBridgeRef.current?.getSnapshot() || null,
         execute: async () => {
           setActiveMainTab('home');
           setHomeRoute('grading');
@@ -148,6 +190,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         description: '启动2D转3D任务',
         defaultRisk: 'medium',
         defaultRequiresConfirmation: true,
+        defaultIdempotent: false,
+        defaultRequiredScopes: ['convert:write'],
+        defaultSkillName: 'agent-permission-gate',
+        snapshot: () => convertBridgeRef.current?.getSnapshot() || null,
         execute: async action => {
           setActiveMainTab('home');
           setHomeRoute('modeling');
@@ -167,6 +213,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         operation: 'create_draft',
         description: '生成社区草稿',
         defaultRisk: 'low',
+        defaultIdempotent: false,
+        defaultRequiredScopes: ['community:write'],
+        defaultSkillName: 'agent-tool-router',
+        snapshot: () => communityBridgeRef.current?.getSnapshot() || null,
         execute: async action => {
           setActiveMainTab('community');
           const bridge = communityBridgeRef.current;
@@ -192,6 +242,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         description: '发布社区草稿',
         defaultRisk: 'high',
         defaultRequiresConfirmation: true,
+        defaultIdempotent: false,
+        defaultRequiredScopes: ['community:publish'],
+        defaultSkillName: 'agent-permission-gate',
+        snapshot: () => communityBridgeRef.current?.getSnapshot() || null,
         execute: async () => {
           setActiveMainTab('community');
           const bridge = communityBridgeRef.current;
@@ -210,6 +264,13 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         description: '应用设置优化建议',
         defaultRisk: 'medium',
         defaultRequiresConfirmation: true,
+        defaultIdempotent: true,
+        defaultRequiredScopes: ['settings:write'],
+        defaultSkillName: 'agent-permission-gate',
+        snapshot: () => {
+          const snapshot = profileBridgeRef.current?.getSnapshot();
+          return snapshot ? {...snapshot} : null;
+        },
         execute: async action => {
           setActiveMainTab('profile');
           const bridge = profileBridgeRef.current;
@@ -234,6 +295,10 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         operation: 'summarize_current_page',
         description: '总结当前页状态',
         defaultRisk: 'low',
+        defaultIdempotent: true,
+        defaultRequiredScopes: ['app:read'],
+        defaultSkillName: 'agent-task-planner',
+        snapshot: collectAgentSnapshot,
         execute: async () => ({
           ok: true,
           message: `当前页面: ${activeMainTab}${activeMainTab === 'home' ? `/${homeRoute}` : ''}`,
@@ -244,7 +309,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     return () => {
       unregisterList.forEach(unregister => unregister());
     };
-  }, [activeMainTab, homeRoute, registerOperation, setActiveMainTab, setHomeRoute]);
+  }, [activeMainTab, collectAgentSnapshot, homeRoute, registerOperation, setActiveMainTab, setHomeRoute]);
 
   const homeScreen = useMemo(() => {
     if (homeRoute === 'hub') {
@@ -351,7 +416,16 @@ const AppShell: React.FC = () => {
   const setHomeRoute = useAppStore(state => state.setHomeRoute);
 
   return (
-    <AgentRuntimeProvider currentTab={activeMainTab as AgentAppTab}>
+    <AgentRuntimeProvider
+      currentTab={activeMainTab as AgentAppTab}
+      userId={AGENT_RUNTIME_USER_ID}
+      namespace={AGENT_RUNTIME_NAMESPACE}
+      grantedScopes={AGENT_DEFAULT_GRANTED_SCOPES}
+      debugPermissionOverride={AGENT_DEBUG_PERMISSION_OVERRIDE}
+      contextSnapshot={() => ({
+        currentMainTab: activeMainTab,
+        currentHomeRoute: homeRoute,
+      })}>
       <AppShellContent
         activeMainTab={activeMainTab}
         setActiveMainTab={setActiveMainTab}

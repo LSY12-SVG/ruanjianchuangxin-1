@@ -1,17 +1,21 @@
 import {NativeModules} from 'react-native';
 import type {
   AgentAction,
+  AgentExecuteRequest,
+  AgentExecuteResponse,
+  AgentMemoryQueryRequest,
+  AgentMemoryQueryResponse,
   AgentMemoryUpsertRequest,
   AgentPlanRequest,
   AgentPlanResponse,
+  AgentPlannerSource,
   AgentRiskLevel,
 } from './types';
 
 const DEFAULT_AGENT_BASE = 'http://127.0.0.1:8787';
-const MAX_RETRIES = 0;
+const MAX_RETRIES = 1;
 
-const isIpv4Host = (hostname: string): boolean =>
-  /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+const isIpv4Host = (hostname: string): boolean => /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
 
 const isUsableDevHost = (hostname: string): boolean => {
   const normalized = hostname.trim().toLowerCase();
@@ -32,14 +36,9 @@ const isUsableDevHost = (hostname: string): boolean => {
   return normalized.includes('.');
 };
 
-const timeoutFetch = async (
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> => {
+const timeoutFetch = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     return await fetch(url, {
       ...init,
@@ -55,7 +54,6 @@ const buildBaseFromScriptURL = (): string | null => {
   if (typeof scriptURL !== 'string' || scriptURL.length === 0) {
     return null;
   }
-
   try {
     const parsed = new URL(scriptURL);
     const hostname = parsed.hostname || '';
@@ -76,7 +74,6 @@ const resolveBases = (override?: string): string[] => {
     }
     return [trimmed.replace(/\/$/, '')];
   }
-
   const set = new Set<string>();
   set.add(DEFAULT_AGENT_BASE);
   set.add('http://localhost:8787');
@@ -89,10 +86,11 @@ const resolveBases = (override?: string): string[] => {
   return Array.from(set);
 };
 
-const asRisk = (value: unknown): AgentRiskLevel =>
-  value === 'high' || value === 'medium' ? value : 'low';
+const asRisk = (value: unknown): AgentRiskLevel => (value === 'high' || value === 'medium' ? value : 'low');
 
-const normalizeAction = (value: unknown): AgentAction | null => {
+const asPlannerSource = (value: unknown): AgentPlannerSource => (value === 'local' ? 'local' : 'cloud');
+
+const normalizeAction = (value: unknown, index: number, planId: string): AgentAction | null => {
   if (!value || typeof value !== 'object') {
     return null;
   }
@@ -101,16 +99,41 @@ const normalizeAction = (value: unknown): AgentAction | null => {
     return null;
   }
 
+  const actionIdCandidate =
+    typeof record.actionId === 'string'
+      ? record.actionId
+      : typeof record.action_id === 'string'
+        ? record.action_id
+        : typeof record.id === 'string'
+          ? record.id
+          : `${planId}_${index + 1}`;
+
   return {
-    id: typeof record.id === 'string' ? record.id : undefined,
+    actionId: actionIdCandidate,
+    id: typeof record.id === 'string' ? record.id : actionIdCandidate,
     domain: record.domain as AgentAction['domain'],
     operation: record.operation,
-    args:
-      record.args && typeof record.args === 'object'
-        ? (record.args as Record<string, unknown>)
-        : undefined,
-    riskLevel: asRisk(record.riskLevel),
-    requiresConfirmation: Boolean(record.requiresConfirmation),
+    args: record.args && typeof record.args === 'object' ? (record.args as Record<string, unknown>) : undefined,
+    riskLevel: asRisk(record.riskLevel ?? record.risk_level),
+    requiresConfirmation: Boolean(record.requiresConfirmation ?? record.requires_confirmation),
+    idempotent: Boolean(record.idempotent),
+    requiredScopes: Array.isArray(record.requiredScopes)
+      ? record.requiredScopes.filter((item): item is string => typeof item === 'string')
+      : Array.isArray(record.required_scopes)
+        ? record.required_scopes.filter((item): item is string => typeof item === 'string')
+        : [],
+    skillName:
+      typeof record.skillName === 'string'
+        ? record.skillName
+        : typeof record.skill_name === 'string'
+          ? record.skill_name
+          : undefined,
+    timeoutMs:
+      typeof record.timeoutMs === 'number'
+        ? record.timeoutMs
+        : typeof record.timeout_ms === 'number'
+          ? record.timeout_ms
+          : undefined,
   };
 };
 
@@ -119,13 +142,22 @@ const normalizePlan = (value: unknown): AgentPlanResponse | null => {
     return null;
   }
   const record = value as Record<string, unknown>;
+  const planId =
+    typeof record.planId === 'string'
+      ? record.planId
+      : typeof record.plan_id === 'string'
+        ? record.plan_id
+        : `cloud_${Date.now()}`;
   const actionsRaw = Array.isArray(record.actions) ? record.actions : [];
-  const actions = actionsRaw.map(normalizeAction).filter((item): item is AgentAction => Boolean(item));
+  const actions = actionsRaw
+    .map((item, index) => normalizeAction(item, index, planId))
+    .filter((item): item is AgentAction => Boolean(item));
   if (actions.length === 0) {
     return null;
   }
 
   return {
+    planId,
     actions,
     reasoningSummary:
       typeof record.reasoningSummary === 'string'
@@ -144,14 +176,11 @@ const normalizePlan = (value: unknown): AgentPlanResponse | null => {
       : Array.isArray(record.undo_plan)
         ? record.undo_plan.filter((item): item is string => typeof item === 'string')
         : [],
+    plannerSource: asPlannerSource(record.plannerSource ?? record.planner_source),
   };
 };
 
-const postAgentJson = async (
-  path: string,
-  payload: unknown,
-  endpoint?: string,
-): Promise<unknown | null> => {
+const postAgentJson = async <T>(path: string, payload: unknown, endpoint?: string): Promise<T | null> => {
   const bases = resolveBases(endpoint);
   for (const base of bases) {
     let attempt = 0;
@@ -167,32 +196,39 @@ const postAgentJson = async (
             },
             body: JSON.stringify(payload),
           },
-          1800,
+          2400,
         );
         if (!response.ok) {
           throw new Error(`HTTP_${response.status}`);
         }
-        return await response.json();
+        return (await response.json()) as T;
       } catch {
         // try next endpoint
       }
     }
   }
-
   return null;
 };
 
-export const planAgentWithCloud = async (
-  request: AgentPlanRequest,
-  endpoint?: string,
-): Promise<AgentPlanResponse | null> => {
-  const response = await postAgentJson('/v1/agent/plan', request, endpoint);
+export const planAgentWithCloud = async (request: AgentPlanRequest, endpoint?: string): Promise<AgentPlanResponse | null> => {
+  const response = await postAgentJson<unknown>('/v1/agent/plan', request, endpoint);
   return normalizePlan(response);
 };
 
-export const upsertAgentMemory = async (
-  request: AgentMemoryUpsertRequest,
+export const executeAgentWithCloud = async (
+  request: AgentExecuteRequest,
   endpoint?: string,
-): Promise<void> => {
+): Promise<AgentExecuteResponse | null> => {
+  return postAgentJson<AgentExecuteResponse>('/v1/agent/execute', request, endpoint);
+};
+
+export const upsertAgentMemory = async (request: AgentMemoryUpsertRequest, endpoint?: string): Promise<void> => {
   await postAgentJson('/v1/agent/memory/upsert', request, endpoint);
+};
+
+export const queryAgentMemory = async (
+  request: AgentMemoryQueryRequest,
+  endpoint?: string,
+): Promise<AgentMemoryQueryResponse | null> => {
+  return postAgentJson<AgentMemoryQueryResponse>('/v1/agent/memory/query', request, endpoint);
 };

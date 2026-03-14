@@ -1,4 +1,5 @@
 export type AgentAppTab = 'home' | 'agent' | 'community' | 'profile';
+export type AgentHomeRoute = 'hub' | 'grading' | 'modeling';
 
 export type AgentDomain =
   | 'navigation'
@@ -10,7 +11,30 @@ export type AgentDomain =
 
 export type AgentRiskLevel = 'low' | 'medium' | 'high';
 export type AgentPriority = 'low' | 'normal' | 'high';
-export type AgentRuntimePhase = 'idle' | 'planning' | 'executing' | 'done' | 'error';
+export type AgentRuntimePhase =
+  | 'idle'
+  | 'planned'
+  | 'running'
+  | 'pending_confirm'
+  | 'applied'
+  | 'failed'
+  | 'rolled_back';
+export type AgentActionStatus =
+  | 'planned'
+  | 'running'
+  | 'pending_confirm'
+  | 'applied'
+  | 'failed'
+  | 'rolled_back';
+export type AgentPlannerSource = 'cloud' | 'local';
+export type AgentErrorCode =
+  | 'confirmation_required'
+  | 'not_registered'
+  | 'forbidden_scope'
+  | 'timeout'
+  | 'tool_error'
+  | 'invalid_action'
+  | 'unknown';
 
 export interface AgentIntent {
   goal: string;
@@ -20,30 +44,58 @@ export interface AgentIntent {
 }
 
 export interface AgentAction {
+  actionId: string;
   id?: string;
   domain: AgentDomain;
   operation: string;
   args?: Record<string, unknown>;
   riskLevel: AgentRiskLevel;
   requiresConfirmation: boolean;
+  idempotent?: boolean;
+  timeoutMs?: number;
+  requiredScopes?: string[];
+  skillName?: string;
+  status?: AgentActionStatus;
 }
 
 export interface AgentPlanResponse {
+  planId: string;
   actions: AgentAction[];
   reasoningSummary: string;
   estimatedSteps: number;
   undoPlan: string[];
+  plannerSource: AgentPlannerSource;
 }
 
 export interface AgentActionFailure {
   action: AgentAction;
   reason: string;
+  errorCode: AgentErrorCode;
+  retryable: boolean;
+}
+
+export interface AgentActionExecution {
+  action: AgentAction;
+  status: AgentActionStatus;
+  message?: string;
+  errorCode?: AgentErrorCode;
+  retryable: boolean;
+  attempts: number;
+  durationMs: number;
+  skillName?: string;
 }
 
 export interface AgentExecutionResult {
+  executionId: string;
+  planId: string;
+  status: Exclude<AgentRuntimePhase, 'idle' | 'planned'>;
+  actionResults: AgentActionExecution[];
   appliedActions: AgentAction[];
   failedActions: AgentActionFailure[];
+  pendingActions: AgentAction[];
   rollbackAvailable: boolean;
+  startedAt: string;
+  endedAt: string;
 }
 
 export interface AgentHistoryEntry {
@@ -64,6 +116,8 @@ export interface AgentToolExecutionResult {
   ok: boolean;
   message?: string;
   rollback?: (() => void | Promise<void>) | null;
+  errorCode?: AgentErrorCode;
+  retryable?: boolean;
 }
 
 export type AgentToolExecutor = (
@@ -76,6 +130,10 @@ export interface AgentRegisteredOperation {
   description: string;
   defaultRisk: AgentRiskLevel;
   defaultRequiresConfirmation?: boolean;
+  defaultIdempotent?: boolean;
+  defaultRequiredScopes?: string[];
+  defaultSkillName?: string;
+  snapshot?: () => Record<string, unknown> | null;
   execute: AgentToolExecutor;
 }
 
@@ -85,15 +143,57 @@ export interface AgentCapabilityDescriptor {
   description: string;
   riskLevel: AgentRiskLevel;
   requiresConfirmation: boolean;
+  idempotent: boolean;
 }
 
 export interface AgentPlanRequest {
   intent: AgentIntent;
   currentTab: AgentAppTab;
   capabilities: AgentCapabilityDescriptor[];
+  pageSnapshot?: Record<string, unknown>;
+  lastExecution?: Pick<AgentExecutionResult, 'status' | 'actionResults' | 'failedActions'> | null;
 }
 
 export interface AgentMemoryUpsertRequest {
+  userId: string;
+  namespace: string;
   key: string;
   value: unknown;
+  ttlSeconds?: number;
+}
+
+export interface AgentMemoryQueryRequest {
+  userId: string;
+  namespace: string;
+  key: string;
+}
+
+export interface AgentMemoryQueryResponse {
+  ok: boolean;
+  key: string;
+  value: unknown;
+  version: number;
+  updatedAt: string | null;
+}
+
+export interface AgentExecuteRequest {
+  userId?: string;
+  namespace?: string;
+  grantedScopes?: string[];
+  planId: string;
+  actions: AgentAction[];
+  actionIds?: string[];
+  idempotencyKey?: string;
+}
+
+export interface AgentExecuteResponse {
+  executionId: string;
+  planId: string;
+  namespace?: string;
+  actionResults: AgentActionExecution[];
+  appliedActions: AgentAction[];
+  failedActions: AgentActionFailure[];
+  pendingActions: AgentAction[];
+  rollbackAvailable: boolean;
+  status: Exclude<AgentRuntimePhase, 'idle' | 'planned'>;
 }

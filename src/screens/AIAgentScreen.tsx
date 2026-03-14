@@ -30,7 +30,7 @@ const AGENT_CAPS = [
 export const AIAgentScreen: React.FC = () => {
   const [segment, setSegment] = useState('ability');
   const [activePrompt, setActivePrompt] = useState(0);
-  const {phase, pendingActions, memory, lastMessage, lastError, openPanel} = useAgentRuntime();
+  const {phase, pendingActions, memory, lastMessage, lastError, openPanel, submitGoal} = useAgentRuntime();
   const conversation = useAppStore(state => state.conversation);
 
   const listData = useMemo(() => {
@@ -106,7 +106,10 @@ export const AIAgentScreen: React.FC = () => {
                       key={prompt}
                       label={prompt}
                       mode={active ? 'contained' : 'outlined'}
-                      onPress={() => setActivePrompt(idx)}
+                      onPress={() => {
+                        setActivePrompt(idx);
+                        submitGoal(prompt).catch(() => undefined);
+                      }}
                       style={styles.promptButton}
                     />
                   );
