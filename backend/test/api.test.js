@@ -12,7 +12,7 @@ test.afterEach(() => {
   global.fetch = originalFetch;
 });
 
-function createTestInstance() {
+function createTestInstance(configOverrides = {}) {
   const dbPath = path.join(
     os.tmpdir(),
     `image-to-3d-${Date.now()}-${Math.floor(Math.random() * 100000)}.db`
@@ -22,6 +22,7 @@ function createTestInstance() {
       databasePath: dbPath,
       providerName: 'mock',
       mockResultUrl: 'https://modelviewer.dev/shared-assets/models/Astronaut.glb',
+      ...configOverrides,
     },
   });
 
@@ -157,7 +158,58 @@ test('rejects unsupported upload mime types', async () => {
       })
       .expect(400);
 
+    assert.equal(response.body.error.code, 'UNSUPPORTED_IMAGE_TYPE');
     assert.match(response.body.error.message, /Only JPEG, PNG, and WebP images are supported/i);
+    assert.deepEqual(response.body.error.details.allowedMimeTypes, [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ]);
+  } finally {
+    instance.cleanup();
+  }
+});
+
+test('serializes public asset urls with the configured public base url', async () => {
+  const instance = createTestInstance({
+    publicBaseUrl: 'http://192.168.0.8:3001/',
+  });
+
+  try {
+    const createResponse = await request(instance.app)
+      .post('/api/v1/image-to-3d/jobs')
+      .attach('image', Buffer.from('fake image'), {
+        filename: 'input.png',
+        contentType: 'image/png',
+      })
+      .expect(202);
+
+    const taskId = createResponse.body.taskId;
+    await request(instance.app).get(`/api/v1/image-to-3d/jobs/${taskId}`).expect(200);
+    await request(instance.app).get(`/api/v1/image-to-3d/jobs/${taskId}`).expect(200);
+    const response = await request(instance.app)
+      .get(`/api/v1/image-to-3d/jobs/${taskId}`)
+      .expect(200);
+
+    assert.match(
+      response.body.downloadUrl,
+      new RegExp(`^http://192\\.168\\.0\\.8:3001/api/v1/image-to-3d/jobs/${taskId}/assets/0$`),
+    );
+  } finally {
+    instance.cleanup();
+  }
+});
+
+test('returns structured business errors for missing capture sessions', async () => {
+  const instance = createTestInstance();
+
+  try {
+    const response = await request(instance.app)
+      .get('/api/capture-sessions/missing-session')
+      .expect(404);
+
+    assert.equal(response.body.error.code, 'CAPTURE_SESSION_NOT_FOUND');
+    assert.match(response.body.error.message, /Capture session not found/i);
   } finally {
     instance.cleanup();
   }

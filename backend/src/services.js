@@ -80,7 +80,11 @@ function createImageTo3DService({provider, repository, logger, config}) {
           taskId,
           message: error?.message,
         });
-        throw new ApiError(502, error?.message || 'Failed to submit image-to-3d task.');
+        throw new ApiError(
+          502,
+          'PROVIDER_SUBMIT_FAILED',
+          error?.message || 'Failed to submit image-to-3d task.',
+        );
       }
     },
 
@@ -130,7 +134,11 @@ function createImageTo3DService({provider, repository, logger, config}) {
             providerJobId: task.providerJobId,
             message: error?.message,
           });
-          throw new ApiError(502, error?.message || 'Failed to query 3D generation task.');
+          throw new ApiError(
+            502,
+            'PROVIDER_STATUS_FAILED',
+            error?.message || 'Failed to query 3D generation task.',
+          );
         }
       }
 

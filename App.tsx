@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, StatusBar, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, StatusBar } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import AIColorTuning from './AIColorTuning';
 import ThreeDModeling from './ThreeDModeling';
 
@@ -40,7 +41,7 @@ export default function App() {
           <Text style={styles.captureCardTitle}>🎨 AI 调色大师</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.captureCard2} onPress={() => setShowThreeDModeling(true)}>
-          <Text style={styles.captureCardTitle}>📦 3D 建模</Text>
+          <Text style={styles.captureCardTitle}>📦 AGI 相机 3D 建模</Text>
         </TouchableOpacity>
       </View>
     </View>

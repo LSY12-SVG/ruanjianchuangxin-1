@@ -204,16 +204,20 @@ function createCaptureSessionService({captureRepository, imageService, logger, c
     addFrame(sessionId, file, metadata = {}) {
       const payload = this.getSession(sessionId);
       if (!payload) {
-        throw new ApiError(404, 'Capture session not found.');
+        throw new ApiError(404, 'CAPTURE_SESSION_NOT_FOUND', 'Capture session not found.');
       }
 
       if (payload.session.status === 'generating') {
-        throw new ApiError(409, 'The session is already generating a 3D result.');
+        throw new ApiError(
+          409,
+          'SESSION_GENERATION_IN_PROGRESS',
+          'The session is already generating a 3D result.',
+        );
       }
 
       const angleTag = String(metadata.angleTag || '').trim();
       if (!angleTag) {
-        throw new ApiError(400, 'angleTag is required.');
+        throw new ApiError(400, 'ANGLE_TAG_REQUIRED', 'angleTag is required.');
       }
 
       const now = new Date().toISOString();
@@ -271,20 +275,25 @@ function createCaptureSessionService({captureRepository, imageService, logger, c
     async generateFromSession(sessionId) {
       const payload = this.getSession(sessionId);
       if (!payload) {
-        throw new ApiError(404, 'Capture session not found.');
+        throw new ApiError(404, 'CAPTURE_SESSION_NOT_FOUND', 'Capture session not found.');
       }
 
       const acceptedFrames = payload.frames.filter(frame => frame.accepted);
       if (acceptedFrames.length < payload.session.minimumFrameCount) {
         throw new ApiError(
           400,
+          'INSUFFICIENT_CAPTURE_FRAMES',
           `Capture at least ${payload.session.minimumFrameCount} accepted views before generating.`,
+          {
+            acceptedFrameCount: acceptedFrames.length,
+            minimumFrameCount: payload.session.minimumFrameCount,
+          },
         );
       }
 
       const coverFrame = chooseCoverFrame(acceptedFrames);
       if (!coverFrame) {
-        throw new ApiError(400, 'No accepted capture frames are available.');
+        throw new ApiError(400, 'NO_ACCEPTED_CAPTURE_FRAME', 'No accepted capture frames are available.');
       }
 
       const fileBuffer = fs.readFileSync(coverFrame.storagePath);
@@ -361,7 +370,7 @@ function createCaptureSessionService({captureRepository, imageService, logger, c
       }
 
       if (task.status !== 'succeeded') {
-        throw new ApiError(409, 'The 3D model is not ready yet.');
+        throw new ApiError(409, 'MODEL_NOT_READY', 'The 3D model is not ready yet.');
       }
 
       return buildPublicModelAsset(imageService.toPublicTask(task), session);

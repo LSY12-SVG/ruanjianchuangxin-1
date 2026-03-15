@@ -2,8 +2,9 @@ const config = require('./config');
 const { createApp } = require('./app');
 
 const { app, dependencies } = createApp();
-const server = app.listen(config.port, () => {
-  console.log(`[image-to-3d] backend listening on http://localhost:${config.port}`);
+const server = app.listen(config.port, config.host, () => {
+  const publicBaseUrl = config.publicBaseUrl || `http://${config.host}:${config.port}`;
+  console.log(`[image-to-3d] backend listening on ${publicBaseUrl}`);
 });
 
 function shutdown() {

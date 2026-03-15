@@ -1,4 +1,4 @@
-import {Platform} from 'react-native';
+import {requestJson} from './apiClient';
 
 export type ImageTo3DJobStatus =
   | 'queued'
@@ -122,46 +122,6 @@ export type GenerateCaptureSessionResponse = {
   pollAfterMs: number;
 };
 
-const API_BASE_URL =
-  Platform.OS === 'android' ? 'http://127.0.0.1:3001' : 'http://127.0.0.1:3001';
-
-function normalizeServiceError(payload: any, status: number): string {
-  const candidates = [payload?.message, payload?.error, payload?.detail];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate;
-    }
-
-    if (candidate && typeof candidate === 'object') {
-      if (typeof candidate.message === 'string' && candidate.message.trim()) {
-        return candidate.message;
-      }
-
-      try {
-        const serialized = JSON.stringify(candidate);
-        if (serialized && serialized !== '{}') {
-          return serialized;
-        }
-      } catch (_serializationError) {
-      }
-    }
-  }
-
-  return `Request failed with status ${status}`;
-}
-
-async function parseJson(response: Response): Promise<any> {
-  const text = await response.text();
-  return text ? JSON.parse(text) : {};
-}
-
-function assertOk(response: Response, payload: any) {
-  if (!response.ok) {
-    throw new Error(normalizeServiceError(payload, response.status));
-  }
-}
-
 function normalizeJob(payload: any): ImageTo3DJob {
   return {
     taskId: payload.taskId,
@@ -229,12 +189,10 @@ export async function createImageTo3DJob(
     name: image.fileName ?? `image-${Date.now()}.jpg`,
   } as any);
 
-  const response = await fetch(`${API_BASE_URL}/api/v1/image-to-3d/jobs`, {
+  const payload = await requestJson('/api/v1/image-to-3d/jobs', {
     method: 'POST',
     body: formData,
   });
-  const payload = await parseJson(response);
-  assertOk(response, payload);
 
   return {
     taskId: payload.taskId,
@@ -245,25 +203,19 @@ export async function createImageTo3DJob(
 }
 
 export async function getImageTo3DJob(taskId: string): Promise<ImageTo3DJob> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/image-to-3d/jobs/${taskId}`);
-  const payload = await parseJson(response);
-  assertOk(response, payload);
+  const payload = await requestJson(`/api/v1/image-to-3d/jobs/${taskId}`);
   return normalizeJob(payload);
 }
 
 export async function createCaptureSession(): Promise<CaptureSession> {
-  const response = await fetch(`${API_BASE_URL}/api/capture-sessions`, {
+  const payload = await requestJson('/api/capture-sessions', {
     method: 'POST',
   });
-  const payload = await parseJson(response);
-  assertOk(response, payload);
   return normalizeCaptureSession(payload);
 }
 
 export async function getCaptureSession(sessionId: string): Promise<CaptureSession> {
-  const response = await fetch(`${API_BASE_URL}/api/capture-sessions/${sessionId}`);
-  const payload = await parseJson(response);
-  assertOk(response, payload);
+  const payload = await requestJson(`/api/capture-sessions/${sessionId}`);
   return normalizeCaptureSession(payload);
 }
 
@@ -294,12 +246,10 @@ export async function uploadCaptureFrame(
     formData.append('fileSize', String(metadata.fileSize));
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/capture-sessions/${sessionId}/frames`, {
+  const payload = await requestJson(`/api/capture-sessions/${sessionId}/frames`, {
     method: 'POST',
     body: formData,
   });
-  const payload = await parseJson(response);
-  assertOk(response, payload);
 
   return {
     session: normalizeCaptureSession(payload.session),
@@ -310,11 +260,9 @@ export async function uploadCaptureFrame(
 export async function generateCaptureSession(
   sessionId: string,
 ): Promise<GenerateCaptureSessionResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/capture-sessions/${sessionId}/generate`, {
+  const payload = await requestJson(`/api/capture-sessions/${sessionId}/generate`, {
     method: 'POST',
   });
-  const payload = await parseJson(response);
-  assertOk(response, payload);
 
   return {
     taskId: payload.taskId,
@@ -326,9 +274,7 @@ export async function generateCaptureSession(
 }
 
 export async function getReconstructionTask(taskId: string): Promise<ReconstructionTask> {
-  const response = await fetch(`${API_BASE_URL}/api/reconstruction-tasks/${taskId}`);
-  const payload = await parseJson(response);
-  assertOk(response, payload);
+  const payload = await requestJson(`/api/reconstruction-tasks/${taskId}`);
 
   return {
     ...normalizeJob(payload),
@@ -338,9 +284,7 @@ export async function getReconstructionTask(taskId: string): Promise<Reconstruct
 }
 
 export async function getModelAsset(modelId: string): Promise<ModelAsset> {
-  const response = await fetch(`${API_BASE_URL}/api/models/${modelId}`);
-  const payload = await parseJson(response);
-  assertOk(response, payload);
+  const payload = await requestJson(`/api/models/${modelId}`);
 
   return {
     id: payload.id,
