@@ -11,6 +11,10 @@ import {
   getReconstructionTask,
   uploadCaptureFrame,
 } from '../ImageTo3DService';
+import {
+  resetThreeDModelingSession,
+  setThreeDModelingSession,
+} from '../ThreeDModelingSession';
 
 jest.mock('react-native-webview', () => {
   const React = require('react');
@@ -81,6 +85,7 @@ describe('ThreeDModeling', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    resetThreeDModelingSession();
     Object.defineProperty(Platform, 'OS', {
       configurable: true,
       value: 'android',
@@ -97,6 +102,7 @@ describe('ThreeDModeling', () => {
     jest.runOnlyPendingTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
+    resetThreeDModelingSession();
   });
 
   it('requests camera permission and shows an error when access is denied', async () => {
@@ -364,6 +370,99 @@ describe('ThreeDModeling', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('model-preview-webview')).toBeTruthy();
+    });
+  });
+
+  it('restores a persisted capture session and resumes task polling', async () => {
+    setThreeDModelingSession({
+      captureSessionId: 'session-1',
+      reconstructionTaskId: 'task-restore',
+      selectedAngleTag: 'right',
+    });
+
+    getCaptureSessionMock.mockResolvedValue({
+      ...baseSession,
+      taskId: 'task-restore',
+      status: 'generating',
+    });
+    getReconstructionTaskMock.mockResolvedValue({
+      taskId: 'task-restore',
+      status: 'processing',
+      message: 'processing',
+      previewUrl: null,
+      previewImageUrl: null,
+      downloadUrl: null,
+      fileType: null,
+      viewerFormat: null,
+      viewerFiles: [],
+      expiresAt: null,
+      sessionId: 'session-1',
+      modelId: null,
+    });
+
+    render(<ThreeDModeling />);
+
+    await waitFor(() => {
+      expect(getCaptureSessionMock).toHaveBeenCalledWith('session-1');
+      expect(getReconstructionTaskMock).toHaveBeenCalledWith('task-restore');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    await waitFor(() => {
+      expect(getReconstructionTaskMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows a timeout error when reconstruction polling exceeds the max window', async () => {
+    createCaptureSessionMock.mockResolvedValue({
+      ...baseSession,
+      status: 'ready',
+      acceptedFrameCount: 8,
+      statusHint: '当前覆盖已经足够生成。你也可以继续自由补拍其它角度。',
+    });
+
+    generateCaptureSessionMock.mockResolvedValue({
+      taskId: 'task-timeout',
+      modelId: 'task-timeout',
+      sessionId: 'session-1',
+      status: 'queued',
+      pollAfterMs: 5000,
+    });
+
+    getReconstructionTaskMock.mockResolvedValue({
+      taskId: 'task-timeout',
+      status: 'processing',
+      message: 'processing',
+      previewUrl: null,
+      previewImageUrl: null,
+      downloadUrl: null,
+      fileType: null,
+      viewerFormat: null,
+      viewerFiles: [],
+      expiresAt: null,
+      sessionId: 'session-1',
+      modelId: null,
+    });
+
+    const screen = render(<ThreeDModeling />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-button').props.accessibilityState.disabled).toBe(false);
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('generate-button'));
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(10 * 60 * 1000 + 5000);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('3D 生成超时，请稍后重试。')).toBeTruthy();
     });
   });
 });

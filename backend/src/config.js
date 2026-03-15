@@ -41,6 +41,15 @@ function readIntEnv(name, fallbackValue) {
   return Number.isNaN(parsedValue) ? fallbackValue : parsedValue;
 }
 
+function readStringEnv(name, fallbackValue) {
+  const rawValue = process.env[name];
+  if (rawValue == null || rawValue === '') {
+    return fallbackValue;
+  }
+
+  return rawValue;
+}
+
 function readBooleanEnv(name, fallbackValue) {
   const rawValue = process.env[name];
 
@@ -59,8 +68,18 @@ function readBooleanEnv(name, fallbackValue) {
   return fallbackValue;
 }
 
+function normalizeBaseUrl(value) {
+  if (!value) {
+    return null;
+  }
+
+  return String(value).replace(/\/+$/, '');
+}
+
 module.exports = {
+  host: readStringEnv('IMAGE_TO_3D_HOST', '0.0.0.0'),
   port: readIntEnv('IMAGE_TO_3D_PORT', 3001),
+  publicBaseUrl: normalizeBaseUrl(process.env.IMAGE_TO_3D_PUBLIC_BASE_URL || ''),
   providerName: process.env.IMAGE_TO_3D_PROVIDER || 'mock',
   databasePath:
     process.env.IMAGE_TO_3D_DB_PATH || path.join(__dirname, '..', 'data', 'image-to-3d.db'),
