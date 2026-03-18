@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+const fs = require('fs');
 const path = require('path');
 const {spawn} = require('child_process');
 
@@ -6,6 +7,17 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const PORT = 8899;
 const BASE = `http://127.0.0.1:${PORT}`;
+const TMP_DIR = path.resolve(__dirname, '../.tmp');
+
+const createTempDbPath = prefix => {
+  fs.mkdirSync(TMP_DIR, {recursive: true});
+  return path.join(TMP_DIR, `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.sqlite`);
+};
+
+const createTempJsonPath = prefix => {
+  fs.mkdirSync(TMP_DIR, {recursive: true});
+  return path.join(TMP_DIR, `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.json`);
+};
 
 const request = async (url, init = {}) => {
   const response = await fetch(`${BASE}${url}`, init);
@@ -14,13 +26,18 @@ const request = async (url, init = {}) => {
 };
 
 const startServer = () => {
+  const communityDbPath = createTempDbPath('test-community');
+  const accountDbPath = createTempDbPath('test-account');
+  const agentMemoryPath = createTempJsonPath('test-agent-memory');
   const env = {
     ...process.env,
     PORT: String(PORT),
     COMMUNITY_ENABLE: 'true',
+    AUTH_BYPASS: 'false',
     DB_CLIENT: 'sqlite',
-    SQLITE_PATH: path.resolve(__dirname, '../data/test-community.sqlite'),
-    SQLITE_DB_PATH: path.resolve(__dirname, '../data/test-account.sqlite'),
+    SQLITE_PATH: communityDbPath,
+    SQLITE_DB_PATH: accountDbPath,
+    AGENT_MEMORY_PATH: agentMemoryPath,
     JWT_SECRET: 'test-secret',
     JWT_EXPIRES_IN: '1d',
   };

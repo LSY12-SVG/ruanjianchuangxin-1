@@ -1,6 +1,15 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {StatusBar, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import GPUColorGradingScreen, {
   type GPUColorGradingAgentBridge,
@@ -20,7 +29,6 @@ import {
 } from './src/screens/ProfileSettingsScreen';
 import {HomeHubScreen} from './src/screens/HomeHubScreen';
 import {HomeModuleShell} from './src/components/home/HomeModuleShell';
-import {VISION_THEME} from './src/theme/visionTheme';
 import {AgentRuntimeProvider, useAgentRuntime} from './src/agent/runtimeContext';
 import type {AgentAppTab} from './src/agent/types';
 import type {HomeRouteKey, MainTabKey} from './src/types/navigation';
@@ -40,6 +48,12 @@ const TABS: TabConfig[] = [
   {key: 'agent', label: '助手', icon: 'sparkles-outline'},
   {key: 'community', label: '社区', icon: 'people-outline'},
   {key: 'profile', label: '我的', icon: 'person-outline'},
+];
+
+const HOME_ROUTES: Array<{key: HomeRouteKey; label: string; icon: string}> = [
+  {key: 'hub', label: '总览', icon: 'grid-outline'},
+  {key: 'grading', label: '调色', icon: 'color-filter-outline'},
+  {key: 'modeling', label: '建模', icon: 'cube-outline'},
 ];
 
 const AGENT_RUNTIME_USER_ID = 'local_debug_user';
@@ -84,6 +98,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const {registerOperation} = useAgentRuntime();
+  const shellAnim = useRef(new Animated.Value(0)).current;
 
   const gradingBridgeRef = useRef<GPUColorGradingAgentBridge | null>(null);
   const convertBridgeRef = useRef<TwoDToThreeDAgentBridge | null>(null);
@@ -109,6 +124,15 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
       'community.lastDraftTitle': community?.draftTitle || '',
     };
   }, [activeMainTab, homeRoute]);
+
+  useEffect(() => {
+    Animated.timing(shellAnim, {
+      toValue: 1,
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [shellAnim]);
 
   useEffect(() => {
     const unregisterList: Array<() => void> = [];
@@ -375,39 +399,130 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     }
   }, [activeMainTab, homeScreen, setActiveMainTab, setHomeRoute]);
 
+  const activeTabMeta = useMemo(
+    () => TABS.find(tab => tab.key === activeMainTab) || TABS[0],
+    [activeMainTab],
+  );
+
+  const homeRouteMeta = useMemo(
+    () => HOME_ROUTES.find(route => route.key === homeRoute) || HOME_ROUTES[0],
+    [homeRoute],
+  );
+
+  const headerSubtitle =
+    activeMainTab === 'home'
+      ? `当前模块 · ${homeRouteMeta.label}`
+      : `当前区域 · ${activeTabMeta.label}`;
+
+  const topPanelAnimatedStyle = {
+    opacity: shellAnim,
+    transform: [
+      {
+        translateY: shellAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-14, 0],
+        }),
+      },
+    ],
+  };
+
+  const dockAnimatedStyle = {
+    opacity: shellAnim,
+    transform: [
+      {
+        translateY: shellAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [18, 0],
+        }),
+      },
+    ],
+  };
+
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={VISION_THEME.background.top} />
-      <View style={styles.screenArea}>{screen}</View>
-      <View
+    <LinearGradient
+      colors={['#2a0f18', '#4a1628', '#1d0b12']}
+      locations={[0.02, 0.48, 1]}
+      style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor="#2a0f18" />
+      <Animated.View
         style={[
-          styles.tabBar,
+          styles.topPanel,
+          topPanelAnimatedStyle,
           {
-            paddingBottom: Math.max(insets.bottom, 8),
+            paddingTop: Math.max(insets.top + 10, 20),
           },
         ]}>
-        {TABS.map(tab => {
-          const active = activeMainTab === tab.key;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={styles.tabItem}
-              activeOpacity={0.85}
-              onPress={() => setActiveMainTab(tab.key)}>
-              <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
-                <Icon
-                  name={tab.icon}
-                  size={18}
-                  color={active ? VISION_THEME.accent.strong : VISION_THEME.text.muted}
-                />
-              </View>
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        <View style={styles.topPanelCard}>
+          <Text style={styles.brandTitle}>VISION GENIE STUDIO</Text>
+          <Text style={styles.brandSubtitle}>{headerSubtitle}</Text>
+          <View style={styles.topPanelMetaRow}>
+            <View style={styles.metaBadge}>
+              <Icon name={activeTabMeta.icon} size={14} color="#ffc799" />
+              <Text style={styles.metaBadgeText}>{activeTabMeta.label}</Text>
+            </View>
+            <View style={styles.metaBadgeMuted}>
+              <Text style={styles.metaBadgeMutedText}>AI Driven Workflow</Text>
+            </View>
+          </View>
+          <View style={styles.routeChipRow}>
+            {HOME_ROUTES.map(route => {
+              const active = activeMainTab === 'home' && homeRoute === route.key;
+              return (
+                <Pressable
+                  key={route.key}
+                  style={[styles.routeChip, active && styles.routeChipActive]}
+                  onPress={() => {
+                    setActiveMainTab('home');
+                    setHomeRoute(route.key);
+                  }}>
+                  <Icon
+                    name={route.icon}
+                    size={14}
+                    color={active ? '#ffe9d6' : 'rgba(255, 226, 202, 0.72)'}
+                  />
+                  <Text style={[styles.routeChipText, active && styles.routeChipTextActive]}>
+                    {route.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </Animated.View>
+      <View style={styles.screenArea}>
+        <View style={styles.screenSurface}>{screen}</View>
       </View>
+      <Animated.View
+        style={[
+          styles.tabBarOuter,
+          dockAnimatedStyle,
+          {
+            paddingBottom: Math.max(insets.bottom, 10),
+          },
+        ]}>
+        <View style={styles.tabBar}>
+          {TABS.map(tab => {
+            const active = activeMainTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                style={[styles.tabItem, active && styles.tabItemActive]}
+                onPress={() => setActiveMainTab(tab.key)}>
+                <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
+                  <Icon
+                    name={tab.icon}
+                    size={18}
+                    color={active ? '#fff3e8' : 'rgba(255, 225, 198, 0.68)'}
+                  />
+                </View>
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Animated.View>
       <GlobalAgentSprite />
-    </View>
+    </LinearGradient>
   );
 };
 
@@ -449,44 +564,155 @@ function App() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: VISION_THEME.background.bottom,
+  },
+  topPanel: {
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+  },
+  topPanelCard: {
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'rgba(22, 10, 16, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 188, 150, 0.24)',
+    gap: 8,
+  },
+  brandTitle: {
+    color: '#ffe9d2',
+    fontSize: 13,
+    letterSpacing: 1.4,
+    fontWeight: '800',
+  },
+  brandSubtitle: {
+    color: 'rgba(255, 224, 201, 0.86)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  topPanelMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 144, 84, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 177, 124, 0.32)',
+  },
+  metaBadgeText: {
+    color: '#ffd9bc',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  metaBadgeMuted: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 237, 224, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 192, 160, 0.2)',
+  },
+  metaBadgeMutedText: {
+    color: 'rgba(255, 221, 198, 0.72)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  routeChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  routeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 198, 164, 0.2)',
+    backgroundColor: 'rgba(255, 246, 236, 0.04)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  routeChipActive: {
+    borderColor: 'rgba(255, 203, 148, 0.72)',
+    backgroundColor: 'rgba(255, 153, 102, 0.24)',
+  },
+  routeChipText: {
+    color: 'rgba(255, 214, 185, 0.8)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  routeChipTextActive: {
+    color: '#fff3e8',
   },
   screenArea: {
     flex: 1,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  screenSurface: {
+    flex: 1,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 191, 150, 0.24)',
+    backgroundColor: 'rgba(24, 11, 17, 0.48)',
+  },
+  tabBarOuter: {
+    paddingHorizontal: 16,
+    paddingTop: 6,
   },
   tabBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: VISION_THEME.border.soft,
-    backgroundColor: VISION_THEME.surface.elevated,
-    paddingTop: 8,
+    justifyContent: 'space-around',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 185, 145, 0.28)',
+    backgroundColor: 'rgba(16, 8, 12, 0.86)',
+    paddingVertical: 8,
     paddingHorizontal: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: {width: 0, height: 8},
+    elevation: 10,
   },
   tabItem: {
     flex: 1,
+    minHeight: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    paddingVertical: 4,
+  },
+  tabItemActive: {
+    backgroundColor: 'rgba(255, 143, 86, 0.22)',
   },
   iconWrap: {
     width: 34,
-    height: 28,
+    height: 24,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrapActive: {
-    backgroundColor: VISION_THEME.surface.active,
+    backgroundColor: 'rgba(255, 178, 133, 0.28)',
   },
   tabLabel: {
     fontSize: 11,
-    color: VISION_THEME.text.muted,
-    fontWeight: '600',
+    color: 'rgba(255, 216, 188, 0.68)',
+    fontWeight: '700',
   },
   tabLabelActive: {
-    color: VISION_THEME.accent.strong,
+    color: '#fff4e8',
   },
 });
 

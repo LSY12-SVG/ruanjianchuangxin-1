@@ -317,11 +317,11 @@ const createCommunityRepository = db => {
 
       await client.query(
         `
-        UPDATE community_posts p
+        UPDATE community_posts
         SET likes_count = (
-          SELECT COUNT(*) FROM community_post_likes l WHERE l.post_id = p.id
+          SELECT COUNT(*) FROM community_post_likes l WHERE l.post_id = community_posts.id
         )
-        WHERE p.id = ?
+        WHERE id = ?
       `,
         [Number(postId)],
       );
@@ -369,11 +369,11 @@ const createCommunityRepository = db => {
 
       await client.query(
         `
-        UPDATE community_posts p
+        UPDATE community_posts
         SET saves_count = (
-          SELECT COUNT(*) FROM community_post_saves s WHERE s.post_id = p.id
+          SELECT COUNT(*) FROM community_post_saves s WHERE s.post_id = community_posts.id
         )
-        WHERE p.id = ?
+        WHERE id = ?
       `,
         [Number(postId)],
       );
@@ -469,11 +469,11 @@ const createCommunityRepository = db => {
 
       await client.query(
         `
-        UPDATE community_posts p
+        UPDATE community_posts
         SET comments_count = (
-          SELECT COUNT(*) FROM community_comments c WHERE c.post_id = p.id
+          SELECT COUNT(*) FROM community_comments c WHERE c.post_id = community_posts.id
         )
-        WHERE p.id = ?
+        WHERE id = ?
       `,
         [Number(postId)],
       );

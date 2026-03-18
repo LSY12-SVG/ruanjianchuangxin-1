@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "test:account": "node ./scripts/test-account-flow.js",
+    "test:smoke": "node ./scripts/test-backend-smoke.js",
     "precheck:qwen": "node ./scripts/precheck-siliconflow-model.js"
   },
   "dependencies": {

@@ -1,3 +1,5 @@
+const {getAuthBypassUser, isAuthBypassEnabled} = require('../authBypass');
+
 const parseBearerToken = header => {
   if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
     return '';
@@ -20,38 +22,13 @@ const parseUserFromToken = (tokenTools, token) => {
   };
 };
 
-const isAuthBypassEnabled = () => {
-  const raw = String(process.env.AUTH_BYPASS || '').trim().toLowerCase();
-  if (raw === '1' || raw === 'true' || raw === 'yes') {
-    return true;
-  }
-  if (raw === '0' || raw === 'false' || raw === 'no') {
-    return false;
-  }
-  return process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
-};
-
-const getBypassUser = () => {
-  const userIdRaw = Number(process.env.AUTH_BYPASS_USER_ID || 1);
-  const userId = Number.isFinite(userIdRaw) && userIdRaw > 0 ? Math.floor(userIdRaw) : 1;
-  const usernameRaw = String(process.env.AUTH_BYPASS_USERNAME || `debug_user_${userId}`)
-    .trim()
-    .toLowerCase();
-  const username = usernameRaw || `debug_user_${userId}`;
-  return {
-    id: userId,
-    username,
-    isBypass: true,
-  };
-};
-
 const createAuthMiddleware = tokenTools => (req, res, next) => {
   try {
     const token = parseBearerToken(req.header('Authorization'));
     const user = parseUserFromToken(tokenTools, token);
     if (!user) {
       if (isAuthBypassEnabled()) {
-        req.user = getBypassUser();
+        req.user = getAuthBypassUser();
         next();
         return;
       }
@@ -72,11 +49,11 @@ const createOptionalAuthMiddleware = tokenTools => (req, _res, next) => {
     if (user) {
       req.user = user;
     } else if (isAuthBypassEnabled()) {
-      req.user = getBypassUser();
+      req.user = getAuthBypassUser();
     }
   } catch {
     if (isAuthBypassEnabled()) {
-      req.user = getBypassUser();
+      req.user = getAuthBypassUser();
     }
   }
   next();

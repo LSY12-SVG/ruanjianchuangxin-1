@@ -41,6 +41,9 @@ jest.mock('react-native-image-picker', () => ({
   launchCamera: jest.fn(async () => ({didCancel: true})),
   launchImageLibrary: jest.fn(async () => ({didCancel: true})),
 }));
+jest.mock('react-native-view-shot', () => ({
+  captureRef: jest.fn(async () => 'file:///tmp/mock-shot.png'),
+}));
 
 const reactNative = require('react-native');
 reactNative.NativeModules.VoiceRecognition = {

@@ -21,6 +21,7 @@ const {
 const {planAgentActions} = require('./agentPlanner');
 const {createAgentExecutionService} = require('./agentExecution');
 const {createAgentMemoryStore} = require('./agentMemoryStore');
+const {getAuthBypassUser, isAuthBypassEnabled} = require('./authBypass');
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
@@ -41,17 +42,6 @@ const agentMetrics = {
   scopeCheckTotal: 0,
   scopeCheckPassed: 0,
   blockedByPolicyCount: 0,
-};
-
-const isAuthBypassEnabled = () => {
-  const raw = String(process.env.AUTH_BYPASS || '').trim().toLowerCase();
-  if (raw === '1' || raw === 'true' || raw === 'yes') {
-    return true;
-  }
-  if (raw === '0' || raw === 'false' || raw === 'no') {
-    return false;
-  }
-  return process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
 };
 
 const parseScopesHeader = value => {
@@ -77,10 +67,14 @@ const requireAgentAuth = (req, res, next) => {
   if (accountModule?.authMiddleware) {
     return accountModule.authMiddleware(req, res, next);
   }
+  if (!isAuthBypassEnabled()) {
+    res.status(503).json({error: 'auth_module_unavailable'});
+    return undefined;
+  }
+  const bypassUser = getAuthBypassUser();
   req.user = {
-    id: 'debug_agent',
-    username: 'debug_agent',
-    isBypass: true,
+    ...bypassUser,
+    id: String(bypassUser.id),
     scopes: ['*'],
   };
   next();
