@@ -113,7 +113,15 @@ export const requestSegmentation = async ({
   }
 
   const json = cloudResult.data;
-  if (!Array.isArray(json?.masks) || typeof json?.model !== 'string') {
+  const masksRaw = Array.isArray(json?.masks)
+    ? json.masks
+    : Array.isArray((json as Record<string, unknown>)?.mask_list)
+      ? ((json as Record<string, unknown>).mask_list as unknown[])
+      : null;
+  const modelRaw =
+    (json as Record<string, unknown>)?.model ??
+    (json as Record<string, unknown>)?.seg_model;
+  if (!masksRaw || typeof modelRaw !== 'string') {
     const fallback = fallbackSegmentationResult('bad_payload');
     fallback.cloudState = 'degraded';
     fallback.endpoint = cloudResult.endpoint;
@@ -124,15 +132,33 @@ export const requestSegmentation = async ({
   }
 
   return {
-    model: json.model,
-    latencyMs: Number(json.latencyMs || cloudResult.latencyMs || 0),
-    fallbackUsed: Boolean(json.fallbackUsed),
-    fallbackReason: json.fallbackReason,
-    cloudState: cloudResult.cloudState,
-    endpoint: cloudResult.endpoint,
-    nextRecoveryAction: cloudResult.nextRecoveryAction,
-    retrying: cloudResult.retrying,
-    masks: json.masks,
+    model: modelRaw,
+    latencyMs: Number(
+      (json as Record<string, unknown>).latencyMs ||
+        (json as Record<string, unknown>).latency_ms ||
+        cloudResult.latencyMs ||
+        0,
+    ),
+    fallbackUsed: Boolean(
+      (json as Record<string, unknown>).fallbackUsed ??
+        (json as Record<string, unknown>).fallback_used,
+    ),
+    fallbackReason:
+      ((json as Record<string, unknown>).fallbackReason as CloudFallbackReason | undefined) ||
+      ((json as Record<string, unknown>).fallback_reason as CloudFallbackReason | undefined),
+    cloudState:
+      ((json as Record<string, unknown>).cloudState as SegmentationResult['cloudState']) ||
+      ((json as Record<string, unknown>).cloud_state as SegmentationResult['cloudState']) ||
+      cloudResult.cloudState,
+    endpoint:
+      ((json as Record<string, unknown>).endpoint as string | undefined) || cloudResult.endpoint,
+    nextRecoveryAction:
+      ((json as Record<string, unknown>).nextRecoveryAction as string | undefined) ||
+      ((json as Record<string, unknown>).next_recovery_action as string | undefined) ||
+      cloudResult.nextRecoveryAction,
+    retrying:
+      Boolean((json as Record<string, unknown>).retrying) || cloudResult.retrying,
+    masks: masksRaw as SegmentationMaskDescriptor[],
   };
 };
 

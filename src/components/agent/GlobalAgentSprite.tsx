@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
   PanResponder,
@@ -91,6 +91,10 @@ export const GlobalAgentSprite: React.FC = () => {
         setVoiceHint(message);
         pushConversation({role: 'system', content: message, state: 'error'});
       },
+      onPreempted: () => {
+        setIsVoiceListening(false);
+        setVoiceHint('全局语音已被调色语音接管');
+      },
       onEnd: () => {
         setIsVoiceListening(false);
       },
@@ -104,7 +108,7 @@ export const GlobalAgentSprite: React.FC = () => {
     };
   }, []);
 
-  const stopVoice = async () => {
+  const stopVoice = useCallback(async () => {
     try {
       await recognizerRef.current.stop();
     } catch {
@@ -112,9 +116,9 @@ export const GlobalAgentSprite: React.FC = () => {
     } finally {
       setIsVoiceListening(false);
     }
-  };
+  }, []);
 
-  const startVoice = async () => {
+  const startVoice = useCallback(async () => {
     if (isVoiceDisabledInGrading) {
       setVoiceHint('当前在调色页，请使用调色面板内语音按钮。');
       return;
@@ -132,7 +136,15 @@ export const GlobalAgentSprite: React.FC = () => {
       setVoiceHint(message);
       setIsVoiceListening(false);
     }
-  };
+  }, [isVoiceDisabledInGrading]);
+
+  useEffect(() => {
+    if (!isVoiceDisabledInGrading || !isVoiceListening) {
+      return;
+    }
+    setVoiceHint('进入调色页，已停止全局语音，避免冲突。');
+    stopVoice().catch(() => undefined);
+  }, [isVoiceDisabledInGrading, isVoiceListening, stopVoice]);
 
   const panResponder = useMemo(
     () =>

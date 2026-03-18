@@ -12,6 +12,7 @@ interface SpeechCallbacks {
   onPartial?: (text: string) => void;
   onFinal?: (text: string) => void;
   onError?: (message: string) => void;
+  onPreempted?: () => void;
 }
 
 interface VoiceRecognitionModuleType {
@@ -31,6 +32,12 @@ interface SpeechErrorEvent {
 const VoiceRecognition: VoiceRecognitionModuleType | null =
   NativeModules.VoiceRecognition || null;
 let activeRecognizerToken: symbol | null = null;
+interface ActiveRecognizerController {
+  token: symbol;
+  stopNative: () => Promise<void>;
+  notifyPreempted?: () => void;
+}
+let activeRecognizerController: ActiveRecognizerController | null = null;
 
 const pickFirstText = (value: unknown): string => {
   if (!value || !Array.isArray(value)) {
@@ -122,12 +129,32 @@ export const createSpeechRecognizer = (
 
   return {
     start: async (locale: string) => {
+      if (
+        activeRecognizerController &&
+        activeRecognizerController.token !== recognizerToken
+      ) {
+        const previousController = activeRecognizerController;
+        try {
+          await previousController.stopNative();
+        } catch {
+          // ignore: native recognizer might already be released by OS.
+        }
+        previousController.notifyPreempted?.();
+      }
       activeRecognizerToken = recognizerToken;
+      activeRecognizerController = {
+        token: recognizerToken,
+        stopNative: async () => {
+          await VoiceRecognition.stop();
+        },
+        notifyPreempted: callbacks.onPreempted,
+      };
       try {
         await VoiceRecognition.start(locale);
       } catch (error) {
         if (isActiveRecognizer()) {
           activeRecognizerToken = null;
+          activeRecognizerController = null;
         }
         throw error;
       }
@@ -136,14 +163,22 @@ export const createSpeechRecognizer = (
       if (!isActiveRecognizer()) {
         return;
       }
-      await VoiceRecognition.stop();
-      activeRecognizerToken = null;
+      try {
+        await VoiceRecognition.stop();
+      } finally {
+        if (isActiveRecognizer()) {
+          activeRecognizerToken = null;
+          activeRecognizerController = null;
+        }
+      }
     },
     destroy: async () => {
       subscriptions.forEach(subscription => subscription.remove());
-      const shouldDestroyNative = isActiveRecognizer() || activeRecognizerToken === null;
+      const shouldDestroyNative =
+        activeRecognizerController?.token === recognizerToken || activeRecognizerController == null;
       if (isActiveRecognizer()) {
         activeRecognizerToken = null;
+        activeRecognizerController = null;
       }
       if (shouldDestroyNative) {
         await VoiceRecognition.destroy();

@@ -2,6 +2,7 @@ const {
   validateInterpretRequest,
   normalizeInterpretResponse,
 } = require('../../backend/src/contracts');
+const {withInterpretCompat} = require('../../backend/src/colorIntelligence/adapters/compat');
 
 describe('backend contracts', () => {
   it('validates request with image and stats', () => {
@@ -110,5 +111,27 @@ describe('backend contracts', () => {
 
     expect(normalized).not.toBeNull();
     expect(normalized.intent_actions.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps interpret camelCase and snake_case fields consistent in compatibility adapter', () => {
+    const compat = withInterpretCompat({
+      intent_actions: [{action: 'adjust_param', target: 'contrast', delta: 6}],
+      confidence: 0.81,
+      reasoning_summary: 'ok',
+      fallback_used: false,
+      needsConfirmation: false,
+      message: 'ok',
+      source: 'cloud',
+      scene_profile: 'portrait',
+      quality_risk_flags: ['skin_tone_shift_risk'],
+      recommended_intensity: 'normal',
+    });
+
+    expect(compat.actions).toEqual(compat.intent_actions);
+    expect(compat.reasoningSummary).toBe(compat.reasoning_summary);
+    expect(compat.fallbackUsed).toBe(compat.fallback_used);
+    expect(compat.sceneProfile).toBe(compat.scene_profile);
+    expect(compat.qualityRiskFlags).toEqual(compat.quality_risk_flags);
+    expect(compat.recommendedIntensity).toBe(compat.recommended_intensity);
   });
 });

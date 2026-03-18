@@ -91,4 +91,45 @@ describe('backend auto grade phases', () => {
     expect(result.phaseTimeoutMs).toBe(50000);
     expect(result.phaseBudgetMs).toBe(50000);
   });
+
+  it('keeps auto-grade camelCase and snake_case fields consistent in compatibility adapter', () => {
+    const {withAutoGradeCompat} = require('../../backend/src/colorIntelligence/adapters/compat');
+    const compat = withAutoGradeCompat({
+      phase: 'fast',
+      sceneProfile: 'general',
+      confidence: 0.84,
+      globalActions: [{action: 'adjust_param', target: 'exposure', delta: 4}],
+      localMaskPlan: [{maskType: 'subject', actions: [{target: 'contrast', delta: 2}]}],
+      qualityRiskFlags: ['highlight_clip_risk'],
+      explanation: 'ok',
+      fallbackUsed: false,
+      fallbackReason: '',
+      cloudState: 'healthy',
+      latencyMs: 108,
+      endpoint: '/v1/color/auto-grade',
+      phaseTimeoutMs: 5000,
+      phaseBudgetMs: 5500,
+      payloadBytes: 2048,
+      encodeQuality: 82,
+      mimeType: 'image/jpeg',
+      modelUsed: 'fast-model',
+      modelRoute: 'fast-model',
+    });
+
+    expect(compat.sceneProfile).toBe(compat.scene_profile);
+    expect(compat.globalActions).toEqual(compat.global_actions);
+    expect(compat.localMaskPlan).toEqual(compat.local_mask_plan);
+    expect(compat.qualityRiskFlags).toEqual(compat.quality_risk_flags);
+    expect(compat.fallbackUsed).toBe(compat.fallback_used);
+    expect(compat.fallbackReason).toBe(compat.fallback_reason);
+    expect(compat.cloudState).toBe(compat.cloud_state);
+    expect(compat.latencyMs).toBe(compat.latency_ms);
+    expect(compat.phaseTimeoutMs).toBe(compat.phase_timeout_ms);
+    expect(compat.phaseBudgetMs).toBe(compat.phase_budget_ms);
+    expect(compat.payloadBytes).toBe(compat.payload_bytes);
+    expect(compat.encodeQuality).toBe(compat.encode_quality);
+    expect(compat.mimeType).toBe(compat.mime_type);
+    expect(compat.modelUsed).toBe(compat.model_used);
+    expect(compat.modelRoute).toBe(compat.model_route);
+  });
 });

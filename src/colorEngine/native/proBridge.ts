@@ -2,6 +2,8 @@ import {NativeModules, Platform} from 'react-native';
 import type {
   ColorEngineDiagnostics,
   ExportSpec,
+  NativeGallerySaveRequest,
+  NativeGallerySaveResult,
   NativeDecodeResult,
   NativeExportRequest,
   NativeExportResult,
@@ -43,10 +45,19 @@ interface NativeExportPayload {
   warnings?: string[];
 }
 
+interface NativeGallerySavePayload {
+  uri?: string;
+  displayName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  relativePath?: string;
+}
+
 interface ProColorEngineNativeModule {
   getCapabilities?: () => Promise<NativeCapabilityPayload>;
   decodeSource?: (uri: string, maxDimension: number) => Promise<NativeDecodePayload>;
   exportImage?: (request: NativeExportRequest) => Promise<NativeExportPayload>;
+  saveToGallery?: (request: NativeGallerySaveRequest) => Promise<NativeGallerySavePayload>;
 }
 
 const nativeModule = NativeModules?.ProColorEngine as ProColorEngineNativeModule | undefined;
@@ -153,5 +164,26 @@ export const exportNativeImage = async (
     gamutMappingApplied: Boolean(payload.gamutMappingApplied),
     toneMapApplied: Boolean(payload.toneMapApplied),
     warnings: Array.isArray(payload.warnings) ? payload.warnings : [],
+  };
+};
+
+export const saveNativeImageToGallery = async (
+  request: NativeGallerySaveRequest,
+): Promise<NativeGallerySaveResult | null> => {
+  if (!isNativeProBridgeAvailable() || typeof nativeModule?.saveToGallery !== 'function') {
+    return null;
+  }
+
+  const payload = await nativeModule.saveToGallery(request);
+  if (!payload?.uri) {
+    return null;
+  }
+
+  return {
+    uri: payload.uri,
+    displayName: payload.displayName || request.displayName || '',
+    mimeType: payload.mimeType || request.mimeType || 'image/jpeg',
+    fileSize: Number(payload.fileSize || 0),
+    relativePath: payload.relativePath || undefined,
   };
 };

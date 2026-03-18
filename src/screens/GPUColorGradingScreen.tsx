@@ -49,6 +49,12 @@ import {useVoiceColorGrading} from '../voice/useVoiceColorGrading';
 import {buildVoiceImageContext} from '../voice/imageContext';
 import {useAutoGradeOrchestrator} from '../colorEngine/autoGradeOrchestrator';
 import {
+  canTriggerFirstPass,
+  createFirstPassGate,
+  markFirstPassTriggered,
+  openFirstPassGate,
+} from '../colorEngine/firstPassGate';
+import {
   getCloudRuntimeState,
   subscribeCloudRuntimeState,
   type CloudRuntimeState,
@@ -336,6 +342,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     },
     getImageContext: () => buildVoiceImageContext(selectedImage, skImage),
   });
+  const resetVoiceSession = voice.resetVoiceSession;
 
   const autoGrade = useAutoGradeOrchestrator({
     onApply: (nextParams, nextMasks) => {
@@ -347,7 +354,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   });
   const resetAutoGradeState = autoGrade.resetAutoGradeState;
 
-  const lastVisualKeyRef = useRef('');
+  const firstPassGateRef = useRef(createFirstPassGate());
   const lastImageSessionKeyRef = useRef('');
   const skipAutoGradeForImageKeyRef = useRef('');
   const lastExternalApplyIdRef = useRef<number>(0);
@@ -362,6 +369,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     if (!selectedImage?.success) {
       lastImageSessionKeyRef.current = '';
       skipAutoGradeForImageKeyRef.current = '';
+      openFirstPassGate(firstPassGateRef.current, '');
       return;
     }
     if (lastImageSessionKeyRef.current === currentImageSessionKey) {
@@ -370,8 +378,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
 
     const hasPreviousImage = lastImageSessionKeyRef.current.length > 0;
     lastImageSessionKeyRef.current = currentImageSessionKey;
-    lastVisualKeyRef.current = '';
+    openFirstPassGate(firstPassGateRef.current, currentImageSessionKey);
     lastAutoSegmentImageRef.current = '';
+    resetVoiceSession().catch(() => undefined);
 
     if (!hasPreviousImage) {
       return;
@@ -386,7 +395,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     setSegmentationStatusMeta('');
     setLastExportSummary('');
     resetAutoGradeState();
-  }, [currentImageSessionKey, resetAutoGradeState, selectedImage?.success]);
+  }, [currentImageSessionKey, resetAutoGradeState, resetVoiceSession, selectedImage?.success]);
 
   useEffect(() => {
     if (selectedImage?.success) {
@@ -400,7 +409,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     setLastExportSummary('');
     lastAutoSegmentImageRef.current = '';
     resetAutoGradeState();
-  }, [resetAutoGradeState, selectedImage?.success]);
+    resetVoiceSession().catch(() => undefined);
+    openFirstPassGate(firstPassGateRef.current, '');
+  }, [resetAutoGradeState, resetVoiceSession, selectedImage?.success]);
 
   useEffect(() => {
     if (!workletsRuntimeUnavailable) {
@@ -462,21 +473,21 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
 
   useEffect(() => {
     if (!selectedImage?.success || !skImage || !selectedImage.base64 || !currentImageSessionKey) {
-      lastVisualKeyRef.current = '';
+      openFirstPassGate(firstPassGateRef.current, '');
       return;
     }
     if (skipAutoGradeForImageKeyRef.current === currentImageSessionKey) {
       skipAutoGradeForImageKeyRef.current = '';
       return;
     }
-    if (lastVisualKeyRef.current === currentImageSessionKey) {
+    if (!canTriggerFirstPass(firstPassGateRef.current, currentImageSessionKey)) {
       return;
     }
-    lastVisualKeyRef.current = currentImageSessionKey;
     const imageContext = buildVoiceImageContext(selectedImage, skImage);
     if (!imageContext) {
       return;
     }
+    markFirstPassTriggered(firstPassGateRef.current, currentImageSessionKey);
     autoGrade
       .runAutoGrade({
         image: selectedImage,
@@ -613,7 +624,8 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     setLastExportSummary('');
     lastAutoSegmentImageRef.current = '';
     autoGrade.resetAutoGradeState();
-  }, [autoGrade]);
+    resetVoiceSession().catch(() => undefined);
+  }, [autoGrade, resetVoiceSession]);
 
   const handleSave = useCallback(async () => {
     if (!selectedImage?.success || !skImage || !viewerRef.current) {
@@ -661,8 +673,12 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
 
       const warningText = result.warnings.length > 0 ? `\n${result.warnings.join('\n')}` : '';
       const summary = `${result.spec.format} / ${result.spec.bitDepth}-bit / ${result.spec.iccProfile}`;
-      setLastExportSummary(summary);
-      Alert.alert('导出完成', `已生成临时文件:\n${result.uri}\n${summary}${warningText}`);
+      const saveSummary = result.savedToGallery ? '已保存到相册' : '相册保存失败，文件保留在临时目录';
+      const locationText = result.savedToGallery
+        ? `相册 URI:\n${result.galleryUri || '系统图库路径'}`
+        : `临时文件:\n${result.uri}`;
+      setLastExportSummary(`${summary} | ${saveSummary}`);
+      Alert.alert('导出完成', `${saveSummary}\n${locationText}\n${summary}${warningText}`);
     } catch (error) {
       Alert.alert(
         '导出失败',

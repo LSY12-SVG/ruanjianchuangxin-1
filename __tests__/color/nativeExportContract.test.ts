@@ -70,8 +70,17 @@ describe('native export contract', () => {
       }),
     );
     expect(captureRef).not.toHaveBeenCalled();
+    expect(NativeModules.ProColorEngine.saveToGallery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceUri: '/tmp/fake-export.png',
+        albumName: 'VisionGenie',
+        mimeType: 'image/png',
+      }),
+    );
     expect(result.nativeExportSucceeded).toBe(true);
     expect(result.degradedExport).toBe(false);
+    expect(result.savedToGallery).toBe(true);
+    expect(result.galleryUri).toContain('content://media/external/images/media/');
     expect(result.warnings).toEqual([]);
 
     const history = getExportHistory();
@@ -104,8 +113,16 @@ describe('native export contract', () => {
     });
 
     expect(captureRef).toHaveBeenCalled();
+    expect(NativeModules.ProColorEngine.saveToGallery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceUri: '/tmp/fallback-export.jpg',
+        albumName: 'VisionGenie',
+        mimeType: 'image/jpeg',
+      }),
+    );
     expect(result.nativeExportSucceeded).toBe(false);
     expect(result.degradedExport).toBe(true);
+    expect(result.savedToGallery).toBe(true);
     expect(result.degradeReason).toContain('原生导出失败');
 
     const history = getExportHistory();

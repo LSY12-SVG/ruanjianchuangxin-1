@@ -126,4 +126,50 @@ describe('auto grade service', () => {
     expect(result.cloudState).toBe('degraded');
     expect(result.nextRecoveryAction).toBe('retry_with_backoff');
   });
+
+  it('parses snake_case payload fields for compatibility', async () => {
+    requestCloudJson.mockResolvedValue({
+      ok: true,
+      cloudState: 'healthy',
+      latencyMs: 520,
+      endpoint: 'http://127.0.0.1:8787/v1/color/auto-grade',
+      lockedEndpoint: 'http://127.0.0.1:8787',
+      nextRecoveryAction: 'cloud_available',
+      data: {
+        phase: 'fast',
+        scene_profile: 'general',
+        confidence: 0.72,
+        global_actions: [{action: 'adjust_param', target: 'contrast', delta: 6}],
+        local_mask_plan: [],
+        quality_risk_flags: ['highlight_clip_risk'],
+        explanation: 'ok',
+        fallback_used: false,
+        cloud_state: 'healthy',
+        next_recovery_action: 'cloud_available',
+        phase_timeout_ms: 5000,
+        phase_budget_ms: 5500,
+        payload_bytes: 1024,
+        encode_quality: 80,
+        mime_type: 'image/jpeg',
+        model_used: 'fast-model',
+        model_route: 'fast-model',
+      },
+    });
+
+    const result = await requestAutoGrade({
+      ...baseRequest,
+      phase: 'fast',
+    });
+
+    expect(result.sceneProfile).toBe('general');
+    expect(result.globalActions).toHaveLength(1);
+    expect(result.qualityRiskFlags).toEqual(['highlight_clip_risk']);
+    expect(result.phaseTimeoutMs).toBe(5000);
+    expect(result.phaseBudgetMs).toBe(5500);
+    expect(result.payloadBytes).toBe(1024);
+    expect(result.encodeQuality).toBe(80);
+    expect(result.mimeType).toBe('image/jpeg');
+    expect(result.modelUsed).toBe('fast-model');
+    expect(result.modelRoute).toBe('fast-model');
+  });
 });

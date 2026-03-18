@@ -213,8 +213,25 @@ export interface NativeExportResult {
   warnings: string[];
 }
 
+export interface NativeGallerySaveRequest {
+  sourceUri: string;
+  albumName?: string;
+  displayName?: string;
+  mimeType?: string;
+}
+
+export interface NativeGallerySaveResult {
+  uri: string;
+  displayName: string;
+  mimeType: string;
+  fileSize: number;
+  relativePath?: string;
+}
+
 export interface ExportHistoryEntry {
   uri: string;
+  galleryUri?: string;
+  savedToGallery?: boolean;
   spec: ExportSpec;
   warnings: string[];
   exportedAt: string;

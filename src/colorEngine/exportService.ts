@@ -16,7 +16,7 @@ import type {
 } from '../types/colorEngine';
 import {validateExportSpec} from './exportSpec';
 import {defaultHslSecondaryAdjustments, normalizeLocalMaskLayer} from '../types/colorEngine';
-import {exportNativeImage} from './native/proBridge';
+import {exportNativeImage, saveNativeImageToGallery} from './native/proBridge';
 import {buildOperatorGraphV1} from './core/operatorGraph';
 
 interface ExportRequest {
@@ -42,6 +42,9 @@ interface ExportRequest {
 
 export interface ExportResult {
   uri: string;
+  galleryUri?: string;
+  savedToGallery: boolean;
+  galleryDisplayName?: string;
   spec: ExportSpec;
   warnings: string[];
   exportedAt: string;
@@ -54,9 +57,84 @@ export interface ExportResult {
 }
 
 const HISTORY_KEY = 'visiongenie.export.history';
+const EXPORT_ALBUM_NAME = 'VisionGenie';
 
 const toViewShotFormat = (format: ExportSpec['format']): 'jpg' | 'png' =>
   format === 'jpeg' ? 'jpg' : 'png';
+
+const getExportMimeType = (format: ExportSpec['format']): string => {
+  switch (format) {
+    case 'png16':
+      return 'image/png';
+    case 'tiff16':
+      return 'image/tiff';
+    case 'jpeg':
+    default:
+      return 'image/jpeg';
+  }
+};
+
+const getExportExtension = (format: ExportSpec['format']): string => {
+  switch (format) {
+    case 'png16':
+      return 'png';
+    case 'tiff16':
+      return 'tiff';
+    case 'jpeg':
+    default:
+      return 'jpg';
+  }
+};
+
+const buildExportDisplayName = (format: ExportSpec['format']): string => {
+  const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  return `visiongenie_${timestamp}.${getExportExtension(format)}`;
+};
+
+interface GallerySaveOutcome {
+  savedToGallery: boolean;
+  galleryUri?: string;
+  galleryDisplayName?: string;
+  warnings: string[];
+}
+
+const saveExportToGallery = async (
+  sourceUri: string,
+  format: ExportSpec['format'],
+): Promise<GallerySaveOutcome> => {
+  const mimeType = getExportMimeType(format);
+  const displayName = buildExportDisplayName(format);
+
+  try {
+    const saved = await saveNativeImageToGallery({
+      sourceUri,
+      albumName: EXPORT_ALBUM_NAME,
+      displayName,
+      mimeType,
+    });
+
+    if (!saved?.uri) {
+      return {
+        savedToGallery: false,
+        warnings: ['相册写入模块不可用，导出文件已保留在临时目录。'],
+      };
+    }
+
+    return {
+      savedToGallery: true,
+      galleryUri: saved.uri,
+      galleryDisplayName: saved.displayName || displayName,
+      warnings: [],
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : '原生相册写入失败，已保留临时导出文件。';
+    return {
+      savedToGallery: false,
+      warnings: [`保存到相册失败：${message}`],
+    };
+  }
+};
 
 const resolveSourcePathMode = (metadata?: ExportRequest['metadata']) => {
   if (!metadata?.nativeSourcePath) {
@@ -151,10 +229,14 @@ export const exportGradedResult = async ({
       });
 
       if (nativeResult) {
+        const gallerySave = await saveExportToGallery(nativeResult.uri, normalized.format);
         const result: ExportResult = {
           uri: nativeResult.uri,
+          galleryUri: gallerySave.galleryUri,
+          savedToGallery: gallerySave.savedToGallery,
+          galleryDisplayName: gallerySave.galleryDisplayName,
           spec: normalized,
-          warnings: [...downgradedWarnings, ...nativeResult.warnings],
+          warnings: [...downgradedWarnings, ...nativeResult.warnings, ...gallerySave.warnings],
           exportedAt: new Date().toISOString(),
           metadata: {
             ...metadata,
@@ -198,11 +280,15 @@ export const exportGradedResult = async ({
     quality: normalized.quality,
     result: 'tmpfile',
   });
+  const gallerySave = await saveExportToGallery(uri, normalized.format);
 
   const result: ExportResult = {
     uri,
+    galleryUri: gallerySave.galleryUri,
+    savedToGallery: gallerySave.savedToGallery,
+    galleryDisplayName: gallerySave.galleryDisplayName,
     spec: normalized,
-    warnings: downgradedWarnings,
+    warnings: [...downgradedWarnings, ...gallerySave.warnings],
     exportedAt: new Date().toISOString(),
     metadata: {
       ...metadata,

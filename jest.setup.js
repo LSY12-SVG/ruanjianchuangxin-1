@@ -76,6 +76,13 @@ reactNative.NativeModules.ProColorEngine = {
     iccProfile: request.iccProfile,
     warnings: [],
   })),
+  saveToGallery: jest.fn(async request => ({
+    uri: 'content://media/external/images/media/1001',
+    displayName: request.displayName || 'visiongenie_export.png',
+    mimeType: request.mimeType || 'image/png',
+    fileSize: 1024,
+    relativePath: 'Pictures/VisionGenie',
+  })),
 };
 reactNative.NativeModules.SourceCode = {
   scriptURL: 'http://127.0.0.1:8081/index.bundle?platform=android&dev=true',

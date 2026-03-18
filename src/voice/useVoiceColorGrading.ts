@@ -52,6 +52,7 @@ interface UseVoiceColorGradingResult {
   startPressToTalk: () => Promise<void>;
   stopPressToTalk: () => Promise<void>;
   applyTextCommand: (text: string) => Promise<void>;
+  resetVoiceSession: () => Promise<void>;
   undoLastApply: () => void;
   undoSessionApply: () => void;
 }
@@ -446,6 +447,17 @@ export const useVoiceColorGrading = ({
         setLastError(message);
         setState('error');
       },
+      onPreempted: () => {
+        listeningRef.current = false;
+        isPressingRef.current = false;
+        if (restartTimerRef.current) {
+          clearTimeout(restartTimerRef.current);
+          restartTimerRef.current = null;
+        }
+        setIsRecording(false);
+        setState('idle');
+        setLastError('语音识别被其他模块接管，请重新点击麦克风继续调色。');
+      },
     }),
   );
 
@@ -536,7 +548,21 @@ export const useVoiceColorGrading = ({
     };
     targetDecayRef.current = {};
     setCanUndoSession(false);
-    await recognizerRef.current.start(locale);
+    try {
+      await recognizerRef.current.start(locale);
+    } catch (error) {
+      listeningRef.current = false;
+      isPressingRef.current = false;
+      setIsRecording(false);
+      const message = error instanceof Error ? error.message : '语音启动失败';
+      setLastError(
+        isRecoverableRecognizerError(message)
+          ? '语音识别忙碌或被占用，请重新点击麦克风。'
+          : message,
+      );
+      setState('error');
+      return;
+    }
   }, [getImageContext, locale]);
 
   const stopPressToTalk = useCallback(async () => {
@@ -645,6 +671,51 @@ export const useVoiceColorGrading = ({
     );
   }, [onApplyParams]);
 
+  const resetVoiceSession = useCallback(async () => {
+    isPressingRef.current = false;
+    listeningRef.current = false;
+    processingRef.current = false;
+    queueRef.current = [];
+    partialTranscriptRef.current = '';
+    targetDecayRef.current = {};
+    sessionRef.current = null;
+    lastApplyRef.current = null;
+
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+
+    try {
+      await recognizerRef.current.stop();
+    } catch {
+      // ignore
+    }
+
+    setState('idle');
+    setIsRecording(false);
+    setTranscript('');
+    setPartialTranscript('');
+    setLastError('');
+    setLastAppliedSummary('');
+    setCanUndo(false);
+    setCanUndoSession(false);
+    setVisualState('idle');
+    setVisualSummary('');
+    setVisualProfile('');
+    setVisualApplySummary('');
+    setCloudState('healthy');
+    setFallbackReason(undefined);
+    setCloudEndpointState(undefined);
+    setCloudLatencyMs(0);
+    setCloudRetrying(false);
+    setNextRecoveryAction('cloud_available');
+  }, []);
+
   useEffect(() => {
     const recognizer = recognizerRef.current;
     return () => {
@@ -681,6 +752,7 @@ export const useVoiceColorGrading = ({
     startPressToTalk,
     stopPressToTalk,
     applyTextCommand,
+    resetVoiceSession,
     undoLastApply,
     undoSessionApply,
   };

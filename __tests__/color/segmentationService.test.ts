@@ -63,4 +63,43 @@ describe('segmentation service', () => {
     expect(result.fallbackReason).toBe('host_unreachable');
     (globalThis as {fetch?: unknown}).fetch = originalFetch;
   });
+
+  it('parses snake_case segmentation payload fields for compatibility', async () => {
+    const originalFetch = (globalThis as {fetch?: unknown}).fetch;
+    (globalThis as {fetch?: unknown}).fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/health')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ok: true}),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          seg_model: 'seg-v3',
+          latency_ms: 38,
+          fallback_used: false,
+          cloud_state: 'healthy',
+          next_recovery_action: 'cloud_available',
+          masks: [{type: 'subject', confidence: 0.82, coverage: 0.48}],
+        }),
+      } as Response;
+    });
+
+    const result = await requestSegmentation({
+      image: sampleImage as never,
+      endpoint: 'http://192.168.50.20:8787',
+    });
+
+    expect(result.model).toBe('seg-v3');
+    expect(result.latencyMs).toBe(38);
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.cloudState).toBe('healthy');
+    expect(result.nextRecoveryAction).toBe('cloud_available');
+    expect(result.masks).toHaveLength(1);
+    (globalThis as {fetch?: unknown}).fetch = originalFetch;
+  });
 });

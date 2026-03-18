@@ -268,6 +268,17 @@ export const requestAutoGrade = async (
   const payloadFallbackReason =
     (payload.fallbackReason as CloudFallbackReason | undefined) ||
     (payload.fallback_reason as CloudFallbackReason | undefined);
+  const payloadCloudStateRaw = payload.cloudState ?? payload.cloud_state;
+  const payloadCloudState =
+    payloadCloudStateRaw === 'healthy' ||
+    payloadCloudStateRaw === 'degraded' ||
+    payloadCloudStateRaw === 'offline'
+      ? payloadCloudStateRaw
+      : undefined;
+  const payloadRecoveryAction =
+    (typeof payload.nextRecoveryAction === 'string' && payload.nextRecoveryAction) ||
+    (typeof payload.next_recovery_action === 'string' && payload.next_recovery_action) ||
+    undefined;
   const payloadModelUsed =
     (typeof payload.modelUsed === 'string' && payload.modelUsed) ||
     (typeof payload.model_used === 'string' && payload.model_used) ||
@@ -277,19 +288,34 @@ export const requestAutoGrade = async (
     (typeof payload.model_route === 'string' && payload.model_route) ||
     undefined;
   const effectiveCloudState =
-    payloadFallbackUsed && cloudResult.cloudState === 'healthy' ? 'degraded' : cloudResult.cloudState;
+    payloadCloudState ||
+    (payloadFallbackUsed && cloudResult.cloudState === 'healthy' ? 'degraded' : cloudResult.cloudState);
   const effectiveRecoveryAction =
-    payloadFallbackUsed && payloadFallbackReason
+    payloadRecoveryAction ||
+    (payloadFallbackUsed && payloadFallbackReason
       ? resolveRecoveryActionForFallbackReason(payloadFallbackReason)
-      : cloudResult.nextRecoveryAction;
+      : cloudResult.nextRecoveryAction);
   const globalActionsRaw =
     Array.isArray(payload.globalActions) && payload.globalActions.length
       ? payload.globalActions
+      : Array.isArray(payload.global_actions) && payload.global_actions.length
+        ? payload.global_actions
       : Array.isArray(payload.actions)
         ? payload.actions
         : [];
   const globalActions = globalActionsRaw.map(toAction).filter(Boolean) as AutoGradeAction[];
-  const localMaskPlanRaw = Array.isArray(payload.localMaskPlan) ? payload.localMaskPlan : [];
+  const localMaskPlanRaw = Array.isArray(payload.localMaskPlan)
+    ? payload.localMaskPlan
+    : Array.isArray(payload.local_mask_plan)
+      ? payload.local_mask_plan
+      : [];
+  const qualityRiskFlagsRaw = Array.isArray(payload.qualityRiskFlags)
+    ? payload.qualityRiskFlags
+    : Array.isArray(payload.quality_risk_flags)
+      ? payload.quality_risk_flags
+      : [];
+  const sceneProfileRaw = payload.sceneProfile ?? payload.scene_profile;
+  const explanationRaw = payload.explanation ?? payload.reasoningSummary ?? payload.reasoning_summary;
   const localMaskPlan = localMaskPlanRaw.length
     ? (localMaskPlanRaw as LocalMaskLayer[]).map(layer => ({
         ...layer,
@@ -350,14 +376,12 @@ export const requestAutoGrade = async (
 
   return {
     phase,
-    sceneProfile: String(payload.sceneProfile || 'general'),
+    sceneProfile: String(sceneProfileRaw || 'general'),
     confidence: Number.isFinite(Number(payload.confidence)) ? Number(payload.confidence) : 0.78,
     globalActions,
     localMaskPlan,
-    qualityRiskFlags: Array.isArray(payload.qualityRiskFlags)
-      ? (payload.qualityRiskFlags as string[]).map(item => String(item))
-      : [],
-    explanation: String(payload.explanation || '已完成上传首版智能调色。'),
+    qualityRiskFlags: (qualityRiskFlagsRaw as string[]).map(item => String(item)),
+    explanation: String(explanationRaw || '已完成上传首版智能调色。'),
     fallbackUsed: payloadFallbackUsed,
     fallbackReason: payloadFallbackReason,
     cloudState: effectiveCloudState,
@@ -366,14 +390,14 @@ export const requestAutoGrade = async (
     lockedEndpoint: cloudResult.lockedEndpoint,
     nextRecoveryAction: effectiveRecoveryAction,
     phaseTimeoutMs:
-      toNumberOrUndefined(payload.phaseTimeoutMs) ?? phaseRuntime.timeoutMs,
+      toNumberOrUndefined(payload.phaseTimeoutMs ?? payload.phase_timeout_ms) ?? phaseRuntime.timeoutMs,
     phaseBudgetMs:
-      toNumberOrUndefined(payload.phaseBudgetMs) ?? phaseRuntime.totalBudgetMs,
+      toNumberOrUndefined(payload.phaseBudgetMs ?? payload.phase_budget_ms) ?? phaseRuntime.totalBudgetMs,
     payloadBytes:
-      toNumberOrUndefined(payload.payloadBytes) ?? payloadDiagnostics.payloadBytes,
+      toNumberOrUndefined(payload.payloadBytes ?? payload.payload_bytes) ?? payloadDiagnostics.payloadBytes,
     encodeQuality:
-      toNumberOrUndefined(payload.encodeQuality) ?? payloadDiagnostics.encodeQuality,
-    mimeType: String(payload.mimeType || payloadDiagnostics.mimeType || ''),
+      toNumberOrUndefined(payload.encodeQuality ?? payload.encode_quality) ?? payloadDiagnostics.encodeQuality,
+    mimeType: String(payload.mimeType || payload.mime_type || payloadDiagnostics.mimeType || ''),
     modelUsed: payloadModelUsed,
     modelRoute: payloadModelRoute,
   };

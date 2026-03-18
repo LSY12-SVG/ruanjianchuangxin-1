@@ -1,9 +1,12 @@
 package com.visiongenieapp.colorengine
 
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -14,6 +17,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -188,6 +192,97 @@ class ProColorEngineModule(
     }
   }
 
+  @ReactMethod
+  fun saveToGallery(request: ReadableMap, promise: Promise) {
+    var insertedUri: Uri? = null
+    try {
+      val sourceUri = request.getString("sourceUri")?.takeIf { it.isNotBlank() }
+      if (sourceUri.isNullOrBlank()) {
+        promise.reject("save_to_gallery_missing_source", "sourceUri is required")
+        return
+      }
+
+      val mimeType = request.getString("mimeType")?.takeIf { it.isNotBlank() } ?: detectMimeType(sourceUri)
+      val extension = detectExtension(mimeType)
+      val albumName = request.getString("albumName")?.takeIf { it.isNotBlank() } ?: "VisionGenie"
+      val displayName = ensureExtension(
+        request.getString("displayName")?.takeIf { it.isNotBlank() }
+          ?: "visiongenie_${System.currentTimeMillis()}.$extension",
+        extension,
+      )
+
+      val resolver = reactApplicationContext.contentResolver
+      val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+      val nowSeconds = System.currentTimeMillis() / 1000
+      val values = ContentValues().apply {
+        put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+        put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+        put(MediaStore.Images.Media.DATE_ADDED, nowSeconds)
+        put(MediaStore.Images.Media.DATE_MODIFIED, nowSeconds)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          put(
+            MediaStore.Images.Media.RELATIVE_PATH,
+            "${Environment.DIRECTORY_PICTURES}/$albumName",
+          )
+          put(MediaStore.Images.Media.IS_PENDING, 1)
+        } else {
+          val legacyDir =
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), albumName)
+          if (!legacyDir.exists()) {
+            legacyDir.mkdirs()
+          }
+          put(MediaStore.Images.Media.DATA, File(legacyDir, displayName).absolutePath)
+        }
+      }
+
+      insertedUri = resolver.insert(collection, values)
+      if (insertedUri == null) {
+        throw IllegalStateException("Unable to create MediaStore item")
+      }
+
+      openSourceInputStream(sourceUri).use { input ->
+        resolver.openOutputStream(insertedUri, "w").use { output ->
+          requireNotNull(output) { "Unable to open output stream: $insertedUri" }
+          input.copyTo(output)
+        }
+      }
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val pendingClear = ContentValues().apply {
+          put(MediaStore.Images.Media.IS_PENDING, 0)
+        }
+        resolver.update(insertedUri, pendingClear, null, null)
+      }
+
+      val fileSize =
+        resolver.openFileDescriptor(insertedUri, "r")?.use { descriptor ->
+          val statSize = descriptor.statSize
+          if (statSize > 0) statSize.toInt() else 0
+        } ?: 0
+
+      val relativePath =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          "${Environment.DIRECTORY_PICTURES}/$albumName"
+        } else {
+          null
+        }
+
+      val result = Arguments.createMap().apply {
+        putString("uri", insertedUri.toString())
+        putString("displayName", displayName)
+        putString("mimeType", mimeType)
+        putInt("fileSize", fileSize)
+        putString("relativePath", relativePath)
+      }
+      promise.resolve(result)
+    } catch (error: Exception) {
+      insertedUri?.let { uri ->
+        reactApplicationContext.contentResolver.delete(uri, null, null)
+      }
+      promise.reject("save_to_gallery_failed", error)
+    }
+  }
+
   private fun stageSource(uriString: String): File {
     val directPath = uriString.removePrefix("file://")
     val directFile = File(directPath)
@@ -317,6 +412,61 @@ class ProColorEngineModule(
     val bytes = outFile.readBytes()
     outFile.delete()
     return bytes
+  }
+
+  private fun openSourceInputStream(uriString: String): InputStream {
+    val directFile = File(uriString.removePrefix("file://"))
+    if (directFile.exists()) {
+      return directFile.inputStream()
+    }
+
+    val uri = Uri.parse(uriString)
+    if (uri.scheme == "content") {
+      return reactApplicationContext.contentResolver.openInputStream(uri)
+        ?: throw IllegalStateException("Unable to open source uri: $uriString")
+    }
+
+    if (uri.scheme == "file") {
+      val file = File(uri.path ?: "")
+      if (file.exists()) {
+        return file.inputStream()
+      }
+    }
+
+    return reactApplicationContext.contentResolver.openInputStream(uri)
+      ?: throw IllegalStateException("Unable to open source uri: $uriString")
+  }
+
+  private fun detectMimeType(uriString: String): String {
+    val uri = Uri.parse(uriString)
+    val contentMime = reactApplicationContext.contentResolver.getType(uri)?.lowercase()
+    if (!contentMime.isNullOrBlank()) {
+      return contentMime
+    }
+
+    val lower = uriString.lowercase()
+    return when {
+      lower.endsWith(".png") -> "image/png"
+      lower.endsWith(".tif") || lower.endsWith(".tiff") -> "image/tiff"
+      else -> "image/jpeg"
+    }
+  }
+
+  private fun detectExtension(mimeType: String): String =
+    when (mimeType.lowercase()) {
+      "image/png" -> "png"
+      "image/tiff" -> "tiff"
+      "image/heif",
+      "image/heic",
+      "image/jpeg",
+      "image/jpg",
+      -> "jpg"
+      else -> "jpg"
+    }
+
+  private fun ensureExtension(fileName: String, extension: String): String {
+    val lower = fileName.lowercase()
+    return if (lower.endsWith(".$extension")) fileName else "$fileName.$extension"
   }
 
   private fun flattenBasicAndColorBalance(paramsMap: ReadableMap?): DoubleArray {
