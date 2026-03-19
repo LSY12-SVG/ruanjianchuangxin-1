@@ -1,15 +1,17 @@
-import React, {useState} from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import {launchImageLibrary, type Asset} from 'react-native-image-picker';
 import {LiquidPanel, StatusStrip} from '../components/design';
 import {VISION_THEME} from '../theme/visionTheme';
+import {
+  createImageTo3DJob,
+  getModelAsset,
+  getReconstructionTask,
+  type ImageTo3DJobStatus,
+  type UploadableImageAsset,
+} from '../services/imageTo3dApi';
 
 export type ModelLevel = 'preview' | 'balanced' | 'quality';
 
@@ -45,34 +47,206 @@ const PIPELINE = [
   'PBR 材质生成与导出',
 ];
 
-export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
-  onAgentBridgeReady,
-}) => {
-  const [modelLevel, setModelLevel] = useState<ModelLevel>('balanced');
-  const [taskProgress, setTaskProgress] = useState(67);
-  const [taskName, setTaskName] = useState('shoe_scan_021');
-  const [statusText, setStatusText] = useState('重建中');
+const PROGRESS_MAP: Record<ImageTo3DJobStatus, number> = {
+  queued: 14,
+  processing: 64,
+  succeeded: 100,
+  failed: 0,
+  expired: 0,
+};
 
-  React.useEffect(() => {
+const isTerminalStatus = (status: ImageTo3DJobStatus): boolean =>
+  status === 'succeeded' || status === 'failed' || status === 'expired';
+
+const statusFallbackText = (status: ImageTo3DJobStatus): string => {
+  if (status === 'queued') {
+    return '任务排队中';
+  }
+  if (status === 'processing') {
+    return '重建中';
+  }
+  if (status === 'succeeded') {
+    return '已完成';
+  }
+  if (status === 'failed') {
+    return '生成失败';
+  }
+  return '已过期';
+};
+
+const toUploadAsset = (asset: Asset): UploadableImageAsset => ({
+  uri: String(asset.uri || ''),
+  type: String(asset.type || 'image/jpeg'),
+  fileName: String(asset.fileName || `image-${Date.now()}.jpg`),
+});
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  return '任务提交失败，请稍后重试。';
+};
+
+export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({onAgentBridgeReady}) => {
+  const [modelLevel, setModelLevel] = useState<ModelLevel>('balanced');
+  const [taskProgress, setTaskProgress] = useState(0);
+  const [taskName, setTaskName] = useState('--');
+  const [statusText, setStatusText] = useState('待开始');
+  const [selectedImage, setSelectedImage] = useState<UploadableImageAsset | null>(null);
+  const [taskMeta, setTaskMeta] = useState('请先选择素材图片');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearPolling();
+    };
+  }, [clearPolling]);
+
+  const refreshTask = useCallback(
+    async (taskId: string, pollAfterMs = 5000) => {
+      try {
+        const task = await getReconstructionTask(taskId);
+        setTaskName(task.taskId.slice(0, 12));
+        setTaskProgress(PROGRESS_MAP[task.status] ?? 0);
+        setStatusText(task.message || statusFallbackText(task.status));
+
+        if (task.downloadUrl) {
+          setTaskMeta(`导出链接已就绪 (${String(task.viewerFormat || 'glb').toUpperCase()})`);
+        } else if (task.status === 'succeeded') {
+          setTaskMeta('模型已生成，可在作品中查看。');
+        } else if (task.status === 'processing') {
+          setTaskMeta('服务端正在生成模型，请稍候...');
+        }
+
+        if (task.status === 'succeeded' && task.modelId) {
+          try {
+            const model = await getModelAsset(task.modelId);
+            if (model.glbUrl) {
+              setTaskMeta(`模型已生成 (${String(model.viewerFormat || 'glb').toUpperCase()})`);
+            }
+          } catch {
+            // ignore model metadata fallback errors
+          }
+        }
+
+        if (!isTerminalStatus(task.status)) {
+          clearPolling();
+          pollTimerRef.current = setTimeout(() => {
+            refreshTask(taskId, pollAfterMs).catch(() => undefined);
+          }, Math.max(1200, pollAfterMs));
+        }
+      } catch (error) {
+        setErrorText(getErrorMessage(error));
+        setStatusText('状态刷新失败');
+      }
+    },
+    [clearPolling],
+  );
+
+  const handlePickImage = useCallback(async () => {
+    const result = await launchImageLibrary({
+      mediaType: 'photo',
+      selectionLimit: 1,
+      quality: 1,
+      includeBase64: false,
+    });
+
+    if (result.didCancel) {
+      return;
+    }
+    if (result.errorMessage) {
+      setErrorText(result.errorMessage);
+      return;
+    }
+
+    const asset = result.assets?.[0];
+    if (!asset?.uri) {
+      setErrorText('未获取到有效图片，请重新选择。');
+      return;
+    }
+
+    const nextImage = toUploadAsset(asset);
+    setSelectedImage(nextImage);
+    setErrorText(null);
+    setTaskMeta(`素材已就绪：${nextImage.fileName || '图片'}`);
+    if (taskName === '--') {
+      setStatusText('素材已选择');
+      setTaskProgress(0);
+    }
+  }, [taskName]);
+
+  const startTask = useCallback(
+    async (level?: ModelLevel): Promise<AgentActionResult> => {
+      if (isSubmitting) {
+        return {
+          ok: false,
+          message: '已有任务在提交中，请稍候。',
+        };
+      }
+      if (!selectedImage) {
+        return {
+          ok: false,
+          message: '请先选择一张素材图片。',
+        };
+      }
+
+      if (level) {
+        setModelLevel(level);
+      }
+      const finalLevel = level || modelLevel;
+
+      setIsSubmitting(true);
+      setErrorText(null);
+      clearPolling();
+      setStatusText('任务提交中...');
+      setTaskMeta('已连接后端，正在创建任务。');
+
+      try {
+        const created = await createImageTo3DJob(selectedImage);
+        setTaskName(created.taskId.slice(0, 12));
+        setTaskProgress(PROGRESS_MAP[created.status] ?? 0);
+        setStatusText(statusFallbackText(created.status));
+        setTaskMeta('任务已创建，等待服务端生成模型。');
+        refreshTask(created.taskId, created.pollAfterMs).catch(() => undefined);
+
+        return {
+          ok: true,
+          message: `已按${finalLevel}模式启动 2D 转 3D 任务。`,
+        };
+      } catch (error) {
+        const message = getErrorMessage(error);
+        setErrorText(message);
+        setStatusText('提交失败');
+        return {
+          ok: false,
+          message,
+        };
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [clearPolling, isSubmitting, modelLevel, refreshTask, selectedImage],
+  );
+
+  useEffect(() => {
     if (!onAgentBridgeReady) {
       return;
     }
 
     onAgentBridgeReady({
-      startTask: async (level?: ModelLevel) => {
-        if (level) {
-          setModelLevel(level);
-        }
-        const finalLevel = level || modelLevel;
-        const nextProgress = finalLevel === 'preview' ? 38 : finalLevel === 'balanced' ? 22 : 12;
-        setTaskProgress(nextProgress);
-        setTaskName(`agent_job_${Date.now().toString().slice(-6)}`);
-        setStatusText('任务已启动');
-        return {
-          ok: true,
-          message: `已按${finalLevel}模式启动 2D 转 3D 任务。`,
-        };
-      },
+      startTask,
       setModelLevel: async (level: ModelLevel) => {
         setModelLevel(level);
         return {
@@ -90,7 +264,7 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
     return () => {
       onAgentBridgeReady(null);
     };
-  }, [modelLevel, onAgentBridgeReady, statusText, taskProgress]);
+  }, [modelLevel, onAgentBridgeReady, startTask, statusText, taskProgress]);
 
   return (
     <LinearGradient colors={VISION_THEME.gradients.page} style={styles.container}>
@@ -107,21 +281,21 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
             />
           </View>
           <TouchableOpacity style={styles.heroAction} activeOpacity={0.86}>
-            <Icon name="help-circle-outline" size={16} color={VISION_THEME.accent.strong} />
-            <Text style={styles.heroActionText}>流程说明</Text>
+            <Icon name="link-outline" size={16} color={VISION_THEME.accent.strong} />
+            <Text style={styles.heroActionText}>后端已接入</Text>
           </TouchableOpacity>
         </LiquidPanel>
 
         <LiquidPanel style={styles.block}>
           <Text style={styles.blockTitle}>素材输入</Text>
           <View style={styles.uploadRow}>
-            <TouchableOpacity style={styles.uploadCard} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.uploadCard} activeOpacity={0.85} onPress={handlePickImage}>
               <Icon name="image-outline" size={26} color={VISION_THEME.accent.main} />
               <Text style={styles.uploadLabel}>单图重建</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.uploadCard} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.uploadCard} activeOpacity={0.85} onPress={handlePickImage}>
               <Icon name="images-outline" size={26} color={VISION_THEME.accent.main} />
-              <Text style={styles.uploadLabel}>多图重建</Text>
+              <Text style={styles.uploadLabel}>多图入口</Text>
             </TouchableOpacity>
           </View>
         </LiquidPanel>
@@ -175,13 +349,22 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
             <View style={styles.progressRail}>
               <View style={[styles.progressValue, {width: `${taskProgress}%`}]} />
             </View>
-            <Text style={styles.taskMeta}>预计剩余 1 分 42 秒 · 导出格式 GLB / FBX</Text>
+            <Text style={styles.taskMeta}>{taskMeta}</Text>
+            {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
           </View>
         </LiquidPanel>
 
-        <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9}>
+        <TouchableOpacity
+          style={[styles.primaryButton, isSubmitting && styles.primaryButtonDisabled]}
+          activeOpacity={0.9}
+          disabled={isSubmitting}
+          onPress={() => {
+            startTask().catch(() => undefined);
+          }}>
           <Icon name="sparkles-outline" size={18} color={VISION_THEME.accent.dark} />
-          <Text style={styles.primaryButtonText}>启动 2D 转 3D</Text>
+          <Text style={styles.primaryButtonText}>
+            {isSubmitting ? '提交中...' : '启动 2D 转 3D'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </LinearGradient>
@@ -358,13 +541,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressValue: {
-    width: '67%',
+    width: '0%',
     height: '100%',
     backgroundColor: VISION_THEME.accent.main,
   },
   taskMeta: {
     color: VISION_THEME.text.muted,
     fontSize: 11,
+  },
+  errorText: {
+    color: '#FF8A80',
+    fontSize: 11,
+    fontWeight: '600',
   },
   primaryButton: {
     marginTop: 2,
@@ -376,10 +564,12 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 13,
   },
+  primaryButtonDisabled: {
+    opacity: 0.65,
+  },
   primaryButtonText: {
     color: VISION_THEME.accent.dark,
     fontSize: 15,
     fontWeight: '800',
   },
 });
-

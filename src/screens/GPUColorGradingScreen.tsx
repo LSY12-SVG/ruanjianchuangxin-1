@@ -80,6 +80,10 @@ export interface GPUColorGradingAgentBridge {
 
 interface GPUColorGradingScreenProps {
   onAgentBridgeReady?: (bridge: GPUColorGradingAgentBridge | null) => void;
+  onAssistantSceneEvent?: (event: {
+    page: 'capture' | 'editor';
+    trigger: 'camera_open' | 'image_imported';
+  }) => void;
   externalApplyParamsRequest?: {
     id: number;
     params: ColorGradingParams;
@@ -235,6 +239,7 @@ const COLORS = {
 
 const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   onAgentBridgeReady,
+  onAssistantSceneEvent,
   externalApplyParamsRequest,
   externalImportRequest,
 }) => {
@@ -289,10 +294,24 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
       return;
     }
     lastImportRequestIdRef.current = externalImportRequest.id;
+    onAssistantSceneEvent?.({
+      page: 'capture',
+      trigger: 'camera_open',
+    });
     const runner =
       externalImportRequest.source === 'camera' ? pickFromCamera : pickFromGallery;
     runner().catch(() => undefined);
-  }, [externalImportRequest, pickFromCamera, pickFromGallery]);
+  }, [externalImportRequest, onAssistantSceneEvent, pickFromCamera, pickFromGallery]);
+
+  useEffect(() => {
+    if (!selectedImage?.success) {
+      return;
+    }
+    onAssistantSceneEvent?.({
+      page: 'editor',
+      trigger: 'image_imported',
+    });
+  }, [onAssistantSceneEvent, selectedImage?.success]);
 
   useEffect(() => {
     const unsubscribe = subscribeCloudRuntimeState(setCloudRuntimeState);
@@ -522,8 +541,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     localMasks,
     params,
     currentImageSessionKey,
-    selectedImage?.base64,
-    selectedImage?.success,
+    selectedImage,
     skImage,
   ]);
 

@@ -18,7 +18,6 @@ import {
   TwoDToThreeDScreen,
   type TwoDToThreeDAgentBridge,
 } from './src/screens/TwoDToThreeDScreen';
-import {AIAgentScreen} from './src/screens/AIAgentScreen';
 import {
   CommunityScreen,
   type CommunityAgentBridge,
@@ -45,14 +44,14 @@ import type {ColorGradingParams} from './src/types/colorGrading';
 import type {CreateRouteKey, MainTabKey, WorksSubPageKey} from './src/types/navigation';
 
 interface TabConfig {
-  key: MainTabKey;
+  key: 'create' | 'assistantAction' | 'works';
   label: string;
   icon: string;
 }
 
 const TABS: TabConfig[] = [
   {key: 'create', label: '创作', icon: 'sparkles-outline'},
-  {key: 'assistant', label: 'AI助手', icon: 'chatbubble-ellipses-outline'},
+  {key: 'assistantAction', label: '助手', icon: 'chatbubble-ellipses-outline'},
   {key: 'works', label: '作品', icon: 'layers-outline'},
 ];
 
@@ -117,7 +116,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
   setWorksSettingsOpen,
 }) => {
   const insets = useSafeAreaInsets();
-  const {registerOperation, submitGoal} = useAgentRuntime();
+  const {registerOperation, submitGoal, openAssistantFullPanel, assistantPanelMode, emitAssistantEvent} =
+    useAgentRuntime();
   const motionEnabled = useAppStore(state => state.motionEnabled);
   const shellAnim = useRef(new Animated.Value(0)).current;
   const gradingBridgeRef = useRef<GPUColorGradingAgentBridge | null>(null);
@@ -186,6 +186,13 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         execute: async action => {
           const args = action.args || {};
           const target = resolveAgentNavigationTarget(args);
+          if (target.openAssistantPanel) {
+            openAssistantFullPanel();
+            return {
+              ok: true,
+              message: '已打开助手面板',
+            };
+          }
           setActiveMainTab(target.mainTab);
           if (target.mainTab === 'create') {
             setCreateRoute(target.createRoute || 'hub');
@@ -201,9 +208,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
             message:
               target.mainTab === 'works'
                 ? `已跳转到 works/${target.worksSubPage || 'library'}`
-                : target.mainTab === 'create'
-                  ? `已跳转到 create/${target.createRoute || 'hub'}`
-                  : '已跳转到 assistant',
+                : `已跳转到 create/${target.createRoute || 'hub'}`,
           };
         },
       }),
@@ -382,9 +387,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
           message:
             activeMainTab === 'create'
               ? `当前页面: create/${createRoute}`
-              : activeMainTab === 'works'
-                ? `当前页面: works/${worksSubPage}`
-                : '当前页面: assistant',
+              : `当前页面: works/${worksSubPage}`,
         }),
       }),
     );
@@ -400,36 +403,57 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     setActiveMainTab,
     setCreateRoute,
     openSettingsSheet,
+    openAssistantFullPanel,
     setWorksSettingsOpen,
     setWorksSubPage,
     setWorksToolsOpen,
     worksSubPage,
   ]);
 
-  const createScreen =
-    createRoute === 'hub' ? (
-      <CreateHubScreen
-        onImportPhoto={() => {
-          setCreateRoute('editor');
-          setImportRequest({id: Date.now(), source: 'gallery'});
-        }}
-        onContinueEdit={() => {
-          setCreateRoute('editor');
-        }}
-        onApplySuggestion={goal => {
-          setActiveMainTab('assistant');
-          submitGoal(goal).catch(() => undefined);
-        }}
-      />
-    ) : (
+  const createScreen = useMemo(() => {
+    if (createRoute === 'hub') {
+      return (
+        <CreateHubScreen
+          onImportPhoto={() => {
+            setCreateRoute('editor');
+            setImportRequest({id: Date.now(), source: 'gallery'});
+          }}
+          onContinueEdit={() => {
+            setCreateRoute('editor');
+          }}
+          onApplySuggestion={goal => {
+            openAssistantFullPanel();
+            submitGoal(goal).catch(() => undefined);
+          }}
+        />
+      );
+    }
+
+    return (
       <GPUColorGradingScreen
         onAgentBridgeReady={bridge => {
           gradingBridgeRef.current = bridge;
+        }}
+        onAssistantSceneEvent={event => {
+          emitAssistantEvent({
+            id: `grading_${event.trigger}_${Date.now()}`,
+            page: event.page,
+            trigger: event.trigger,
+          });
         }}
         externalApplyParamsRequest={reuseRequest}
         externalImportRequest={importRequest}
       />
     );
+  }, [
+    createRoute,
+    emitAssistantEvent,
+    importRequest,
+    openAssistantFullPanel,
+    reuseRequest,
+    setCreateRoute,
+    submitGoal,
+  ]);
 
   const worksScreen = useMemo(() => {
     if (worksSubPage === 'community') {
@@ -519,26 +543,23 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
   ]);
 
   const screen = useMemo(() => {
-    if (activeMainTab === 'create') {
-      return createScreen;
+    if (activeMainTab === 'works') {
+      return worksScreen;
     }
-    if (activeMainTab === 'assistant') {
-      return <AIAgentScreen />;
-    }
-    return worksScreen;
+    return createScreen;
   }, [activeMainTab, createScreen, worksScreen]);
 
+  const activeDockKey = assistantPanelMode === 'full' ? 'assistantAction' : activeMainTab;
+
   const activeTabMeta = useMemo(
-    () => TABS.find(tab => tab.key === activeMainTab) || TABS[0],
-    [activeMainTab],
+    () => TABS.find(tab => tab.key === activeDockKey) || TABS[0],
+    [activeDockKey],
   );
 
   const subtitle =
     activeMainTab === 'create'
       ? `创作/${createRoute === 'hub' ? '入口' : '编辑器'}`
-      : activeMainTab === 'works'
-        ? `作品/${worksPageLabel(worksSubPage)}`
-        : 'AI 助手';
+      : `作品/${worksPageLabel(worksSubPage)}`;
 
   const topPanelAnimatedStyle = {
     opacity: shellAnim,
@@ -627,12 +648,18 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         ]}>
         <View style={styles.tabBar}>
           {TABS.map(tab => {
-            const active = activeMainTab === tab.key;
+            const active = activeDockKey === tab.key;
             return (
               <Pressable
                 key={tab.key}
                 style={[styles.tabItem, active && styles.tabItemActive]}
-                onPress={() => setActiveMainTab(tab.key)}>
+                onPress={() => {
+                  if (tab.key === 'assistantAction') {
+                    openAssistantFullPanel();
+                    return;
+                  }
+                  setActiveMainTab(tab.key);
+                }}>
                 <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
                   <Icon
                     name={tab.icon}
@@ -676,10 +703,17 @@ const AppShell: React.FC = () => {
   const setWorksToolsOpen = useAppStore(state => state.setWorksToolsOpen);
   const worksSettingsOpen = useAppStore(state => state.worksSettingsOpen);
   const setWorksSettingsOpen = useAppStore(state => state.setWorksSettingsOpen);
+  useEffect(() => {
+    if (activeMainTab === 'assistant') {
+      setActiveMainTab('create');
+    }
+  }, [activeMainTab, setActiveMainTab]);
+
+  const runtimeTab = (activeMainTab === 'assistant' ? 'create' : activeMainTab) as AgentAppTab;
 
   return (
     <AgentRuntimeProvider
-      currentTab={activeMainTab as AgentAppTab}
+      currentTab={runtimeTab}
       userId={AGENT_RUNTIME_USER_ID}
       namespace={AGENT_RUNTIME_NAMESPACE}
       grantedScopes={AGENT_DEFAULT_GRANTED_SCOPES}

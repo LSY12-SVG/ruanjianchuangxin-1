@@ -171,9 +171,6 @@ const resolveHostFromScriptURL = (): {protocol: string; host: string} | null => 
   }
 };
 
-const withServicePath = (protocol: string, host: string, servicePath: string): string =>
-  `${protocol}//${host}:${DEFAULT_PORT}${servicePath}`;
-
 const inferFallbackReason = (
   error: unknown,
   status?: number,

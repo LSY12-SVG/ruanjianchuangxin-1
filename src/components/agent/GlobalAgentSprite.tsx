@@ -1,150 +1,318 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
+  Image,
   PanResponder,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import LottieView from 'lottie-react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useAgentRuntime} from '../../agent/runtimeContext';
-import {requestRecordAudioPermission, createSpeechRecognizer} from '../../voice/speechRecognizer';
+import {
+  markRuleIgnored,
+  markRuleShown,
+  resetRuleIgnored,
+  shouldTriggerRule,
+} from '../../assistant/frequency';
+import {assistantTriggerRules} from '../../assistant/rules';
+import {defaultAssistantAvatar} from '../../assistant/avatarCatalog';
+import {avatarStateFromUiState, reduceAssistantUiState} from '../../assistant/stateMachine';
+import type {AssistantScenePage, AssistantTriggerRule, AssistantUiState} from '../../assistant/types';
+import {MOTION_PRESETS} from '../../theme/motion';
 import {VISION_THEME} from '../../theme/visionTheme';
 import {useAppStore} from '../../store/appStore';
+import {AvatarRendererWebView} from './AvatarRendererWebView';
+import {GlassCard, PrimaryButton, StatusStrip, TagPill} from '../design';
 
-const CARD_WIDTH = 88;
-const CARD_HEIGHT = 106;
+const CARD_WIDTH = 110;
+const CARD_HEIGHT = 142;
 const EDGE_GAP = 10;
+const BUBBLE_SHOW_MS = 3200;
+const IDLE_SLEEP_MS = 28000;
 
-const stateAnimation = {
-  idle: require('../../assets/lottie/assistant_idle.json'),
-  planning: require('../../assets/lottie/assistant_thinking.json'),
-  executing: require('../../assets/lottie/assistant_thinking.json'),
-  confirm: require('../../assets/lottie/assistant_confirm.json'),
-} as const;
+const QUICK_TASKS = [
+  {
+    id: 'optimize',
+    label: '优化这张照片',
+    icon: 'sparkles-outline',
+    goal: '请执行当前页面首轮 AI 优化建议',
+  },
+  {
+    id: 'shooting',
+    label: '给我拍摄建议',
+    icon: 'aperture-outline',
+    goal: '给我当前场景的构图和光线拍摄建议',
+  },
+  {
+    id: 'style',
+    label: '调成温暖电影感',
+    icon: 'color-wand-outline',
+    goal: '把当前图像调整成温暖电影感风格',
+  },
+] as const;
+
+const mapToScenePage = (
+  activeMainTab: string,
+  createRoute: string,
+  worksSubPage: string,
+): AssistantScenePage => {
+  if (activeMainTab === 'create' && createRoute === 'hub') {
+    return 'home';
+  }
+  if (activeMainTab === 'create' && createRoute === 'editor') {
+    return 'editor';
+  }
+  if (activeMainTab === 'works' && worksSubPage === 'library') {
+    return 'works';
+  }
+  return 'works';
+};
+
+const matchRule = (
+  page: AssistantScenePage,
+  trigger: AssistantTriggerRule['trigger'],
+): AssistantTriggerRule | null => {
+  const now = Date.now();
+  const frequency = useAppStore.getState().assistantFrequency;
+  const sorted = assistantTriggerRules
+    .filter(rule => rule.page === page && rule.trigger === trigger)
+    .sort((a, b) => b.priority - a.priority);
+  for (const rule of sorted) {
+    if (shouldTriggerRule(frequency, now, rule)) {
+      return rule;
+    }
+  }
+  return null;
+};
 
 export const GlobalAgentSprite: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {width, height} = useWindowDimensions();
-  const pushConversation = useAppStore(state => state.pushConversation);
+  const motionEnabled = useAppStore(state => state.motionEnabled);
   const activeMainTab = useAppStore(state => state.activeMainTab);
   const createRoute = useAppStore(state => state.createRoute);
+  const worksSubPage = useAppStore(state => state.worksSubPage);
+  const assistantFrequency = useAppStore(state => state.assistantFrequency);
+  const setAssistantFrequency = useAppStore(state => state.setAssistantFrequency);
+
   const {
-    panelVisible,
-    togglePanel,
-    closePanel,
-    spriteState,
+    assistantPanelMode,
+    lastMessage,
+    lastError,
     phase,
+    pendingActions,
     goalInput,
     setGoalInput,
     submitGoal,
     runQuickOptimizeCurrentPage,
     continueLastTask,
-    pendingActions,
     confirmPendingActions,
     dismissPendingActions,
-    undoLastExecution,
-    latestPlan,
-    lastReasoning,
-    lastError,
-    lastMessage,
-    currentTab,
+    closePanel,
+    openAssistantHalfPanel,
+    openAssistantFullPanel,
+    emitAssistantEvent,
   } = useAgentRuntime();
+
+  const [uiState, setUiState] = useState<AssistantUiState>('S0_hidden');
+  const [bubbleText, setBubbleText] = useState('');
+  const [activeBubbleRuleId, setActiveBubbleRuleId] = useState<string | null>(null);
+  const [webReady, setWebReady] = useState(false);
+  const [webFailed, setWebFailed] = useState(false);
+
+  const panelOpacity = useRef(new Animated.Value(0)).current;
+  const panelTranslateY = useRef(
+    new Animated.Value(MOTION_PRESETS.sheetTransition.fromY || 420),
+  ).current;
+  const longPressTriggeredRef = useRef(false);
 
   const position = useRef(
     new Animated.ValueXY({
       x: Math.max(EDGE_GAP, width - CARD_WIDTH - EDGE_GAP),
-      y: Math.max(80, height - 300),
+      y: Math.max(80, height - 320),
     }),
   ).current;
 
-  const longPressTriggeredRef = useRef(false);
-  const [isVoiceListening, setIsVoiceListening] = useState(false);
-  const [voiceHint, setVoiceHint] = useState('');
-  const isVoiceDisabledInGrading = activeMainTab === 'create' && createRoute === 'editor';
+  const page = useMemo(
+    () => mapToScenePage(activeMainTab, createRoute, worksSubPage),
+    [activeMainTab, createRoute, worksSubPage],
+  );
 
-  const recognizerRef = useRef(
-    createSpeechRecognizer({
-      onStart: () => {
-        setVoiceHint('正在聆听你的指令...');
-        pushConversation({role: 'system', content: '语音输入开始', state: 'listening'});
-      },
-      onFinal: text => {
-        if (!text?.trim()) {
-          return;
-        }
-        setVoiceHint(`识别: ${text}`);
-        setGoalInput(text);
-        pushConversation({role: 'user', content: text, state: 'normal'});
-        submitGoal(text)
-          .then(() => {
-            pushConversation({role: 'assistant', content: '已收到，我正在执行你的目标。', state: 'thinking'});
-          })
-          .catch(() => undefined);
-      },
-      onError: message => {
-        setVoiceHint(message);
-        pushConversation({role: 'system', content: message, state: 'error'});
-      },
-      onPreempted: () => {
-        setIsVoiceListening(false);
-        setVoiceHint('全局语音已被调色语音接管');
-      },
-      onEnd: () => {
-        setIsVoiceListening(false);
-      },
-    }),
+  const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPhaseRef = useRef(phase);
+  const lastMessageRef = useRef(lastMessage);
+
+  const clearBubbleTimer = () => {
+    if (bubbleTimerRef.current) {
+      clearTimeout(bubbleTimerRef.current);
+      bubbleTimerRef.current = null;
+    }
+  };
+
+  const dismissBubble = useCallback(
+    (asIgnored: boolean) => {
+      clearBubbleTimer();
+      if (asIgnored && activeBubbleRuleId) {
+        setAssistantFrequency(markRuleIgnored(assistantFrequency, activeBubbleRuleId));
+      }
+      setBubbleText('');
+      setActiveBubbleRuleId(null);
+      setUiState(prev => reduceAssistantUiState(prev, 'auto_reset'));
+    },
+    [activeBubbleRuleId, assistantFrequency, setAssistantFrequency],
+  );
+
+  const showRuleBubble = useCallback(
+    (rule: AssistantTriggerRule) => {
+      const now = Date.now();
+      setAssistantFrequency(markRuleShown(assistantFrequency, rule, now));
+      setBubbleText(rule.text);
+      setActiveBubbleRuleId(rule.id);
+      setUiState(prev => reduceAssistantUiState(prev, 'system_remind'));
+      clearBubbleTimer();
+      bubbleTimerRef.current = setTimeout(() => {
+        dismissBubble(true);
+      }, BUBBLE_SHOW_MS);
+    },
+    [assistantFrequency, dismissBubble, setAssistantFrequency],
   );
 
   useEffect(() => {
-    const recognizer = recognizerRef.current;
+    setUiState(prev => reduceAssistantUiState(prev, 'app_ready'));
     return () => {
-      recognizer.destroy().catch(() => undefined);
+      clearBubbleTimer();
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+      if (doneResetTimerRef.current) {
+        clearTimeout(doneResetTimerRef.current);
+      }
     };
   }, []);
 
-  const stopVoice = useCallback(async () => {
-    try {
-      await recognizerRef.current.stop();
-    } catch {
-      // ignore
-    } finally {
-      setIsVoiceListening(false);
-    }
-  }, []);
+  useEffect(() => {
+    emitAssistantEvent({
+      id: `page_${page}_${Date.now()}`,
+      page,
+      trigger: 'page_enter',
+    });
 
-  const startVoice = useCallback(async () => {
-    if (isVoiceDisabledInGrading) {
-      setVoiceHint('当前在调色页，请使用调色面板内语音按钮。');
-      return;
+    const enterRule = matchRule(page, 'page_enter');
+    if (enterRule) {
+      showRuleBubble(enterRule);
     }
-    const granted = await requestRecordAudioPermission();
-    if (!granted) {
-      setVoiceHint('缺少录音权限');
-      return;
+
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
     }
-    setIsVoiceListening(true);
-    try {
-      await recognizerRef.current.start('zh-CN');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '语音启动失败';
-      setVoiceHint(message);
-      setIsVoiceListening(false);
-    }
-  }, [isVoiceDisabledInGrading]);
+
+    idleTimerRef.current = setTimeout(() => {
+      const idleRule = matchRule(page, 'idle_timeout');
+      if (idleRule) {
+        showRuleBubble(idleRule);
+      } else {
+        setUiState(prev => reduceAssistantUiState(prev, 'auto_sleep'));
+      }
+    }, 6000);
+  }, [emitAssistantEvent, page, showRuleBubble]);
 
   useEffect(() => {
-    if (!isVoiceDisabledInGrading || !isVoiceListening) {
+    if (assistantPanelMode === 'full') {
+      setUiState('S6_full');
+    } else if (assistantPanelMode === 'half') {
+      setUiState('S5_half');
+    } else if (uiState === 'S6_full' || uiState === 'S5_half') {
+      setUiState('S1_collapsed');
+    }
+  }, [assistantPanelMode, uiState]);
+
+  useEffect(() => {
+    if (phase === 'planned' || phase === 'running') {
+      setUiState(prev => reduceAssistantUiState(prev, 'run_start'));
       return;
     }
-    setVoiceHint('进入调色页，已停止全局语音，避免冲突。');
-    stopVoice().catch(() => undefined);
-  }, [isVoiceDisabledInGrading, isVoiceListening, stopVoice]);
+
+    if ((phase === 'applied' || phase === 'rolled_back') && phase !== lastPhaseRef.current) {
+      setUiState(prev => reduceAssistantUiState(prev, 'run_done'));
+      if (doneResetTimerRef.current) {
+        clearTimeout(doneResetTimerRef.current);
+      }
+      doneResetTimerRef.current = setTimeout(() => {
+        setUiState('S1_collapsed');
+      }, 1400);
+
+      const doneRule = matchRule(page, 'task_completed');
+      if (doneRule) {
+        showRuleBubble(doneRule);
+      }
+    }
+
+    if (phase === 'failed' && phase !== lastPhaseRef.current) {
+      setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
+    }
+
+    lastPhaseRef.current = phase;
+  }, [page, phase, showRuleBubble, uiState]);
+
+  useEffect(() => {
+    if (!lastMessage || lastMessage === lastMessageRef.current) {
+      return;
+    }
+    lastMessageRef.current = lastMessage;
+    setUiState(prev => reduceAssistantUiState(prev, 'run_message'));
+  }, [lastMessage]);
+
+  useEffect(() => {
+    if (!lastError) {
+      return;
+    }
+    setUiState('S8_talking');
+  }, [lastError]);
+
+  useEffect(() => {
+    if (assistantPanelMode === 'full') {
+      if (!motionEnabled) {
+        panelOpacity.setValue(1);
+        panelTranslateY.setValue(0);
+        return;
+      }
+      Animated.parallel([
+        Animated.timing(panelOpacity, {
+          toValue: 1,
+          duration: MOTION_PRESETS.buttonPress.duration,
+          useNativeDriver: true,
+        }),
+        Animated.timing(panelTranslateY, {
+          toValue: 0,
+          duration: MOTION_PRESETS.sheetTransition.duration,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+    panelOpacity.setValue(0);
+    panelTranslateY.setValue(MOTION_PRESETS.sheetTransition.fromY || 420);
+  }, [assistantPanelMode, motionEnabled, panelOpacity, panelTranslateY]);
+
+  useEffect(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+    }
+    if (uiState !== 'S1_collapsed') {
+      return;
+    }
+    idleTimerRef.current = setTimeout(() => {
+      setUiState(prev => reduceAssistantUiState(prev, 'auto_sleep'));
+    }, IDLE_SLEEP_MS);
+  }, [uiState]);
 
   const panResponder = useMemo(
     () =>
@@ -154,6 +322,7 @@ export const GlobalAgentSprite: React.FC = () => {
         onPanResponderGrant: () => {
           position.extractOffset();
           position.setValue({x: 0, y: 0});
+          setUiState(prev => reduceAssistantUiState(prev, 'user_drag_start'));
         },
         onPanResponderMove: Animated.event([null, {dx: position.x, dy: position.y}], {
           useNativeDriver: false,
@@ -171,120 +340,193 @@ export const GlobalAgentSprite: React.FC = () => {
             useNativeDriver: false,
             bounciness: 8,
           }).start();
+          setUiState(prev => reduceAssistantUiState(prev, 'user_drag_end'));
         },
       }),
     [height, insets.bottom, insets.top, position, width],
   );
 
-  const statusColor =
-    spriteState === 'confirm'
-      ? VISION_THEME.feedback.warning
-      : spriteState === 'planning'
-        ? VISION_THEME.accent.main
-        : spriteState === 'executing'
-          ? VISION_THEME.feedback.success
-          : VISION_THEME.text.muted;
+  const avatarState = avatarStateFromUiState(uiState);
 
-  const activeAnimation = isVoiceListening
-    ? require('../../assets/lottie/assistant_listening.json')
-    : stateAnimation[spriteState];
+  const halfPanelVisible = assistantPanelMode === 'half';
+  const fullPanelVisible = assistantPanelMode === 'full';
+
+  const openHalfPanel = useCallback(() => {
+    if (activeBubbleRuleId) {
+      setAssistantFrequency(resetRuleIgnored(assistantFrequency, activeBubbleRuleId));
+    }
+    dismissBubble(false);
+    openAssistantHalfPanel();
+    setUiState(prev => reduceAssistantUiState(prev, 'user_open_half'));
+  }, [activeBubbleRuleId, assistantFrequency, dismissBubble, openAssistantHalfPanel, setAssistantFrequency]);
+
+  const openFullPanel = useCallback(() => {
+    dismissBubble(false);
+    openAssistantFullPanel();
+    setUiState(prev => reduceAssistantUiState(prev, 'user_open_full'));
+  }, [dismissBubble, openAssistantFullPanel]);
+
+  const closeAllPanels = useCallback(() => {
+    closePanel();
+    setUiState(prev => reduceAssistantUiState(prev, 'user_close'));
+  }, [closePanel]);
+
+  const handleAvatarPress = () => {
+    if (fullPanelVisible || halfPanelVisible) {
+      closeAllPanels();
+      return;
+    }
+    openHalfPanel();
+  };
+
+  const stateChipLabel =
+    uiState === 'S7_thinking'
+      ? '分析中'
+      : uiState === 'S8_talking'
+        ? '反馈中'
+        : uiState === 'S9_done'
+          ? '完成'
+          : uiState === 'S10_sleep'
+            ? '静默'
+            : '在线';
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      {panelVisible ? (
-        <View style={[styles.panelWrap, {paddingBottom: insets.bottom + 72}]}>
-          <View style={styles.panelCard}>
-            <View style={styles.panelHeader}>
-              <View>
-                <Text style={styles.panelTitle}>Anime Assistant</Text>
-                <Text style={styles.panelSub}>状态: {phase} · 页面: {currentTab}</Text>
+      {fullPanelVisible ? (
+        <Animated.View style={[styles.fullMask, {opacity: panelOpacity}]}> 
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeAllPanels} />
+          <Animated.View
+            style={[
+              styles.fullPanelWrap,
+              {
+                paddingBottom: insets.bottom + 74,
+                transform: [{translateY: panelTranslateY}],
+              },
+            ]}>
+            <GlassCard
+              title="AI 创作助手"
+              subtitle="我来帮你处理当前画面"
+              accent="hero"
+              style={styles.fullPanelCard}
+              statusNode={
+                <StatusStrip
+                  compact
+                  items={[
+                    {label: stateChipLabel, icon: 'sparkles-outline', tone: 'active'},
+                    {
+                      label: pendingActions.length ? `待确认 ${pendingActions.length}` : '可执行',
+                      icon: pendingActions.length ? 'alert-circle-outline' : 'checkmark-circle-outline',
+                      tone: pendingActions.length ? 'warning' : 'idle',
+                    },
+                  ]}
+                />
+              }>
+              <View style={styles.fullHeaderRow}>
+                <TagPill label={defaultAssistantAvatar.name} icon="person-circle-outline" active />
+                <Pressable onPress={closeAllPanels} style={styles.iconButton}>
+                  <Icon name="close-outline" size={18} color={VISION_THEME.text.secondary} />
+                </Pressable>
               </View>
-              <TouchableOpacity onPress={closePanel} style={styles.iconButton} activeOpacity={0.85}>
-                <Icon name="close-outline" size={18} color={VISION_THEME.text.secondary} />
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.inputWrap}>
-              <TouchableOpacity
-                style={[styles.voiceButton, isVoiceDisabledInGrading && styles.voiceButtonDisabled]}
-                onPress={() => startVoice().catch(() => undefined)}
-                disabled={isVoiceDisabledInGrading}>
-                <Icon name={isVoiceListening ? 'mic' : 'mic-outline'} size={16} color={VISION_THEME.accent.dark} />
-              </TouchableOpacity>
-              <View style={styles.inputSurface}>
-                <TextInput
-                  value={goalInput}
-                  onChangeText={setGoalInput}
-                  placeholder="说出或输入你的目标，然后点击发送"
-                  placeholderTextColor={VISION_THEME.text.muted}
-                  style={styles.inputText}
+              <View style={styles.inputWrap}>
+                <View style={styles.inputSurface}>
+                  <TextInput
+                    value={goalInput}
+                    onChangeText={setGoalInput}
+                    placeholder="描述你想要的效果"
+                    placeholderTextColor={VISION_THEME.text.muted}
+                    style={styles.inputText}
+                  />
+                </View>
+                <Pressable
+                  style={styles.sendButton}
+                  onPress={() => {
+                    submitGoal().catch(() => undefined);
+                  }}>
+                  <LinearGradient
+                    colors={VISION_THEME.gradients.cta}
+                    start={{x: 0, y: 0}}
+                    end={{x: 1, y: 1}}
+                    style={styles.sendGradient}>
+                    <Icon name="send" size={15} color="#EFF6FF" />
+                  </LinearGradient>
+                </Pressable>
+              </View>
+
+              <View style={styles.quickRow}>
+                <PrimaryButton
+                  label="优化当前页"
+                  icon="flash-outline"
+                  style={styles.quickActionButton}
+                  onPress={() => runQuickOptimizeCurrentPage().catch(() => undefined)}
+                />
+                <PrimaryButton
+                  label="继续任务"
+                  icon="play-forward-outline"
+                  variant="secondary"
+                  style={styles.quickActionButton}
+                  onPress={() => continueLastTask().catch(() => undefined)}
                 />
               </View>
-              <TouchableOpacity
-                style={styles.sendButton}
-                activeOpacity={0.86}
-                onPress={() => {
-                  submitGoal().catch(() => undefined);
-                }}>
-                <Icon name="send" size={15} color={VISION_THEME.accent.dark} />
-              </TouchableOpacity>
-            </View>
 
-            <View style={styles.quickRow}>
-              <TouchableOpacity
-                style={styles.quickButton}
-                activeOpacity={0.86}
-                onPress={() => runQuickOptimizeCurrentPage().catch(() => undefined)}>
-                <Text style={styles.quickText}>优化当前页</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickButton}
-                activeOpacity={0.86}
-                onPress={() => continueLastTask().catch(() => undefined)}>
-                <Text style={styles.quickText}>继续任务</Text>
-              </TouchableOpacity>
-            </View>
-
-            {pendingActions.length > 0 ? (
-              <View style={styles.confirmCard}>
-                <Text style={styles.confirmTitle}>待确认动作（{pendingActions.length}）</Text>
-                {pendingActions.slice(0, 3).map(action => (
-                  <Text key={`${action.domain}_${action.operation}`} style={styles.actionText}>
-                    {action.domain}.{action.operation}
-                  </Text>
-                ))}
-                <View style={styles.quickRow}>
-                  <TouchableOpacity
-                    style={styles.confirmButton}
+              {pendingActions.length ? (
+                <View style={styles.pendingRow}>
+                  <PrimaryButton
+                    label="确认执行"
+                    icon="checkmark-done-outline"
+                    style={styles.quickActionButton}
                     onPress={() => confirmPendingActions().catch(() => undefined)}
-                    activeOpacity={0.86}>
-                    <Text style={styles.confirmButtonText}>确认执行</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
+                  />
+                  <PrimaryButton
+                    label="取消"
+                    icon="close-outline"
+                    variant="secondary"
+                    style={styles.quickActionButton}
                     onPress={dismissPendingActions}
-                    activeOpacity={0.86}>
-                    <Text style={styles.cancelButtonText}>取消</Text>
-                  </TouchableOpacity>
+                  />
                 </View>
-              </View>
-            ) : null}
+              ) : null}
 
-            {latestPlan ? <Text style={styles.infoText}>计划: {latestPlan.estimatedSteps} 步</Text> : null}
-            {lastReasoning ? <Text style={styles.infoText}>{lastReasoning}</Text> : null}
-            {lastMessage ? <Text style={styles.infoText}>{lastMessage}</Text> : null}
-            {lastError ? <Text style={styles.errorText}>{lastError}</Text> : null}
-            {voiceHint ? <Text style={styles.infoText}>{voiceHint}</Text> : null}
+              {bubbleText ? <Text style={styles.infoText}>{bubbleText}</Text> : null}
+              {lastMessage ? <Text style={styles.infoText}>{lastMessage}</Text> : null}
+              {lastError ? <Text style={styles.errorText}>{lastError}</Text> : null}
+            </GlassCard>
+          </Animated.View>
+        </Animated.View>
+      ) : null}
 
-            <TouchableOpacity
-              style={styles.undoButton}
-              activeOpacity={0.86}
-              onPress={() => undoLastExecution().catch(() => undefined)}>
-              <Icon name="arrow-undo-outline" size={15} color={VISION_THEME.text.secondary} />
-              <Text style={styles.undoText}>撤销最近自动执行</Text>
-            </TouchableOpacity>
+      {halfPanelVisible ? (
+        <View pointerEvents="box-none" style={styles.halfLayer}>
+          <View style={styles.halfPanel}>
+            <Text style={styles.halfTitle}>晚上好，你想我帮你做什么？</Text>
+            <View style={styles.halfActions}>
+              {QUICK_TASKS.map(task => (
+                <Pressable
+                  key={task.id}
+                  style={styles.halfAction}
+                  onPress={() => {
+                    submitGoal(task.goal).catch(() => undefined);
+                    openFullPanel();
+                  }}>
+                  <Icon name={task.icon} size={16} color={VISION_THEME.accent.strong} />
+                  <Text style={styles.halfActionText}>{task.label}</Text>
+                </Pressable>
+              ))}
+              <Pressable style={styles.halfAction} onPress={openFullPanel}>
+                <Icon name="ellipsis-horizontal" size={16} color={VISION_THEME.accent.strong} />
+                <Text style={styles.halfActionText}>更多...</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
+      ) : null}
+
+      {bubbleText ? (
+        <Pressable style={styles.bubbleWrap} onPress={openHalfPanel}>
+          <View style={styles.bubbleSurface}>
+            <Text style={styles.bubbleText}>{bubbleText}</Text>
+          </View>
+        </Pressable>
       ) : null}
 
       <Animated.View
@@ -292,39 +534,59 @@ export const GlobalAgentSprite: React.FC = () => {
           styles.card,
           {
             transform: [{translateX: position.x}, {translateY: position.y}],
-            borderColor: `${statusColor}AA`,
           },
         ]}
         {...panResponder.panHandlers}>
-        <TouchableOpacity
+        <Pressable
           style={styles.cardTouch}
-          activeOpacity={0.92}
           delayLongPress={180}
           onPress={() => {
             if (longPressTriggeredRef.current) {
               longPressTriggeredRef.current = false;
               return;
             }
-            togglePanel();
+            handleAvatarPress();
           }}
           onLongPress={() => {
             longPressTriggeredRef.current = true;
-            if (isVoiceDisabledInGrading) {
-              return;
-            }
-            startVoice().catch(() => undefined);
-          }}
-          onPressOut={() => {
-            if (isVoiceListening) {
-              stopVoice().catch(() => undefined);
-            }
+            openFullPanel();
           }}>
-          <LottieView source={activeAnimation} autoPlay loop style={styles.avatar} />
-          <View style={styles.statusBar}>
-            <View style={[styles.statusDot, {backgroundColor: statusColor}]} />
-            <Text style={styles.statusText}>{isVoiceListening ? '聆听中' : '在线'}</Text>
-          </View>
-        </TouchableOpacity>
+          <LinearGradient
+            colors={VISION_THEME.gradients.card}
+            start={{x: 0, y: 0}}
+            end={{x: 1, y: 1}}
+            style={styles.cardGradient}>
+            <View style={styles.avatarWrap}>
+              {!webFailed ? (
+                <AvatarRendererWebView
+                  state={avatarState}
+                  onReady={() => setWebReady(true)}
+                  onTap={handleAvatarPress}
+                  onError={() => setWebFailed(true)}
+                />
+              ) : (
+                <Image
+                  source={{uri: defaultAssistantAvatar.thumbnailAssetUri}}
+                  style={styles.fallbackAvatar}
+                  resizeMode="cover"
+                />
+              )}
+            </View>
+
+            <StatusStrip
+              compact
+              style={styles.statusBar}
+              items={[
+                {
+                  label: webFailed ? '静态' : webReady ? stateChipLabel : '加载中',
+                  icon: webFailed ? 'image-outline' : 'sparkles-outline',
+                  tone: webFailed ? 'warning' : 'active',
+                  pulse: !webReady,
+                },
+              ]}
+            />
+          </LinearGradient>
+        </Pressable>
       </Animated.View>
     </View>
   );
@@ -335,197 +597,178 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    backgroundColor: 'rgba(34, 10, 19, 0.94)',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: {width: 0, height: 4},
+    borderColor: 'rgba(111,231,255,0.42)',
+    backgroundColor: VISION_THEME.surface.elevated,
+    shadowColor: VISION_THEME.accent.main,
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: {width: 0, height: 5},
     elevation: 10,
     overflow: 'hidden',
   },
-  cardTouch: {
+  cardTouch: {flex: 1},
+  cardGradient: {
     flex: 1,
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 6,
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(15,24,40,0.85)',
   },
-  avatar: {
-    width: 72,
-    height: 72,
+  avatarWrap: {
+    width: 84,
+    height: 84,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(7,13,24,0.64)',
+  },
+  fallbackAvatar: {
+    width: '100%',
+    height: '100%',
   },
   statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 4,
+    alignSelf: 'center',
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  bubbleWrap: {
+    position: 'absolute',
+    right: 18,
+    bottom: 250,
+    maxWidth: '72%',
   },
-  statusText: {
-    color: VISION_THEME.text.secondary,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  panelWrap: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(20, 8, 14, 0.6)',
-    paddingHorizontal: 12,
-  },
-  panelCard: {
+  bubbleSurface: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(45, 13, 24, 0.98)',
+    borderColor: 'rgba(136,158,255,0.42)',
+    backgroundColor: 'rgba(10,16,31,0.92)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  bubbleText: {
+    color: '#F5F1EA',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  halfLayer: {
+    position: 'absolute',
+    right: 12,
+    bottom: 96,
+    left: 12,
+  },
+  halfPanel: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(111,231,255,0.22)',
+    backgroundColor: 'rgba(9,15,29,0.92)',
     padding: 12,
+    gap: 10,
+  },
+  halfTitle: {
+    color: VISION_THEME.text.primary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  halfActions: {
     gap: 8,
   },
-  panelHeader: {
+  halfAction: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  halfActionText: {
+    color: VISION_THEME.text.secondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  fullMask: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6,10,18,0.56)',
+    justifyContent: 'flex-end',
+  },
+  fullPanelWrap: {
+    paddingHorizontal: 12,
+  },
+  fullPanelCard: {
+    borderRadius: 20,
+  },
+  fullHeaderRow: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  panelTitle: {
-    color: VISION_THEME.text.primary,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  panelSub: {
-    marginTop: 2,
-    color: VISION_THEME.text.muted,
-    fontSize: 11,
+    alignItems: 'center',
+    gap: 8,
   },
   iconButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  voiceButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: VISION_THEME.accent.strong,
-  },
-  voiceButtonDisabled: {
-    opacity: 0.5,
-  },
   inputSurface: {
     flex: 1,
-    borderRadius: 11,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 10,
   },
   inputText: {
     color: VISION_THEME.text.secondary,
-    fontSize: 12,
+    fontSize: 13,
     paddingVertical: 0,
   },
   sendButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  sendGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: VISION_THEME.accent.main,
   },
   quickRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: 8,
   },
-  quickButton: {
+  pendingRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  quickActionButton: {
     flex: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  quickText: {
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  confirmCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 214, 162, 0.45)',
-    backgroundColor: 'rgba(122, 72, 36, 0.28)',
-    padding: 9,
-    gap: 6,
-  },
-  confirmTitle: {
-    color: '#ffd6a2',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  actionText: {
-    color: VISION_THEME.text.secondary,
-    fontSize: 11,
-  },
-  confirmButton: {
-    flex: 1,
-    borderRadius: 9,
-    backgroundColor: '#ffd6a2',
-    alignItems: 'center',
-    paddingVertical: 7,
-  },
-  confirmButtonText: {
-    color: '#402612',
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    alignItems: 'center',
-    paddingVertical: 7,
-  },
-  cancelButtonText: {
-    color: VISION_THEME.text.secondary,
-    fontWeight: '700',
-    fontSize: 12,
   },
   infoText: {
     color: VISION_THEME.text.secondary,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
   },
   errorText: {
     color: VISION_THEME.feedback.danger,
-    fontSize: 11,
-    lineHeight: 17,
-  },
-  undoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-  },
-  undoText: {
-    color: VISION_THEME.text.secondary,
     fontSize: 12,
-    fontWeight: '700',
+    lineHeight: 17,
   },
 });

@@ -7,6 +7,8 @@ import type {
   ResolvedColorEngineMode,
   WorkingColorSpace,
 } from '../types/colorEngine';
+import type {AssistantFrequencyState} from '../assistant/types';
+import {createEmptyAssistantFrequencyState} from '../assistant/frequency';
 import {mmkvStorage} from './mmkvStorage';
 
 let warnedPersistStorageUnavailable = false;
@@ -62,6 +64,7 @@ interface AppStoreState {
   lastColorEngineFallbackReason: string | null;
   conversation: ConversationMessage[];
   recentTasks: string[];
+  assistantFrequency: AssistantFrequencyState;
   setActiveMainTab: (tab: MainTabKey) => void;
   setCreateRoute: (route: CreateRouteKey) => void;
   setWorksSubPage: (page: WorksSubPageKey) => void;
@@ -77,6 +80,8 @@ interface AppStoreState {
   pushConversation: (message: Omit<ConversationMessage, 'id' | 'timestamp'>) => void;
   clearConversation: () => void;
   addRecentTask: (task: string) => void;
+  setAssistantFrequency: (state: AssistantFrequencyState) => void;
+  resetAssistantFrequency: () => void;
 }
 
 export const useAppStore = create<AppStoreState>()(
@@ -96,6 +101,7 @@ export const useAppStore = create<AppStoreState>()(
       lastColorEngineFallbackReason: null,
       conversation: [],
       recentTasks: [],
+      assistantFrequency: createEmptyAssistantFrequencyState(),
       setActiveMainTab: tab => {
         set(state => {
           if (tab === 'create') {
@@ -141,6 +147,11 @@ export const useAppStore = create<AppStoreState>()(
         const current = get().recentTasks.filter(item => item !== normalized);
         set({recentTasks: [normalized, ...current].slice(0, 8)});
       },
+      setAssistantFrequency: assistantFrequency => set({assistantFrequency}),
+      resetAssistantFrequency: () =>
+        set({
+          assistantFrequency: createEmptyAssistantFrequencyState(),
+        }),
     }),
     {
       name: 'visiongenie.app.store',
@@ -156,6 +167,7 @@ export const useAppStore = create<AppStoreState>()(
         lastColorEngineFallbackReason: state.lastColorEngineFallbackReason,
         conversation: state.conversation,
         recentTasks: state.recentTasks,
+        assistantFrequency: state.assistantFrequency,
       }),
     },
   ),

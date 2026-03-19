@@ -6,7 +6,7 @@ import {useAppStore} from '../../src/store/appStore';
 describe('AI assistant screen migration', () => {
   beforeEach(() => {
     useAppStore.setState({
-      activeMainTab: 'assistant',
+      activeMainTab: 'create',
       createRoute: 'hub',
       worksSubPage: 'library',
       worksFilter: 'all',
@@ -19,7 +19,7 @@ describe('AI assistant screen migration', () => {
     });
   });
 
-  it('renders assistant tab with gifted-chat shell', async () => {
+  it('renders app shell with floating assistant entry', async () => {
     await ReactTestRenderer.act(() => {
       ReactTestRenderer.create(<App />);
     });

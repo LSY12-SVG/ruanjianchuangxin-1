@@ -15,6 +15,7 @@ import {
 import {routeActionsByCapability, TOOL_ROUTER_SKILL_NAME} from './skills/toolRouterSkill';
 import {validateActionBySkill} from './skills/skillSpecs';
 import {AgentToolRegistry} from './toolRegistry';
+import type {AssistantRuntimePanelMode, AssistantSceneEvent} from '../assistant/types';
 import type {
   AgentAction,
   AgentActionExecution,
@@ -51,6 +52,8 @@ interface AgentRuntimeContextValue {
   phase: AgentRuntimePhase;
   spriteState: 'idle' | 'planning' | 'executing' | 'confirm';
   panelVisible: boolean;
+  assistantPanelMode: AssistantRuntimePanelMode;
+  lastAssistantEvent: AssistantSceneEvent | null;
   goalInput: string;
   lastReasoning: string;
   lastMessage: string;
@@ -63,6 +66,9 @@ interface AgentRuntimeContextValue {
   openPanel: () => void;
   closePanel: () => void;
   togglePanel: () => void;
+  openAssistantHalfPanel: () => void;
+  openAssistantFullPanel: () => void;
+  emitAssistantEvent: (event: Omit<AssistantSceneEvent, 'timestamp'>) => void;
   registerOperation: (operation: AgentRegisteredOperation) => () => void;
   submitGoal: (goal?: string) => Promise<void>;
   runQuickOptimizeCurrentPage: () => Promise<void>;
@@ -138,7 +144,8 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
   const latestExecutionIdRef = useRef<string>('');
 
   const [phase, setPhase] = useState<AgentRuntimePhase>('idle');
-  const [panelVisible, setPanelVisible] = useState(false);
+  const [assistantPanelMode, setAssistantPanelMode] = useState<AssistantRuntimePanelMode>('hidden');
+  const [lastAssistantEvent, setLastAssistantEvent] = useState<AssistantSceneEvent | null>(null);
   const [goalInput, setGoalInput] = useState('');
   const [lastReasoning, setLastReasoning] = useState('');
   const [lastMessage, setLastMessage] = useState('');
@@ -624,7 +631,9 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       currentTab,
       phase,
       spriteState,
-      panelVisible,
+      panelVisible: assistantPanelMode !== 'hidden',
+      assistantPanelMode,
+      lastAssistantEvent,
       goalInput,
       lastReasoning,
       lastMessage,
@@ -634,9 +643,17 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       pendingActions,
       memory,
       setGoalInput,
-      openPanel: () => setPanelVisible(true),
-      closePanel: () => setPanelVisible(false),
-      togglePanel: () => setPanelVisible(visible => !visible),
+      openPanel: () => setAssistantPanelMode('full'),
+      closePanel: () => setAssistantPanelMode('hidden'),
+      togglePanel: () =>
+        setAssistantPanelMode(mode => (mode === 'hidden' ? 'full' : 'hidden')),
+      openAssistantHalfPanel: () => setAssistantPanelMode('half'),
+      openAssistantFullPanel: () => setAssistantPanelMode('full'),
+      emitAssistantEvent: event =>
+        setLastAssistantEvent({
+          ...event,
+          timestamp: Date.now(),
+        }),
       registerOperation,
       submitGoal,
       runQuickOptimizeCurrentPage,
@@ -654,10 +671,11 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       lastError,
       lastMessage,
       lastReasoning,
+      lastAssistantEvent,
       latestExecution,
       latestPlan,
       memory,
-      panelVisible,
+      assistantPanelMode,
       pendingActions,
       phase,
       registerOperation,

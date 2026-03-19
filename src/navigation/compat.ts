@@ -58,6 +58,7 @@ export interface AgentNavigationTarget {
   createRoute?: CreateRouteKey;
   worksSubPage?: WorksSubPageKey;
   openSettingsSheet?: boolean;
+  openAssistantPanel?: boolean;
 }
 
 export const resolveAgentNavigationTarget = (args: Record<string, unknown>): AgentNavigationTarget => {
@@ -80,7 +81,10 @@ export const resolveAgentNavigationTarget = (args: Record<string, unknown>): Age
         openSettingsSheet: worksSubPage === 'settings',
       };
     }
-    return {mainTab: 'assistant'};
+    return {
+      mainTab: 'create',
+      openAssistantPanel: true,
+    };
   }
 
   const legacyTab = asLegacyMainTab(tabValue);
@@ -101,7 +105,10 @@ export const resolveAgentNavigationTarget = (args: Record<string, unknown>): Age
     return {mainTab: 'works', worksSubPage: 'settings', openSettingsSheet: true};
   }
   if (legacyTab === 'agent') {
-    return {mainTab: 'assistant'};
+    return {
+      mainTab: 'create',
+      openAssistantPanel: true,
+    };
   }
 
   const worksSubPage = resolveWorksSubPage(explicitWorksHint ?? routeValue);
@@ -113,7 +120,10 @@ export const resolveAgentNavigationTarget = (args: Record<string, unknown>): Age
     };
   }
 
-  return {mainTab: 'assistant'};
+  return {
+    mainTab: 'create',
+    openAssistantPanel: true,
+  };
 };
 
 export const mapMainTabToLegacy = (

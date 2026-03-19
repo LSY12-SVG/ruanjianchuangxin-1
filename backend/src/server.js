@@ -22,11 +22,13 @@ const {planAgentActions} = require('./agentPlanner');
 const {createAgentExecutionService} = require('./agentExecution');
 const {createAgentMemoryStore} = require('./agentMemoryStore');
 const {getAuthBypassUser, isAuthBypassEnabled} = require('./authBypass');
+const {createImageTo3DModule} = require('./imageTo3d/module');
 
 const app = express();
 const port = Number(process.env.PORT || 8787);
 let communityModule = null;
 let accountModule = null;
+let imageTo3DModule = null;
 const colorIntelligenceRouter = createColorIntelligenceRouter();
 const agentExecutionService = createAgentExecutionService();
 const agentMemoryStore = createAgentMemoryStore({
@@ -85,11 +87,36 @@ app.use(cors());
 app.use(express.json({limit: '12mb'}));
 app.use('/v1/color', colorIntelligenceRouter);
 
+try {
+  imageTo3DModule = createImageTo3DModule();
+  app.use(imageTo3DModule.imageTo3DRouter);
+  app.use(imageTo3DModule.captureRouter);
+  console.log(
+    '[image-to-3d] module enabled',
+    JSON.stringify({
+      provider: imageTo3DModule.provider?.name || 'unknown',
+      dbPath: imageTo3DModule.config?.databasePath || '',
+    }),
+  );
+} catch (error) {
+  imageTo3DModule = null;
+  console.error('[image-to-3d] module init failed:', error);
+}
+
 app.get('/health', (_req, res) => {
   const runtimeSnapshot = getRuntimeSnapshot();
   res.json({
     ok: true,
     service: 'visiongenie-color-agent-proxy',
+    imageTo3D: imageTo3DModule
+      ? {
+          enabled: true,
+          provider: imageTo3DModule.provider?.name || 'unknown',
+          pollAfterMs: imageTo3DModule.config?.pollAfterMs || 5000,
+        }
+      : {
+          enabled: false,
+        },
     autoGrade: {
       phaseRuntime: runtimeSnapshot.phaseRuntime,
       modelChains: runtimeSnapshot.modelChains,
@@ -317,6 +344,23 @@ const startServer = async () => {
     console.error('[community] module init failed:', error);
   }
 
+  app.use((error, req, res, next) => {
+    if (imageTo3DModule) {
+      imageTo3DModule.handleError(error, req, res, next);
+      return;
+    }
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error?.message || 'Unexpected server error.',
+      },
+    });
+  });
+
   try {
     await refreshModelHealth();
     const runtimeSnapshot = getRuntimeSnapshot();
@@ -369,6 +413,13 @@ const cleanup = async () => {
   if (accountModule?.close) {
     try {
       await accountModule.close();
+    } catch {
+      // ignore
+    }
+  }
+  if (imageTo3DModule?.close) {
+    try {
+      imageTo3DModule.close();
     } catch {
       // ignore
     }

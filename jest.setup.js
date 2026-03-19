@@ -84,6 +84,17 @@ jest.mock('react-native-image-picker', () => ({
 jest.mock('react-native-view-shot', () => ({
   captureRef: jest.fn(async () => 'file:///tmp/mock-shot.png'),
 }));
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const {View} = require('react-native');
+  const MockWebView = React.forwardRef((props, ref) =>
+    React.createElement(View, {...props, ref}, props.children),
+  );
+  return {
+    WebView: MockWebView,
+    default: MockWebView,
+  };
+}, {virtual: true});
 
 const reactNative = require('react-native');
 reactNative.NativeModules.VoiceRecognition = {

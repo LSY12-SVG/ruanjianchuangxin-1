@@ -19,6 +19,10 @@ describe('navigation compatibility mapping', () => {
       worksSubPage: 'settings',
       openSettingsSheet: true,
     });
+    expect(resolveAgentNavigationTarget({tab: 'agent'})).toMatchObject({
+      mainTab: 'create',
+      openAssistantPanel: true,
+    });
   });
 
   it('routes legacy modeling path into works tool page', () => {
