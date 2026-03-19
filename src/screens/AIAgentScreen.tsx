@@ -1,139 +1,353 @@
-import React, {useMemo, useState} from 'react';
-import {StyleSheet, View} from 'react-native';
-import {FlashList} from '@shopify/flash-list';
-import Icon from 'react-native-vector-icons/Ionicons';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {ScrollView, StyleSheet, View} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {MotiView} from 'moti';
-import {Text} from 'react-native-paper';
-import {VISION_THEME} from '../theme/visionTheme';
+import {
+  Bubble,
+  GiftedChat,
+  InputToolbar,
+  Send,
+  type IMessage,
+} from 'react-native-gifted-chat';
+import Icon from 'react-native-vector-icons/Ionicons';
+import {
+  AIStatusBadge,
+  LiquidCard,
+  LiquidFloatingBar,
+  LiquidSuggestionTile,
+  PrimaryButton,
+  StatusStrip,
+  TagPill,
+} from '../components/design';
 import {useAgentRuntime} from '../agent/runtimeContext';
 import {useAppStore} from '../store/appStore';
-import {AppCard} from '../components/ui/AppCard';
-import {AppButton} from '../components/ui/AppButton';
-import {TopSegment} from '../components/ui/TopSegment';
-import {StatusChip} from '../components/ui/StatusChip';
+import {VISION_THEME} from '../theme/visionTheme';
+import type {ConversationMessage} from '../types/conversation';
 
-const QUICK_PROMPTS = [
-  '帮我规划夜景拍摄参数',
-  '生成一套人像电影感调色步骤',
-  '把今天素材整理成可发布短视频脚本',
-  '根据天气给我最佳构图建议',
-];
+const CHAT_USER = {_id: 'user', name: '你'} as const;
+const CHAT_ASSISTANT = {_id: 'assistant', name: 'AI 助手'} as const;
 
-const AGENT_CAPS = [
-  {label: '拍摄建议', icon: 'camera-outline'},
-  {label: '调色指导', icon: 'color-filter-outline'},
-  {label: '3D编排', icon: 'cube-outline'},
-  {label: '发布助手', icon: 'megaphone-outline'},
-];
+const QUICK_TASKS = [
+  {
+    key: 'grade',
+    label: '调色建议',
+    icon: 'color-filter-outline',
+    prompt: '请给我当前作品的自动调色建议',
+  },
+  {
+    key: 'publish',
+    label: '发布文案',
+    icon: 'newspaper-outline',
+    prompt: '帮我把当前进度整理成发布文案',
+  },
+  {
+    key: 'compose',
+    label: '构图提示',
+    icon: 'aperture-outline',
+    prompt: '给我一组拍摄构图提示',
+  },
+  {
+    key: 'continue',
+    label: '继续任务',
+    icon: 'play-forward-outline',
+    prompt: '继续上次未完成任务',
+  },
+] as const;
+
+const SUGGESTIONS = [
+  {
+    title: '当前页自动优化',
+    subtitle: '分析当前上下文后执行可回退的首轮优化。',
+    goal: '根据当前页面状态给出并执行自动优化步骤',
+  },
+  {
+    title: '作品发布方案',
+    subtitle: '生成草稿结构与标签建议，适配社区发布。',
+    goal: '请给我当前作品的发布草稿和标签建议',
+  },
+] as const;
+
+const toGiftedMessage = (item: ConversationMessage): IMessage => ({
+  _id: item.id,
+  text: item.content,
+  createdAt: new Date(item.timestamp),
+  user: item.role === 'user' ? CHAT_USER : CHAT_ASSISTANT,
+  system: item.role === 'system',
+  pending: item.state === 'thinking',
+});
+
+const phaseTone = (phase: string): 'active' | 'warning' | 'idle' => {
+  if (phase === 'pending_confirm' || phase === 'failed') {
+    return 'warning';
+  }
+  if (phase === 'idle') {
+    return 'idle';
+  }
+  return 'active';
+};
 
 export const AIAgentScreen: React.FC = () => {
-  const [segment, setSegment] = useState('ability');
-  const [activePrompt, setActivePrompt] = useState(0);
-  const {phase, pendingActions, memory, lastMessage, lastError, openPanel, submitGoal} = useAgentRuntime();
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const {
+    phase,
+    pendingActions,
+    memory,
+    lastReasoning,
+    lastMessage,
+    lastError,
+    submitGoal,
+    continueLastTask,
+    confirmPendingActions,
+    dismissPendingActions,
+    runQuickOptimizeCurrentPage,
+    openPanel,
+  } = useAgentRuntime();
   const conversation = useAppStore(state => state.conversation);
+  const pushConversation = useAppStore(state => state.pushConversation);
 
-  const listData = useMemo(() => {
-    if (segment === 'conversation') {
-      return conversation.length > 0
-        ? conversation.map(item => `${item.role === 'assistant' ? '助手' : '你'}: ${item.content}`)
-        : ['暂无会话记录，长按动漫助手开始语音对话'];
+  const reasoningRef = useRef(lastReasoning);
+  const messageRef = useRef(lastMessage);
+  const errorRef = useRef(lastError);
+
+  const chatMessages = useMemo(
+    () => conversation.slice().reverse().map(toGiftedMessage),
+    [conversation],
+  );
+
+  const runGoal = useCallback(
+    async (goal: string) => {
+      const text = goal.trim();
+      if (!text) {
+        return;
+      }
+      pushConversation({
+        role: 'user',
+        content: text,
+        state: 'normal',
+      });
+      setSending(true);
+      try {
+        await submitGoal(text);
+      } finally {
+        setSending(false);
+      }
+    },
+    [pushConversation, submitGoal],
+  );
+
+  useEffect(() => {
+    if (!lastReasoning || lastReasoning === reasoningRef.current) {
+      return;
     }
-    if (segment === 'status') {
-      return [
-        `阶段: ${phase}`,
-        `待确认动作: ${pendingActions.length}`,
-        `历史任务: ${memory.history.length}`,
-        lastMessage || '暂无最新消息',
-        lastError || '系统稳定运行中',
-      ];
+    reasoningRef.current = lastReasoning;
+    pushConversation({
+      role: 'assistant',
+      content: lastReasoning,
+      state: 'thinking',
+    });
+  }, [lastReasoning, pushConversation]);
+
+  useEffect(() => {
+    if (!lastMessage || lastMessage === messageRef.current) {
+      return;
     }
-    return AGENT_CAPS.map(item => item.label);
-  }, [conversation, lastError, lastMessage, memory.history.length, pendingActions.length, phase, segment]);
+    messageRef.current = lastMessage;
+    pushConversation({
+      role: 'assistant',
+      content: lastMessage,
+      state: 'normal',
+    });
+  }, [lastMessage, pushConversation]);
+
+  useEffect(() => {
+    if (!lastError || lastError === errorRef.current) {
+      return;
+    }
+    errorRef.current = lastError;
+    pushConversation({
+      role: 'system',
+      content: `错误：${lastError}`,
+      state: 'error',
+    });
+  }, [lastError, pushConversation]);
+
+  const onSend = useCallback(
+    async (messages: IMessage[] = []) => {
+      const first = messages[0];
+      if (!first?.text) {
+        return;
+      }
+      setInput('');
+      await runGoal(first.text);
+    },
+    [runGoal],
+  );
+
+  const renderChatFooter = useCallback(
+    () => (
+      <View style={styles.quickTaskWrap}>
+        <StatusStrip
+          compact
+          items={[
+            {
+              label: sending ? '处理中' : '快捷任务',
+              icon: sending ? 'sync-outline' : 'flash-outline',
+              tone: sending ? 'warning' : 'active',
+              pulse: sending,
+            },
+          ]}
+        />
+        <ScrollView
+          horizontal
+          contentContainerStyle={styles.quickTaskRow}
+          showsHorizontalScrollIndicator={false}>
+          {QUICK_TASKS.map(item => (
+            <TagPill
+              key={item.key}
+              label={item.label}
+              icon={item.icon}
+              active={false}
+              onPress={() => {
+                runGoal(item.prompt).catch(() => undefined);
+              }}
+            />
+          ))}
+        </ScrollView>
+      </View>
+    ),
+    [runGoal, sending],
+  );
 
   return (
-    <LinearGradient
-      colors={[VISION_THEME.background.top, VISION_THEME.background.mid, VISION_THEME.background.bottom]}
-      style={styles.container}>
-      <FlashList
-        data={listData}
-        estimatedItemSize={92}
-        keyExtractor={(item, index) => `${item}_${index}`}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <View>
-            <MotiView from={{opacity: 0, translateY: 16}} animate={{opacity: 1, translateY: 0}}>
-              <AppCard style={styles.heroCard}>
-                <View style={styles.heroRow}>
-                  <View>
-                    <Text style={styles.heroTitle}>Vision Agent</Text>
-                    <Text style={styles.heroSubtitle}>跨页面策略中枢与创作执行代理</Text>
-                  </View>
-                  <StatusChip label="在线" tone="success" />
-                </View>
-              </AppCard>
-            </MotiView>
-
-            <TopSegment
-              value={segment}
-              onValueChange={setSegment}
+    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.container}>
+      <View style={styles.content}>
+        <LiquidCard
+          title="AI 助手"
+          subtitleMode="hidden"
+          preset="crystal"
+          statusNode={
+            <StatusStrip
+              compact
               items={[
-                {value: 'ability', label: '能力'},
-                {value: 'conversation', label: '会话'},
-                {value: 'status', label: '状态'},
+                {label: phase, icon: 'pulse-outline', tone: phaseTone(phase)},
+                {
+                  label: pendingActions.length ? '待确认' : '可执行',
+                  icon: 'checkmark-circle-outline',
+                  tone: pendingActions.length ? 'warning' : 'active',
+                },
               ]}
             />
-
-            {segment === 'ability' ? (
-              <AppCard style={styles.abilityCard}>
-                <View style={styles.capGrid}>
-                  {AGENT_CAPS.map(item => (
-                    <View key={item.label} style={styles.capItem}>
-                      <Icon name={item.icon} size={18} color={VISION_THEME.accent.strong} />
-                      <Text style={styles.capText}>{item.label}</Text>
-                    </View>
-                  ))}
-                </View>
-              </AppCard>
-            ) : null}
-
-            <AppCard title="快捷任务" subtitle="一键注入任务目标">
-              <View style={styles.promptList}>
-                {QUICK_PROMPTS.map((prompt, idx) => {
-                  const active = idx === activePrompt;
-                  return (
-                    <AppButton
-                      key={prompt}
-                      label={prompt}
-                      mode={active ? 'contained' : 'outlined'}
-                      onPress={() => {
-                        setActivePrompt(idx);
-                        submitGoal(prompt).catch(() => undefined);
-                      }}
-                      style={styles.promptButton}
-                    />
-                  );
-                })}
-              </View>
-            </AppCard>
-
-            <View style={styles.actionRow}>
-              <AppButton label="打开小精灵面板" icon="flash-outline" onPress={openPanel} style={styles.flexBtn} />
-              <AppButton label="语音对话" icon="mic-outline" mode="outlined" style={styles.flexBtn} />
-            </View>
+          }>
+          <View style={styles.badges}>
+            <AIStatusBadge label={phase} tone={phaseTone(phase)} icon="pulse-outline" animated />
+            <AIStatusBadge
+              label={`${pendingActions.length}`}
+              tone={pendingActions.length ? 'warning' : 'idle'}
+              icon="alert-circle-outline"
+              animated={pendingActions.length > 0}
+            />
+            <AIStatusBadge label={`${memory.history.length}`} tone="idle" icon="time-outline" />
           </View>
-        }
-        renderItem={({item, index}) => (
-          <MotiView
-            from={{opacity: 0, translateY: 10}}
-            animate={{opacity: 1, translateY: 0}}
-            transition={{type: 'timing', duration: 320, delay: index * 40}}>
-            <AppCard style={styles.logCard}>
-              <Text style={styles.logText}>{item}</Text>
-            </AppCard>
-          </MotiView>
-        )}
-      />
+          <View style={styles.actionRow}>
+            <PrimaryButton
+              label="优化当前页"
+              icon="flash-outline"
+              focusPulse
+              onPress={() => runQuickOptimizeCurrentPage().catch(() => undefined)}
+            />
+            <PrimaryButton
+              label="继续任务"
+              icon="play-forward-outline"
+              variant="secondary"
+              onPress={() => continueLastTask().catch(() => undefined)}
+            />
+            <PrimaryButton
+              label={pendingActions.length ? '确认待执行' : '打开面板'}
+              icon={pendingActions.length ? 'checkmark-done-outline' : 'apps-outline'}
+              variant="secondary"
+              onPress={() => {
+                if (pendingActions.length) {
+                  confirmPendingActions().catch(() => undefined);
+                  return;
+                }
+                openPanel();
+              }}
+            />
+            {pendingActions.length ? (
+              <PrimaryButton
+                label="取消待执行"
+                icon="close-circle-outline"
+                variant="secondary"
+                onPress={dismissPendingActions}
+              />
+            ) : null}
+          </View>
+        </LiquidCard>
+
+        <ScrollView
+          horizontal
+          contentContainerStyle={styles.suggestionRow}
+          showsHorizontalScrollIndicator={false}>
+          {SUGGESTIONS.map(item => (
+            <LiquidSuggestionTile
+              key={item.title}
+              title={item.title}
+              subtitle={item.subtitle}
+              onApply={() => runGoal(item.goal).catch(() => undefined)}
+            />
+          ))}
+        </ScrollView>
+
+        <View style={styles.chatWrap}>
+          <GiftedChat
+            messages={chatMessages}
+            user={CHAT_USER}
+            text={input}
+            onSend={messages => {
+              onSend(messages).catch(() => undefined);
+            }}
+            placeholder="输入任务目标，AI 会自动规划与执行"
+            textInputProps={{
+              onChangeText: setInput,
+              placeholderTextColor: VISION_THEME.text.muted,
+              style: styles.composerInput,
+            }}
+            isSendButtonAlwaysVisible
+            isTyping={phase === 'running' || sending}
+            scrollToBottom
+            renderChatFooter={renderChatFooter}
+            renderBubble={props => (
+              <Bubble
+                {...props}
+                wrapperStyle={{
+                  left: styles.leftBubble,
+                  right: styles.rightBubble,
+                }}
+                textStyle={{
+                  left: styles.leftText,
+                  right: styles.rightText,
+                }}
+              />
+            )}
+            renderInputToolbar={props => (
+              <LiquidFloatingBar style={styles.inputFloating}>
+                <InputToolbar
+                  {...props}
+                  containerStyle={styles.inputToolbar}
+                  primaryStyle={styles.inputPrimary}
+                />
+              </LiquidFloatingBar>
+            )}
+            renderSend={props => (
+              <Send {...props} containerStyle={styles.sendWrap}>
+                <View style={styles.sendButton}>
+                  <Icon name="send" size={16} color="#EFF6FF" />
+                </View>
+              </Send>
+            )}
+          />
+        </View>
+      </View>
     </LinearGradient>
   );
 };
@@ -141,73 +355,102 @@ export const AIAgentScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {flex: 1},
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 92,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 12,
   },
-  heroCard: {
-    marginBottom: 10,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  },
-  heroTitle: {
-    color: VISION_THEME.text.primary,
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  heroSubtitle: {
-    marginTop: 4,
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
-  },
-  abilityCard: {
-    marginBottom: 10,
-  },
-  capGrid: {
+  badges: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  capItem: {
-    width: '48.5%',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: VISION_THEME.border.soft,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingVertical: 11,
-    alignItems: 'center',
-    gap: 5,
-  },
-  capText: {
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  promptList: {
-    gap: 7,
-  },
-  promptButton: {
-    width: '100%',
-  },
   actionRow: {
-    marginTop: 10,
-    marginBottom: 10,
-    flexDirection: 'row',
     gap: 8,
   },
-  flexBtn: {
+  suggestionRow: {
+    gap: 10,
+    paddingRight: 18,
+    paddingBottom: 2,
+  },
+  chatWrap: {
     flex: 1,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(9,15,29,0.72)',
+    overflow: 'hidden',
   },
-  logCard: {
-    paddingVertical: 11,
+  leftBubble: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 18,
+    paddingVertical: 7,
   },
-  logText: {
+  rightBubble: {
+    backgroundColor: 'rgba(77,163,255,0.24)',
+    borderWidth: 1,
+    borderColor: 'rgba(111,231,255,0.38)',
+    borderRadius: 18,
+    paddingVertical: 7,
+  },
+  leftText: {
     color: VISION_THEME.text.secondary,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  rightText: {
+    color: '#EAF4FF',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inputToolbar: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(111,231,255,0.2)',
+    backgroundColor: 'rgba(11,19,34,0.96)',
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  inputFloating: {
+    borderRadius: 18,
+    marginHorizontal: 8,
+    marginBottom: 6,
+  },
+  inputPrimary: {
+    alignItems: 'center',
+  },
+  composerInput: {
+    color: VISION_THEME.text.primary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  sendWrap: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: VISION_THEME.accent.main,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(111,231,255,0.42)',
+  },
+  quickTaskWrap: {
+    paddingHorizontal: 10,
+    paddingBottom: 6,
+    gap: 8,
+  },
+  quickTaskRow: {
+    gap: 8,
+    paddingRight: 14,
   },
 });

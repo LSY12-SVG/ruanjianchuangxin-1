@@ -1,4 +1,4 @@
-import {NativeModules} from 'react-native';
+import {resolveBackendBaseCandidates} from '../cloud/backendBase';
 import type {ColorGradingParams} from '../types/colorGrading';
 import {getAuthToken} from '../profile/api';
 
@@ -88,10 +88,9 @@ interface MockCommunityPayload {
   posts?: MockPostRecord[];
 }
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:8787';
 const DEFAULT_USER_ID = 'lsy-local-user';
 const MOCK_FALLBACK_ENABLED = typeof __DEV__ === 'boolean' && __DEV__;
-const MOCK_COMMUNITY_DATA = require('../../backend/data/mock-community/community-mock.json') as MockCommunityPayload;
+const MOCK_COMMUNITY_DATA = require('../mocks/community-mock.json') as MockCommunityPayload;
 
 let mockReady = false;
 let mockSequence = 1000;
@@ -101,57 +100,6 @@ const mockCommentsByPostId = new Map<string, CommunityComment[]>();
 const mockLikeByUserId = new Map<string, Set<string>>();
 const mockSaveByUserId = new Map<string, Set<string>>();
 const mockUsers = new Map<string, CommunityAuthor>();
-
-const isIpv4Host = (hostname: string): boolean => /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
-
-const isUsableDevHost = (hostname: string): boolean => {
-  const normalized = hostname.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  if (
-    normalized === 'localhost' ||
-    normalized === '127.0.0.1' ||
-    normalized === '10.0.2.2' ||
-    normalized === '10.0.3.2'
-  ) {
-    return true;
-  }
-  if (isIpv4Host(normalized)) {
-    return true;
-  }
-  return normalized.includes('.');
-};
-
-const buildBaseFromScriptURL = (): string | null => {
-  const scriptURL = NativeModules?.SourceCode?.scriptURL;
-  if (typeof scriptURL !== 'string' || scriptURL.length === 0) {
-    return null;
-  }
-  try {
-    const parsed = new URL(scriptURL);
-    const hostname = parsed.hostname || '';
-    if (!isUsableDevHost(hostname)) {
-      return null;
-    }
-    return `${parsed.protocol}//${hostname}:8787`;
-  } catch {
-    return null;
-  }
-};
-
-const resolveBaseCandidates = (): string[] => {
-  const set = new Set<string>();
-  set.add(DEFAULT_BASE_URL);
-  set.add('http://localhost:8787');
-  set.add('http://10.0.2.2:8787');
-  set.add('http://10.0.3.2:8787');
-  const fromScript = buildBaseFromScriptURL();
-  if (fromScript) {
-    set.add(fromScript);
-  }
-  return Array.from(set);
-};
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -241,7 +189,7 @@ const requestCommunity = async (
   init: RequestInit,
   _userId?: string,
 ): Promise<unknown> => {
-  const candidates = resolveBaseCandidates();
+  const candidates = resolveBackendBaseCandidates();
   let lastError: Error | null = null;
 
   for (const base of candidates) {

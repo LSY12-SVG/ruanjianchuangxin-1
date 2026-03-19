@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "dataset": "visiongenie-community-mock",
+    "version": "1.0.0",
+    "generatedAt": "2026-03-14T17:30:00+08:00",
+    "description": "Community mock data for color-grading sharing flow"
+  },
+  "users": [
+    {"id": "1", "displayName": "小北调色", "avatarUrl": ""},
+    {"id": "2", "displayName": "胶片控阿木", "avatarUrl": ""},
+    {"id": "3", "displayName": "夜景研究所", "avatarUrl": ""},
+    {"id": "4", "displayName": "旅行剪辑师Mia", "avatarUrl": ""}
+  ],
+  "posts": [
+    {
+      "id": "mock-post-001",
+      "authorId": "1",
+      "status": "published",
+      "title": "阴天街景转电影青橙",
+      "content": "原图灰雾感偏重，目标是保留路面细节并做青橙电影氛围。",
+      "beforeImage": "images/post-001-before.svg",
+      "afterImage": "images/post-001-after.svg",
+      "tags": ["cinema", "street", "青橙"],
+      "styleSuggestions": [
+        "先压高光再提中间调，避免天空炸白",
+        "阴影轻微偏青，肤色区域用色轮回拉一点橙",
+        "整体饱和度控制在 +8 以内，优先做局部色彩分离"
+      ],
+      "gradingParams": {
+        "basic": {"exposure": -6, "contrast": 14, "highlights": -24, "shadows": 16, "saturation": 8},
+        "colorBalance": {"temperature": -4, "tint": 3, "vibrance": 10},
+        "pro": {"wheels": {"shadowsHue": 195, "midtonesHue": 30, "highlightsHue": 42}}
+      },
+      "appComments": [
+        {"id": "c-001-1", "authorId": "2", "content": "天空层次明显好了，建议暗部再提 2-3 点。"},
+        {"id": "c-001-2", "authorId": "3", "content": "路灯高光控制得不错，电影感已经出来。"}
+      ]
+    },
+    {
+      "id": "mock-post-002",
+      "authorId": "2",
+      "status": "published",
+      "title": "人像暖肤胶片风",
+      "content": "目标是做轻复古胶片，不要过分磨皮和过饱和。",
+      "beforeImage": "images/post-002-before.svg",
+      "afterImage": "images/post-002-after.svg",
+      "tags": ["portrait", "vintage", "肤色"],
+      "styleSuggestions": [
+        "先用曲线抬黑场做胶片底雾，再压一点高光",
+        "肤色优先控制色相范围，不要全局拉饱和",
+        "颗粒建议细颗粒低强度，避免移动端看起来脏"
+      ],
+      "gradingParams": {
+        "basic": {"exposure": 4, "contrast": 6, "highlights": -18, "shadows": 10, "saturation": 6},
+        "colorBalance": {"temperature": 7, "tint": 2, "vibrance": 8},
+        "pro": {"wheels": {"shadowsHue": 32, "midtonesHue": 36, "highlightsHue": 48}}
+      },
+      "appComments": [
+        {"id": "c-002-1", "authorId": "4", "content": "肤色很自然，暗部的红色可以再收一点。"},
+        {"id": "c-002-2", "authorId": "1", "content": "这个复古感舒服，作为预设很适合婚礼短片。"}
+      ]
+    },
+    {
+      "id": "mock-post-003",
+      "authorId": "3",
+      "status": "published",
+      "title": "夜景霓虹通透提升",
+      "content": "原图噪点明显且偏灰，目标是保持霓虹色彩并提升通透。",
+      "beforeImage": "images/post-003-before.svg",
+      "afterImage": "images/post-003-after.svg",
+      "tags": ["night", "neon", "city"],
+      "styleSuggestions": [
+        "降噪后再提清晰，避免边缘毛刺",
+        "用HSL限制蓝紫通道，防止霓虹溢色",
+        "局部提亮人物区域，增强视觉焦点"
+      ],
+      "gradingParams": {
+        "basic": {"exposure": 3, "contrast": 18, "highlights": -12, "shadows": 8, "saturation": 12},
+        "colorBalance": {"temperature": -2, "tint": 6, "vibrance": 15},
+        "pro": {"wheels": {"shadowsHue": 220, "midtonesHue": 290, "highlightsHue": 35}}
+      },
+      "appComments": [
+        {"id": "c-003-1", "authorId": "2", "content": "霓虹层次非常好，建议再压一点高光保细节。"},
+        {"id": "c-003-2", "authorId": "4", "content": "人物提亮很有效，画面更有主次。"}
+      ]
+    },
+    {
+      "id": "mock-post-004",
+      "authorId": "4",
+      "status": "published",
+      "title": "海边旅行清透日系",
+      "content": "让海水更通透、天空更干净，同时保留肤色健康感。",
+      "beforeImage": "images/post-004-before.svg",
+      "afterImage": "images/post-004-after.svg",
+      "tags": ["travel", "fresh", "japanese"],
+      "styleSuggestions": [
+        "白平衡微冷，整体曝光 +0.2EV 左右",
+        "蓝青通道分离，避免天空和海面混成一片",
+        "人物肤色区域单独加一点暖色保持亲和"
+      ],
+      "gradingParams": {
+        "basic": {"exposure": 5, "contrast": 9, "highlights": -10, "shadows": 6, "saturation": 7},
+        "colorBalance": {"temperature": -3, "tint": 1, "vibrance": 11},
+        "pro": {"wheels": {"shadowsHue": 200, "midtonesHue": 26, "highlightsHue": 55}}
+      },
+      "appComments": [
+        {"id": "c-004-1", "authorId": "1", "content": "这个风格很适合旅行Vlog，色彩干净。"},
+        {"id": "c-004-2", "authorId": "3", "content": "海水质感出来了，建议加一点轻微颗粒更有质感。"}
+      ]
+    }
+  ]
+}

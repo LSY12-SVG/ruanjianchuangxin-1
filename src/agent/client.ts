@@ -11,6 +11,8 @@ import type {
   AgentPlannerSource,
   AgentRiskLevel,
 } from './types';
+import {mapMainTabToLegacy} from '../navigation/compat';
+import type {WorksSubPageKey} from '../types/navigation';
 
 const DEFAULT_AGENT_BASE = 'http://127.0.0.1:8787';
 const MAX_RETRIES = 1;
@@ -180,6 +182,17 @@ const normalizePlan = (value: unknown): AgentPlanResponse | null => {
   };
 };
 
+const resolveWorksSubPageFromSnapshot = (snapshot: unknown): WorksSubPageKey => {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return 'library';
+  }
+  const raw = (snapshot as Record<string, unknown>).currentWorksSubPage;
+  if (raw === 'community' || raw === 'modeling' || raw === 'settings' || raw === 'library') {
+    return raw;
+  }
+  return 'library';
+};
+
 const postAgentJson = async <T>(path: string, payload: unknown, endpoint?: string): Promise<T | null> => {
   const bases = resolveBases(endpoint);
   for (const base of bases) {
@@ -211,7 +224,14 @@ const postAgentJson = async <T>(path: string, payload: unknown, endpoint?: strin
 };
 
 export const planAgentWithCloud = async (request: AgentPlanRequest, endpoint?: string): Promise<AgentPlanResponse | null> => {
-  const response = await postAgentJson<unknown>('/v1/agent/plan', request, endpoint);
+  const payload = {
+    ...request,
+    currentTab: mapMainTabToLegacy(
+      request.currentTab,
+      resolveWorksSubPageFromSnapshot(request.pageSnapshot),
+    ),
+  };
+  const response = await postAgentJson<unknown>('/v1/agent/plan', payload, endpoint);
   return normalizePlan(response);
 };
 

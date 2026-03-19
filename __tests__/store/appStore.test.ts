@@ -3,8 +3,12 @@ import {useAppStore} from '../../src/store/appStore';
 describe('app store', () => {
   beforeEach(() => {
     useAppStore.setState({
-      activeMainTab: 'home',
-      homeRoute: 'hub',
+      activeMainTab: 'create',
+      createRoute: 'hub',
+      worksSubPage: 'library',
+      worksFilter: 'all',
+      worksToolsOpen: false,
+      worksSettingsOpen: false,
       motionEnabled: true,
       themeVariant: 'sunset',
       conversation: [],

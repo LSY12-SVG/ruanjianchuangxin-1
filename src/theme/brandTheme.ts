@@ -1,82 +1,80 @@
 import {MD3DarkTheme, type MD3Theme} from 'react-native-paper';
 
 export interface BrandThemeTokens {
-  palette: {
-    sunset: string;
-    sunsetSoft: string;
-    merlot: string;
-    merlotDeep: string;
-    limeGray: string;
-    smoke: string;
-  };
-  surface: {
-    base: string;
+  background: {
+    primary: string;
+    secondary: string;
     elevated: string;
-    card: string;
-    overlay: string;
-    active: string;
   };
-  semantic: {
-    success: string;
-    warning: string;
-    error: string;
-    info: string;
+  accent: {
+    aiBlue: string;
+    electricCyan: string;
+    futureViolet: string;
+  };
+  warm: {
+    glow: string;
+    apricot: string;
+    lightGold: string;
   };
   text: {
-    headline: string;
-    body: string;
-    muted: string;
+    primary: string;
+    secondary: string;
+    tertiary: string;
+  };
+  border: {
+    divider: string;
+    light: string;
   };
   radius: {
     sm: number;
     md: number;
     lg: number;
     xl: number;
+    pill: number;
   };
-  elevation: {
-    sm: number;
-    md: number;
-    lg: number;
+  motion: {
+    quick: number;
+    normal: number;
+    slow: number;
   };
 }
 
 export const BRAND_THEME_TOKENS: BrandThemeTokens = {
-  palette: {
-    sunset: '#ff7a45',
-    sunsetSoft: '#ffb089',
-    merlot: '#6f1537',
-    merlotDeep: '#3d0a1f',
-    limeGray: '#d4d9cf',
-    smoke: '#1f1618',
+  background: {
+    primary: '#0B1020',
+    secondary: '#12192B',
+    elevated: '#182033',
   },
-  surface: {
-    base: '#2b1018',
-    elevated: '#38111f',
-    card: '#4a1a2a',
-    overlay: 'rgba(24, 8, 13, 0.74)',
-    active: 'rgba(255, 122, 69, 0.18)',
+  accent: {
+    aiBlue: '#4DA3FF',
+    electricCyan: '#6FE7FF',
+    futureViolet: '#7C6CFF',
   },
-  semantic: {
-    success: '#85e0a3',
-    warning: '#ffd08a',
-    error: '#ff9a9a',
-    info: '#ffb089',
+  warm: {
+    glow: '#FFC58F',
+    apricot: '#FFD9B8',
+    lightGold: '#FFE6A8',
   },
   text: {
-    headline: '#ffece3',
-    body: '#f2cfc2',
-    muted: '#c9988b',
+    primary: '#F5F7FB',
+    secondary: '#B8C0D4',
+    tertiary: '#7D879C',
+  },
+  border: {
+    divider: 'rgba(255,255,255,0.08)',
+    light: 'rgba(255,255,255,0.12)',
   },
   radius: {
-    sm: 10,
-    md: 14,
-    lg: 18,
-    xl: 24,
+    sm: 12,
+    md: 18,
+    lg: 24,
+    xl: 30,
+    pill: 999,
   },
-  elevation: {
-    sm: 2,
-    md: 6,
-    lg: 10,
+  motion: {
+    quick: 180,
+    normal: 280,
+    slow: 420,
   },
 };
 
@@ -84,18 +82,18 @@ export const PAPER_THEME: MD3Theme = {
   ...MD3DarkTheme,
   colors: {
     ...MD3DarkTheme.colors,
-    primary: BRAND_THEME_TOKENS.palette.sunset,
-    secondary: BRAND_THEME_TOKENS.palette.sunsetSoft,
-    tertiary: BRAND_THEME_TOKENS.palette.limeGray,
-    background: BRAND_THEME_TOKENS.surface.base,
-    surface: BRAND_THEME_TOKENS.surface.elevated,
-    surfaceVariant: BRAND_THEME_TOKENS.surface.card,
-    error: BRAND_THEME_TOKENS.semantic.error,
-    outline: 'rgba(255, 200, 180, 0.24)',
-    onPrimary: '#301015',
-    onSecondary: '#36131a',
-    onBackground: BRAND_THEME_TOKENS.text.headline,
-    onSurface: BRAND_THEME_TOKENS.text.body,
-    onSurfaceVariant: BRAND_THEME_TOKENS.text.muted,
+    primary: BRAND_THEME_TOKENS.accent.aiBlue,
+    secondary: BRAND_THEME_TOKENS.accent.futureViolet,
+    tertiary: BRAND_THEME_TOKENS.warm.glow,
+    background: BRAND_THEME_TOKENS.background.primary,
+    surface: BRAND_THEME_TOKENS.background.secondary,
+    surfaceVariant: BRAND_THEME_TOKENS.background.elevated,
+    error: '#FF8C9B',
+    outline: BRAND_THEME_TOKENS.border.light,
+    onPrimary: '#081023',
+    onSecondary: '#0B1121',
+    onBackground: BRAND_THEME_TOKENS.text.primary,
+    onSurface: BRAND_THEME_TOKENS.text.secondary,
+    onSurfaceVariant: BRAND_THEME_TOKENS.text.tertiary,
   },
 };

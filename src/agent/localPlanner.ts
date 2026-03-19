@@ -54,12 +54,15 @@ const resolveSnapshotText = (
   return '';
 };
 
-const resolveSnapshotHomeRoute = (
+const resolveSnapshotCreateRoute = (
   snapshot: Record<string, unknown>,
-): 'hub' | 'grading' | 'modeling' | undefined => {
-  const raw = resolveSnapshotText(snapshot, 'currentHomeRoute');
-  if (raw === 'hub' || raw === 'grading' || raw === 'modeling') {
-    return raw;
+): 'hub' | 'editor' | undefined => {
+  const raw = resolveSnapshotText(snapshot, 'currentCreateRoute') || resolveSnapshotText(snapshot, 'currentHomeRoute');
+  if (raw === 'hub') {
+    return 'hub';
+  }
+  if (raw === 'editor' || raw === 'grading') {
+    return 'editor';
   }
   return undefined;
 };
@@ -75,7 +78,7 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
     pushAction(request, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: 'home', route: 'grading'},
+      args: {tab: 'create', route: 'editor'},
       riskLevel: 'low',
       requiresConfirmation: false,
       idempotent: true,
@@ -97,7 +100,7 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
     pushAction(request, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: 'home', route: 'modeling'},
+      args: {tab: 'works', action: 'modeling'},
       riskLevel: 'low',
       requiresConfirmation: false,
       idempotent: true,
@@ -125,7 +128,7 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
     pushAction(request, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: 'community'},
+      args: {tab: 'works', action: 'community'},
       riskLevel: 'low',
       requiresConfirmation: false,
       idempotent: true,
@@ -157,7 +160,7 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
     pushAction(request, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',
-      args: {tab: 'profile'},
+      args: {tab: 'works', action: 'settings'},
       riskLevel: 'low',
       requiresConfirmation: false,
       idempotent: true,
@@ -180,14 +183,14 @@ export const buildLocalAgentPlan = (request: AgentPlanRequest): AgentPlanRespons
   }
 
   if (actions.length === 0) {
-    const currentHomeRoute =
-      request.currentTab === 'home' ? resolveSnapshotHomeRoute(pageSnapshot) : undefined;
+    const currentCreateRoute =
+      request.currentTab === 'create' ? resolveSnapshotCreateRoute(pageSnapshot) : undefined;
     pushAction(request, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',
       args:
-        request.currentTab === 'home'
-          ? {tab: request.currentTab, route: currentHomeRoute}
+        request.currentTab === 'create'
+          ? {tab: request.currentTab, route: currentCreateRoute}
           : {tab: request.currentTab},
       riskLevel: 'low',
       requiresConfirmation: false,

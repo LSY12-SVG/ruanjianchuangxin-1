@@ -54,7 +54,7 @@ export const HomeHubScreen: React.FC<HomeHubScreenProps> = ({onNavigateModule}) 
 
   return (
     <LinearGradient
-      colors={[VISION_THEME.background.top, VISION_THEME.background.mid, VISION_THEME.background.bottom]}
+      colors={VISION_THEME.gradients.page}
       style={styles.container}>
       <FlashList
         data={listData}

@@ -1,7 +1,7 @@
 import {create} from 'zustand';
 import {createJSONStorage, persist} from 'zustand/middleware';
 import type {ConversationMessage} from '../types/conversation';
-import type {HomeRouteKey, MainTabKey} from '../types/navigation';
+import type {CreateRouteKey, MainTabKey, WorksSubPageKey} from '../types/navigation';
 import type {
   ColorEngineMode,
   ResolvedColorEngineMode,
@@ -49,7 +49,11 @@ const safePersistStorage = {
 
 interface AppStoreState {
   activeMainTab: MainTabKey;
-  homeRoute: HomeRouteKey;
+  createRoute: CreateRouteKey;
+  worksSubPage: WorksSubPageKey;
+  worksFilter: 'all' | 'native' | 'degraded';
+  worksToolsOpen: boolean;
+  worksSettingsOpen: boolean;
   motionEnabled: boolean;
   themeVariant: 'sunset' | 'editorial';
   colorEngineMode: ColorEngineMode;
@@ -59,7 +63,11 @@ interface AppStoreState {
   conversation: ConversationMessage[];
   recentTasks: string[];
   setActiveMainTab: (tab: MainTabKey) => void;
-  setHomeRoute: (route: HomeRouteKey) => void;
+  setCreateRoute: (route: CreateRouteKey) => void;
+  setWorksSubPage: (page: WorksSubPageKey) => void;
+  setWorksFilter: (filter: 'all' | 'native' | 'degraded') => void;
+  setWorksToolsOpen: (open: boolean) => void;
+  setWorksSettingsOpen: (open: boolean) => void;
   setMotionEnabled: (enabled: boolean) => void;
   setThemeVariant: (variant: 'sunset' | 'editorial') => void;
   setColorEngineMode: (mode: ColorEngineMode) => void;
@@ -74,8 +82,12 @@ interface AppStoreState {
 export const useAppStore = create<AppStoreState>()(
   persist(
     (set, get) => ({
-      activeMainTab: 'home',
-      homeRoute: 'hub',
+      activeMainTab: 'create',
+      createRoute: 'hub',
+      worksSubPage: 'library',
+      worksFilter: 'all',
+      worksToolsOpen: false,
+      worksSettingsOpen: false,
       motionEnabled: true,
       themeVariant: 'sunset',
       colorEngineMode: 'auto',
@@ -86,17 +98,24 @@ export const useAppStore = create<AppStoreState>()(
       recentTasks: [],
       setActiveMainTab: tab => {
         set(state => {
-          if (tab === 'home') {
+          if (tab === 'create') {
             return {
               ...state,
               activeMainTab: tab,
-              homeRoute: 'hub',
+              worksSettingsOpen: false,
             };
+          }
+          if (tab === 'assistant') {
+            return {...state, activeMainTab: tab, worksSettingsOpen: false};
           }
           return {...state, activeMainTab: tab};
         });
       },
-      setHomeRoute: route => set({homeRoute: route}),
+      setCreateRoute: route => set({createRoute: route}),
+      setWorksSubPage: page => set({worksSubPage: page}),
+      setWorksFilter: filter => set({worksFilter: filter}),
+      setWorksToolsOpen: open => set({worksToolsOpen: open}),
+      setWorksSettingsOpen: open => set({worksSettingsOpen: open}),
       setMotionEnabled: enabled => set({motionEnabled: enabled}),
       setThemeVariant: variant => set({themeVariant: variant}),
       setColorEngineMode: mode => set({colorEngineMode: mode}),
@@ -127,6 +146,9 @@ export const useAppStore = create<AppStoreState>()(
       name: 'visiongenie.app.store',
       storage: createJSONStorage(() => safePersistStorage),
       partialize: state => ({
+        createRoute: state.createRoute,
+        worksSubPage: state.worksSubPage,
+        worksFilter: state.worksFilter,
         motionEnabled: state.motionEnabled,
         themeVariant: state.themeVariant,
         colorEngineMode: state.colorEngineMode,

@@ -18,7 +18,21 @@ const {requestAutoGrade} = jest.requireMock('../../src/colorEngine/autoGradeServ
   requestAutoGrade: jest.Mock;
 };
 
-type OrchestratorState = ReturnType<typeof useAutoGradeOrchestrator>;
+interface OrchestratorState {
+  report: {
+    phase: string;
+    fallbackUsed: boolean;
+    refineApplied: boolean;
+    refineFallbackReason?: string;
+  } | null;
+  runAutoGrade: (input: {
+    image: ImagePickerResult;
+    imageContext: VoiceImageContext;
+    currentParams: typeof defaultColorGradingParams;
+    currentMasks: LocalMaskLayer[];
+    locale: string;
+  }) => Promise<AutoGradeResult | null>;
+}
 
 interface HarnessProps {
   onReady: (state: OrchestratorState) => void;
@@ -26,7 +40,7 @@ interface HarnessProps {
 }
 
 const Harness: React.FC<HarnessProps> = ({onReady, onApply}) => {
-  const state = useAutoGradeOrchestrator({onApply});
+  const state = useAutoGradeOrchestrator({onApply}) as unknown as OrchestratorState;
   useEffect(() => {
     onReady(state);
   }, [onReady, state]);
@@ -77,7 +91,7 @@ describe('auto grade orchestrator', () => {
       );
 
     const onApply = jest.fn();
-    let latestState: OrchestratorState | null = null;
+    let latestState!: OrchestratorState;
     await act(async () => {
       TestRenderer.create(
         <Harness
@@ -134,7 +148,7 @@ describe('auto grade orchestrator', () => {
     };
 
     await act(async () => {
-      await latestState?.runAutoGrade({
+      await latestState.runAutoGrade({
         image,
         imageContext,
         currentParams: defaultColorGradingParams,
@@ -148,9 +162,9 @@ describe('auto grade orchestrator', () => {
       await Promise.resolve();
     });
 
-    expect(latestState?.report?.phase).toBe('refine');
-    expect(latestState?.report?.fallbackUsed).toBe(true);
-    expect(latestState?.report?.refineApplied).toBe(false);
+    expect(latestState.report?.phase).toBe('refine');
+    expect(latestState.report?.fallbackUsed).toBe(true);
+    expect(latestState.report?.refineApplied).toBe(false);
     expect(onApply).toHaveBeenCalledTimes(1);
   });
 
@@ -174,7 +188,7 @@ describe('auto grade orchestrator', () => {
       );
 
     const onApply = jest.fn();
-    let latestState: OrchestratorState | null = null;
+    let latestState!: OrchestratorState;
     await act(async () => {
       TestRenderer.create(
         <Harness
@@ -231,7 +245,7 @@ describe('auto grade orchestrator', () => {
     };
 
     await act(async () => {
-      await latestState?.runAutoGrade({
+      await latestState.runAutoGrade({
         image,
         imageContext,
         currentParams: defaultColorGradingParams,
@@ -245,10 +259,10 @@ describe('auto grade orchestrator', () => {
       await Promise.resolve();
     });
 
-    expect(latestState?.report?.phase).toBe('refine');
-    expect(latestState?.report?.fallbackUsed).toBe(true);
-    expect(latestState?.report?.refineApplied).toBe(true);
-    expect(latestState?.report?.refineFallbackReason).toBe('bad_payload');
+    expect(latestState.report?.phase).toBe('refine');
+    expect(latestState.report?.fallbackUsed).toBe(true);
+    expect(latestState.report?.refineApplied).toBe(true);
+    expect(latestState.report?.refineFallbackReason).toBe('bad_payload');
     expect(onApply).toHaveBeenCalledTimes(2);
   });
 });

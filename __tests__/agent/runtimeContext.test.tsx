@@ -2,12 +2,25 @@ import React, {useEffect} from 'react';
 import {act, create} from 'react-test-renderer';
 import {AgentRuntimeProvider, useAgentRuntime} from '../../src/agent/runtimeContext';
 
-const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+const flush = () => new Promise<void>(resolve => setTimeout(() => resolve(), 0));
 
-const RuntimeProbe: React.FC<{onReady: (runtime: ReturnType<typeof useAgentRuntime>) => void}> = ({
+interface RuntimeSnapshot {
+  phase: string;
+  pendingActions: Array<{actionId: string}>;
+  latestExecution: {
+    status: string;
+    appliedActions: Array<{actionId: string}>;
+    failedActions: Array<{errorCode?: string}>;
+  } | null;
+  submitGoal: (goal?: string) => Promise<void>;
+  undoLastExecution: () => Promise<void>;
+  continueLastTask: () => Promise<void>;
+}
+
+const RuntimeProbe: React.FC<{onReady: (runtime: RuntimeSnapshot) => void}> = ({
   onReady,
 }) => {
-  const runtime = useAgentRuntime();
+  const runtime = useAgentRuntime() as unknown as RuntimeSnapshot;
   useEffect(() => {
     onReady(runtime);
   }, [onReady, runtime]);
@@ -72,85 +85,93 @@ const OperationRegistrar: React.FC<{withConvert?: boolean; withScopedCommunity?:
 
 describe('agent runtime context', () => {
   test('runs local plan and supports rollback by execution scope', async () => {
-    let runtime: ReturnType<typeof useAgentRuntime> | null = null;
+    let runtime!: RuntimeSnapshot;
     await act(async () => {
       create(
-        <AgentRuntimeProvider currentTab="home" endpoint="http://127.0.0.1:9">
+        <AgentRuntimeProvider currentTab="create" endpoint="http://127.0.0.1:9">
           <OperationRegistrar />
-          <RuntimeProbe onReady={value => (runtime = value)} />
+          <RuntimeProbe
+            onReady={value => {
+              runtime = value;
+            }}
+          />
         </AgentRuntimeProvider>,
       );
       await flush();
     });
-    expect(runtime).not.toBeNull();
-
     await act(async () => {
-      await runtime?.submitGoal('总结当前页面');
+      await runtime.submitGoal('总结当前页面');
       await flush();
     });
 
-    expect(runtime?.phase).toBe('applied');
-    expect(runtime?.latestExecution?.status).toBe('applied');
-    expect(runtime?.latestExecution?.appliedActions.length).toBeGreaterThan(0);
+    expect(runtime.phase).toBe('applied');
+    expect(runtime.latestExecution?.status).toBe('applied');
+    expect(runtime.latestExecution?.appliedActions.length).toBeGreaterThan(0);
 
     await act(async () => {
-      await runtime?.undoLastExecution();
+      await runtime.undoLastExecution();
       await flush();
     });
-    expect(runtime?.phase).toBe('rolled_back');
+    expect(runtime.phase).toBe('rolled_back');
   });
 
   test('continue task does not replay applied actions', async () => {
-    let runtime: ReturnType<typeof useAgentRuntime> | null = null;
+    let runtime!: RuntimeSnapshot;
     await act(async () => {
       create(
-        <AgentRuntimeProvider currentTab="home" endpoint="http://127.0.0.1:9">
+        <AgentRuntimeProvider currentTab="create" endpoint="http://127.0.0.1:9">
           <OperationRegistrar withConvert />
-          <RuntimeProbe onReady={value => (runtime = value)} />
+          <RuntimeProbe
+            onReady={value => {
+              runtime = value;
+            }}
+          />
         </AgentRuntimeProvider>,
       );
       await flush();
     });
-    expect(runtime).not.toBeNull();
-
     await act(async () => {
-      await runtime?.submitGoal('请启动建模任务');
+      await runtime.submitGoal('请启动建模任务');
       await flush();
     });
-    expect(runtime?.phase).toBe('pending_confirm');
-    expect(runtime?.pendingActions.length).toBe(1);
+    expect(runtime.phase).toBe('pending_confirm');
+    expect(runtime.pendingActions.length).toBe(1);
 
     await act(async () => {
-      await runtime?.continueLastTask();
+      await runtime.continueLastTask();
       await flush();
     });
 
-    expect(runtime?.latestExecution?.appliedActions.length).toBe(0);
-    expect(runtime?.phase).toBe('pending_confirm');
+    expect(runtime.latestExecution?.appliedActions.length).toBe(0);
+    expect(runtime.phase).toBe('pending_confirm');
   });
 
   test('blocks action when scope precheck fails', async () => {
-    let runtime: ReturnType<typeof useAgentRuntime> | null = null;
+    let runtime!: RuntimeSnapshot;
     await act(async () => {
       create(
         <AgentRuntimeProvider
-          currentTab="community"
+          currentTab="works"
           endpoint="http://127.0.0.1:9"
           grantedScopes={[]}
           debugPermissionOverride={false}>
           <OperationRegistrar withScopedCommunity />
-          <RuntimeProbe onReady={value => (runtime = value)} />
+          <RuntimeProbe
+            onReady={value => {
+              runtime = value;
+            }}
+          />
         </AgentRuntimeProvider>,
       );
       await flush();
     });
 
     await act(async () => {
-      await runtime?.submitGoal('帮我发布社区帖子');
+      await runtime.submitGoal('帮我发布社区帖子');
       await flush();
     });
 
-    expect(runtime?.phase).toBe('failed');
-    expect(runtime?.latestExecution?.failedActions[0]?.errorCode).toBe('forbidden_scope');
+    expect(runtime.phase).toBe('failed');
+    expect(runtime.latestExecution?.failedActions[0]?.errorCode).toBe('forbidden_scope');
   });
 });

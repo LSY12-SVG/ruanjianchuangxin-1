@@ -12,7 +12,12 @@ const {createSpeechRecognizer} = jest.requireMock('../../src/voice/speechRecogni
   createSpeechRecognizer: jest.Mock;
 };
 
-type VoiceState = ReturnType<typeof useVoiceColorGrading>;
+interface VoiceState {
+  state: string;
+  isRecording: boolean;
+  lastError: string;
+  startPressToTalk: () => Promise<void>;
+}
 
 interface HarnessProps {
   onReady: (state: VoiceState) => void;
@@ -23,7 +28,7 @@ const Harness: React.FC<HarnessProps> = ({onReady}) => {
     currentParams: defaultColorGradingParams,
     onApplyParams: () => undefined,
     getImageContext: () => ({image: {} as never, imageStats: {} as never} as never),
-  });
+  }) as unknown as VoiceState;
   useEffect(() => {
     onReady(state);
   }, [onReady, state]);
@@ -47,7 +52,7 @@ describe('useVoiceColorGrading session lifecycle', () => {
       return adapter;
     });
 
-    let latestState: VoiceState | null = null;
+    let latestState!: VoiceState;
     await act(async () => {
       TestRenderer.create(
         <Harness
@@ -59,15 +64,15 @@ describe('useVoiceColorGrading session lifecycle', () => {
     });
 
     await act(async () => {
-      await latestState?.startPressToTalk();
+      await latestState.startPressToTalk();
     });
     await act(async () => {
       callbacks.onPreempted?.();
     });
 
-    expect(latestState?.state).toBe('idle');
-    expect(latestState?.isRecording).toBe(false);
-    expect(latestState?.lastError).toContain('被其他模块接管');
+    expect(latestState.state).toBe('idle');
+    expect(latestState.isRecording).toBe(false);
+    expect(latestState.lastError).toContain('被其他模块接管');
     expect(adapter.start).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import {LiquidPanel, StatusStrip} from '../components/design';
 import {VISION_THEME} from '../theme/visionTheme';
 
 export type ModelLevel = 'preview' | 'balanced' | 'quality';
@@ -92,42 +93,40 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
   }, [modelLevel, onAgentBridgeReady, statusText, taskProgress]);
 
   return (
-    <LinearGradient
-      colors={[
-        VISION_THEME.background.top,
-        VISION_THEME.background.mid,
-        VISION_THEME.background.bottom,
-      ]}
-      style={styles.container}>
+    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroCard}>
+        <LiquidPanel style={styles.heroCard}>
           <View>
             <Text style={styles.heroTitle}>2D 转 3D 工作台</Text>
-            <Text style={styles.heroSubtitle}>单图/多图重建 | Mesh + PBR</Text>
+            <StatusStrip
+              compact
+              items={[
+                {label: 'Mesh', icon: 'cube-outline', tone: 'active'},
+                {label: 'PBR', icon: 'color-palette-outline', tone: 'active'},
+              ]}
+            />
           </View>
           <TouchableOpacity style={styles.heroAction} activeOpacity={0.86}>
             <Icon name="help-circle-outline" size={16} color={VISION_THEME.accent.strong} />
             <Text style={styles.heroActionText}>流程说明</Text>
           </TouchableOpacity>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.block}>
+        <LiquidPanel style={styles.block}>
           <Text style={styles.blockTitle}>素材输入</Text>
           <View style={styles.uploadRow}>
             <TouchableOpacity style={styles.uploadCard} activeOpacity={0.85}>
               <Icon name="image-outline" size={26} color={VISION_THEME.accent.main} />
               <Text style={styles.uploadLabel}>单图重建</Text>
-              <Text style={styles.uploadHint}>适合快速原型</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.uploadCard} activeOpacity={0.85}>
               <Icon name="images-outline" size={26} color={VISION_THEME.accent.main} />
               <Text style={styles.uploadLabel}>多图重建</Text>
-              <Text style={styles.uploadHint}>精度更稳定</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.block}>
+        <LiquidPanel style={styles.block}>
           <Text style={styles.blockTitle}>重建质量策略</Text>
           <View style={styles.segmented}>
             {MODEL_OPTIONS.map(option => {
@@ -148,9 +147,9 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
               );
             })}
           </View>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.block}>
+        <LiquidPanel style={styles.block}>
           <Text style={styles.blockTitle}>当前处理流程</Text>
           <View style={styles.pipelineCard}>
             {PIPELINE.map((step, index) => (
@@ -162,9 +161,9 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
               </View>
             ))}
           </View>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.block}>
+        <LiquidPanel style={styles.block}>
           <Text style={styles.blockTitle}>最近任务</Text>
           <View style={styles.taskCard}>
             <View style={styles.taskHeader}>
@@ -178,7 +177,7 @@ export const TwoDToThreeDScreen: React.FC<TwoDToThreeDScreenProps> = ({
             </View>
             <Text style={styles.taskMeta}>预计剩余 1 分 42 秒 · 导出格式 GLB / FBX</Text>
           </View>
-        </View>
+        </LiquidPanel>
 
         <TouchableOpacity style={styles.primaryButton} activeOpacity={0.9}>
           <Icon name="sparkles-outline" size={18} color={VISION_THEME.accent.dark} />
@@ -212,11 +211,6 @@ const styles = StyleSheet.create({
     color: VISION_THEME.text.primary,
     fontSize: 21,
     fontWeight: '700',
-  },
-  heroSubtitle: {
-    marginTop: 4,
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
   },
   heroAction: {
     flexDirection: 'row',
@@ -266,10 +260,6 @@ const styles = StyleSheet.create({
     color: VISION_THEME.text.primary,
     fontSize: 14,
     fontWeight: '700',
-  },
-  uploadHint: {
-    color: VISION_THEME.text.muted,
-    fontSize: 11,
   },
   segmented: {
     flexDirection: 'row',

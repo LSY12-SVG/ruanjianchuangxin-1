@@ -33,7 +33,7 @@ export const GlobalAgentSprite: React.FC = () => {
   const {width, height} = useWindowDimensions();
   const pushConversation = useAppStore(state => state.pushConversation);
   const activeMainTab = useAppStore(state => state.activeMainTab);
-  const homeRoute = useAppStore(state => state.homeRoute);
+  const createRoute = useAppStore(state => state.createRoute);
   const {
     panelVisible,
     togglePanel,
@@ -66,7 +66,7 @@ export const GlobalAgentSprite: React.FC = () => {
   const longPressTriggeredRef = useRef(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState('');
-  const isVoiceDisabledInGrading = activeMainTab === 'home' && homeRoute === 'grading';
+  const isVoiceDisabledInGrading = activeMainTab === 'create' && createRoute === 'editor';
 
   const recognizerRef = useRef(
     createSpeechRecognizer({

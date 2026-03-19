@@ -12,6 +12,7 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
 import {VISION_THEME} from '../theme/visionTheme';
+import {LiquidPanel, StatusStrip} from '../components/design';
 import {TopSegment} from '../components/ui/TopSegment';
 import {
   ProfileApiError,
@@ -266,7 +267,7 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
   }, [applySettingPatch, onAgentBridgeReady, settings]);
 
   const renderAuthCard = () => (
-    <View style={styles.block}>
+    <LiquidPanel style={styles.block}>
       <Text style={styles.blockTitle}>账号登录</Text>
       <TextInput
         value={username}
@@ -313,17 +314,11 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
           </Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </LiquidPanel>
   );
 
   return (
-    <LinearGradient
-      colors={[
-        VISION_THEME.background.top,
-        VISION_THEME.background.mid,
-        VISION_THEME.background.bottom,
-      ]}
-      style={styles.container}>
+    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <TopSegment
           value={segment}
@@ -335,26 +330,30 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
           ]}
         />
         {booting ? (
-          <View style={styles.loadingCard}>
+          <LiquidPanel style={styles.loadingCard}>
             <ActivityIndicator size="small" color={VISION_THEME.accent.main} />
             <Text style={styles.loadingText}>加载账号状态...</Text>
-          </View>
+          </LiquidPanel>
         ) : null}
 
         {!booting && !authenticated ? renderAuthCard() : null}
 
         {authenticated ? (
           <>
-            <View style={styles.profileCard}>
+            <LiquidPanel style={styles.profileCard}>
               <View style={styles.avatar}>
                 <Icon name="person" size={24} color={VISION_THEME.accent.main} />
               </View>
               <View style={styles.profileMeta}>
                 <Text style={styles.profileName}>{profile.displayName || profile.username}</Text>
-                <Text style={styles.profileId}>{profile.tier}</Text>
-                <Text style={styles.profileInfo}>
-                  模型任务 {stats.modelTasksCount} · 社区发布 {stats.communityPostsCount}
-                </Text>
+                <StatusStrip
+                  compact
+                  items={[
+                    {label: profile.tier, icon: 'ribbon-outline', tone: 'active', pulse: false},
+                    {label: `任务 ${stats.modelTasksCount}`, icon: 'layers-outline', tone: 'idle', pulse: false},
+                    {label: `发布 ${stats.communityPostsCount}`, icon: 'send-outline', tone: 'idle', pulse: false},
+                  ]}
+                />
               </View>
               <TouchableOpacity
                 style={styles.editButton}
@@ -372,9 +371,9 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
                   />
                 )}
               </TouchableOpacity>
-            </View>
+            </LiquidPanel>
 
-            <View style={styles.block}>
+            <LiquidPanel style={styles.block}>
               <Text style={styles.blockTitle}>资料编辑</Text>
               <TextInput
                 value={editDisplayName}
@@ -407,15 +406,14 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
                 }}>
                 <Text style={styles.primaryButtonText}>保存资料</Text>
               </TouchableOpacity>
-            </View>
+            </LiquidPanel>
 
-            <View style={styles.block}>
+            <LiquidPanel style={styles.block}>
               <Text style={styles.blockTitle}>工作流偏好</Text>
               {agentNote ? <Text style={styles.agentNote}>{agentNote}</Text> : null}
               <View style={styles.settingRow}>
                 <View>
                   <Text style={styles.settingLabel}>Wi-Fi 下自动同步任务</Text>
-                  <Text style={styles.settingHint}>上传原图、模型与调色方案</Text>
                 </View>
                 <Switch
                   value={settings.syncOnWifi}
@@ -429,7 +427,6 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
               <View style={styles.settingRow}>
                 <View>
                   <Text style={styles.settingLabel}>社区互动通知</Text>
-                  <Text style={styles.settingHint}>点赞、收藏、评论与复用提醒</Text>
                 </View>
                 <Switch
                   value={settings.communityNotify}
@@ -443,7 +440,6 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
               <View style={styles.settingRow}>
                 <View>
                   <Text style={styles.settingLabel}>语音命令结束后自动应用</Text>
-                  <Text style={styles.settingHint}>关闭后改为“识别完成再确认”</Text>
                 </View>
                 <Switch
                   value={settings.voiceAutoApply}
@@ -454,9 +450,9 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
                   trackColor={{false: 'rgba(255,255,255,0.2)', true: 'rgba(122,201,255,0.34)'}}
                 />
               </View>
-            </View>
+            </LiquidPanel>
 
-            <View style={styles.block}>
+            <LiquidPanel style={styles.block}>
               <Text style={styles.blockTitle}>账号与服务</Text>
               {loadingProfile ? (
                 <ActivityIndicator size="small" color={VISION_THEME.accent.main} />
@@ -480,7 +476,7 @@ export const ProfileSettingsScreen: React.FC<ProfileSettingsScreenProps> = ({
                   <Text style={styles.menuDetail}>模型任务 + 社区发布聚合</Text>
                 </View>
               </TouchableOpacity>
-            </View>
+            </LiquidPanel>
 
             <TouchableOpacity
               style={styles.logoutButton}
@@ -549,17 +545,6 @@ const styles = StyleSheet.create({
     color: VISION_THEME.text.primary,
     fontSize: 18,
     fontWeight: '800',
-  },
-  profileId: {
-    marginTop: 2,
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  profileInfo: {
-    marginTop: 3,
-    color: VISION_THEME.text.muted,
-    fontSize: 11,
   },
   editButton: {
     width: 34,
@@ -646,11 +631,6 @@ const styles = StyleSheet.create({
     color: VISION_THEME.text.secondary,
     fontSize: 13,
     fontWeight: '600',
-  },
-  settingHint: {
-    marginTop: 2,
-    color: VISION_THEME.text.muted,
-    fontSize: 11,
   },
   menuItem: {
     flexDirection: 'row',

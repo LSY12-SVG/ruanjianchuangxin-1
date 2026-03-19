@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
+import {LiquidPanel, StatusStrip} from '../components/design';
 import {VISION_THEME} from '../theme/visionTheme';
 import {TopSegment} from '../components/ui/TopSegment';
 import {AdvancedImageCard} from '../components/media/AdvancedImageCard';
@@ -427,21 +428,21 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
   const draftTagCount = useMemo(() => parseDraftTags().length, [parseDraftTags]);
 
   return (
-    <LinearGradient
-      colors={[
-        VISION_THEME.background.top,
-        VISION_THEME.background.mid,
-        VISION_THEME.background.bottom,
-      ]}
-      style={styles.container}>
+    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
-        <View style={styles.heroCard}>
+        <LiquidPanel style={styles.heroCard}>
           <View>
             <Text style={styles.heroTitle}>调色社区</Text>
-            <Text style={styles.heroSubtitle}>真实社区流 | 草稿发布 | 评论互动</Text>
+            <StatusStrip
+              compact
+              items={[
+                {label: `${posts.length} 帖子`, icon: 'albums-outline', tone: posts.length > 0 ? 'active' : 'idle'},
+                {label: draftPost ? '草稿就绪' : '无草稿', icon: 'document-text-outline', tone: draftPost ? 'warning' : 'idle'},
+              ]}
+            />
           </View>
           <TouchableOpacity
             style={styles.publishButton}
@@ -453,9 +454,9 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             <Icon name="cloud-upload-outline" size={16} color={VISION_THEME.accent.dark} />
             <Text style={styles.publishButtonText}>发布草稿</Text>
           </TouchableOpacity>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.block}>
+        <LiquidPanel style={styles.block}>
           <Text style={styles.blockTitle}>发布草稿</Text>
           <TextInput
             value={draftTitle}
@@ -480,9 +481,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             style={styles.input}
           />
           <View style={styles.draftActionRow}>
-            <Text style={styles.draftMeta}>
-              当前用户: {COMMUNITY_USER_ID} | 标签数: {draftTagCount}
-            </Text>
+            <StatusStrip
+              compact
+              items={[
+                {label: `标签 ${draftTagCount}`, icon: 'pricetags-outline', tone: draftTagCount > 0 ? 'active' : 'idle'},
+              ]}
+            />
             <TouchableOpacity
               style={styles.secondaryButton}
               activeOpacity={0.86}
@@ -498,7 +502,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             </TouchableOpacity>
           </View>
           {draftMessage ? <Text style={styles.draftMessage}>{draftMessage}</Text> : null}
-        </View>
+        </LiquidPanel>
 
         <TopSegment
           value={filter}
@@ -507,10 +511,10 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
         />
 
         {loading ? (
-          <View style={styles.loadingCard}>
+          <LiquidPanel style={styles.loadingCard}>
             <ActivityIndicator size="small" color={VISION_THEME.accent.main} />
             <Text style={styles.loadingText}>社区流加载中...</Text>
-          </View>
+          </LiquidPanel>
         ) : null}
 
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
@@ -522,7 +526,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
             const isCommentsOpen = Boolean(expandedCommentPosts[post.id]);
             const replyTarget = replyTargetByPostId[post.id];
             return (
-              <View key={post.id} style={styles.postCard}>
+              <LiquidPanel key={post.id} style={styles.postCard}>
                 <View style={styles.postHeader}>
                   <View>
                     <Text style={styles.author}>{post.author.name}</Text>
@@ -599,7 +603,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
                 </View>
 
                 {isCommentsOpen ? (
-                  <View style={styles.commentPanel}>
+                  <LiquidPanel style={styles.commentPanel}>
                     {loadingCommentsByPostId[post.id] ? (
                       <ActivityIndicator size="small" color={VISION_THEME.accent.main} />
                     ) : (
@@ -643,9 +647,9 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({
                         <Icon name="send" size={14} color={VISION_THEME.accent.dark} />
                       </TouchableOpacity>
                     </View>
-                  </View>
+                  </LiquidPanel>
                 ) : null}
-              </View>
+              </LiquidPanel>
             );
           })}
         </View>
@@ -687,11 +691,6 @@ const styles = StyleSheet.create({
     color: VISION_THEME.text.primary,
     fontSize: 21,
     fontWeight: '700',
-  },
-  heroSubtitle: {
-    marginTop: 4,
-    color: VISION_THEME.text.secondary,
-    fontSize: 12,
   },
   publishButton: {
     borderRadius: 12,
@@ -740,11 +739,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  draftMeta: {
-    color: VISION_THEME.text.muted,
-    fontSize: 11,
-    flex: 1,
   },
   secondaryButton: {
     borderRadius: 10,

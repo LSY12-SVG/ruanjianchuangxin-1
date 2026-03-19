@@ -48,6 +48,7 @@ import {buildFilmicLut, buildIdentityLut} from '../colorEngine/lut/runtime';
 import {useVoiceColorGrading} from '../voice/useVoiceColorGrading';
 import {buildVoiceImageContext} from '../voice/imageContext';
 import {useAutoGradeOrchestrator} from '../colorEngine/autoGradeOrchestrator';
+import {LiquidPanel} from '../components/design';
 import {
   canTriggerFirstPass,
   createFirstPassGate,
@@ -59,6 +60,7 @@ import {
   subscribeCloudRuntimeState,
   type CloudRuntimeState,
 } from '../cloud/endpointResolver';
+import {VISION_THEME} from '../theme/visionTheme';
 
 interface AgentActionResult {
   ok: boolean;
@@ -81,6 +83,10 @@ interface GPUColorGradingScreenProps {
   externalApplyParamsRequest?: {
     id: number;
     params: ColorGradingParams;
+  } | null;
+  externalImportRequest?: {
+    id: number;
+    source?: 'gallery' | 'camera';
   } | null;
 }
 
@@ -212,9 +218,9 @@ class ViewerErrorBoundary extends Component<ViewerErrorBoundaryProps, ViewerErro
 }
 
 const COLORS = {
-  bgStart: '#061426',
-  bgMid: '#0A2741',
-  bgEnd: '#071B30',
+  bgStart: VISION_THEME.gradients.page[0],
+  bgMid: VISION_THEME.gradients.page[1],
+  bgEnd: VISION_THEME.gradients.page[2],
   card: 'rgba(10, 38, 62, 0.92)',
   cardSoft: 'rgba(14, 46, 74, 0.84)',
   border: 'rgba(142, 193, 236, 0.26)',
@@ -230,6 +236,7 @@ const COLORS = {
 const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
   onAgentBridgeReady,
   externalApplyParamsRequest,
+  externalImportRequest,
 }) => {
   const [params, setParams] = useState<ColorGradingParams>(defaultColorGradingParams);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('preset_original');
@@ -275,6 +282,17 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
     useImagePicker({
       onImageError: error => Alert.alert('图片错误', error),
     });
+  const lastImportRequestIdRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!externalImportRequest?.id || externalImportRequest.id === lastImportRequestIdRef.current) {
+      return;
+    }
+    lastImportRequestIdRef.current = externalImportRequest.id;
+    const runner =
+      externalImportRequest.source === 'camera' ? pickFromCamera : pickFromGallery;
+    runner().catch(() => undefined);
+  }, [externalImportRequest, pickFromCamera, pickFromGallery]);
 
   useEffect(() => {
     const unsubscribe = subscribeCloudRuntimeState(setCloudRuntimeState);
@@ -800,7 +818,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        <View style={styles.headerCard}>
+        <LiquidPanel style={styles.headerCard}>
           <View>
             <Text style={styles.headerTitle}>GPU 调色工作台</Text>
             <Text style={styles.headerSubtitle}>单主预览 | 连续语音 | 实时渲染</Text>
@@ -809,9 +827,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
             <Icon name="refresh-outline" size={16} color={COLORS.primaryStrong} />
             <Text style={styles.headerActionText}>重置参数</Text>
           </TouchableOpacity>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.engineCard}>
+        <LiquidPanel style={styles.engineCard}>
           <View style={styles.engineRow}>
             <View>
               <Text style={styles.engineTitle}>Pro Engine 灰度</Text>
@@ -849,9 +867,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               自动降级原因: {engineSelection.diagnostics.fallbackReason}
             </Text>
           ) : null}
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.cloudStatusCard}>
+        <LiquidPanel style={styles.cloudStatusCard}>
           <View style={styles.cloudStatusHeader}>
             <Text style={styles.cloudStatusTitle}>云端状态</Text>
             <Text
@@ -876,9 +894,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
           <Text style={styles.cloudStatusMeta}>
             端点: {cloudRuntimeState.endpoint || '未命中'}
           </Text>
-        </View>
+        </LiquidPanel>
 
-        <View style={styles.autoGradeCard}>
+        <LiquidPanel style={styles.autoGradeCard}>
           <View style={styles.autoGradeHeader}>
             <Text style={styles.autoGradeTitle}>上传首版智能调色</Text>
             <Text
@@ -951,7 +969,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               <Text style={styles.autoGradeUndoText}>撤销首版自动调色</Text>
             </TouchableOpacity>
           ) : null}
-        </View>
+        </LiquidPanel>
 
         <ImagePickerComponent
           selectedImage={selectedImage}
@@ -963,10 +981,10 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
         />
 
         {selectedImage?.success && !skImage ? (
-          <View style={styles.loadingCard}>
+          <LiquidPanel style={styles.loadingCard}>
             <ActivityIndicator size="small" color={COLORS.primary} />
             <Text style={styles.loadingText}>正在解码图片...</Text>
-          </View>
+          </LiquidPanel>
         ) : null}
 
         {selectedImage?.success && skImage ? (
@@ -983,7 +1001,8 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <View style={styles.viewerCard} ref={viewerRef}>
+            <LiquidPanel style={styles.viewerCard}>
+              <View ref={viewerRef}>
               {workletsRuntimeUnavailable && fallbackPreviewUri ? (
                 <View style={styles.runtimeFallbackViewer}>
                   <Image
@@ -1010,9 +1029,10 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
                   />
                 </ViewerErrorBoundary>
               )}
-            </View>
+              </View>
+            </LiquidPanel>
 
-            <View style={styles.blockCard}>
+            <LiquidPanel style={styles.blockCard}>
               <Text style={styles.blockTitle}>LUT 风格</Text>
               <View style={styles.engineModeGroup}>
                 <TouchableOpacity
@@ -1077,20 +1097,20 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               <Text style={styles.engineMeta}>
                 当前: {activeLut ? `${activeLut.lutId} (${Math.round(activeLut.strength * 100)}%)` : '未启用'}
               </Text>
-            </View>
+            </LiquidPanel>
 
             {!shaderAvailable ? (
-              <View style={styles.shaderWarningCard}>
+              <LiquidPanel style={styles.shaderWarningCard}>
                 <Icon name="warning-outline" size={15} color={COLORS.warning} />
                 <Text style={styles.shaderWarningText}>
                   {workletsRuntimeUnavailable
                     ? 'Worklets 运行时不可用，已自动降级到 legacy 预览链路。'
                     : '当前设备不支持 Runtime Shader，已回退到基础矩阵模式。进阶参数效果会受限。'}
                 </Text>
-              </View>
+              </LiquidPanel>
             ) : null}
 
-            <View style={styles.blockCard}>
+            <LiquidPanel style={styles.blockCard}>
               <View style={styles.localMaskHeader}>
                 <Text style={styles.blockTitle}>AI 局部调色</Text>
                 <TouchableOpacity
@@ -1112,15 +1132,15 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               {segmentationStatusMeta ? (
                 <Text style={styles.localMaskStatusMeta}>{segmentationStatusMeta}</Text>
               ) : null}
-            </View>
+            </LiquidPanel>
 
-            <View style={styles.voiceCard}>
+            <LiquidPanel style={styles.voiceCard}>
               <View style={styles.voiceHeader}>
                 <Text style={styles.voiceTitle}>语音智能调色</Text>
                 <Text style={styles.voiceState}>{voice.state}</Text>
               </View>
 
-              <View style={styles.voiceSummaryCard}>
+              <LiquidPanel style={styles.voiceSummaryCard}>
                 <Text style={styles.voiceSummaryTitle}>视觉首轮建议</Text>
                 <Text style={styles.voiceSummaryMeta}>
                   状态: {voice.visualState}
@@ -1144,7 +1164,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
                     已应用: {voice.visualApplySummary}
                   </Text>
                 ) : null}
-              </View>
+              </LiquidPanel>
 
               <TouchableOpacity
                 style={[
@@ -1173,7 +1193,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
               {voice.lastError ? <Text style={styles.voiceError}>{voice.lastError}</Text> : null}
 
               {voice.cloudState !== 'healthy' ? (
-                <View style={styles.textFallbackCard}>
+                <LiquidPanel style={styles.textFallbackCard}>
                   <Text style={styles.textFallbackTitle}>语音网络不稳定时，改用文本命令</Text>
                   <TextInput
                     style={styles.textFallbackInput}
@@ -1195,14 +1215,14 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
                       {isApplyingManualVoiceCommand ? '应用中...' : '应用文本命令'}
                     </Text>
                   </TouchableOpacity>
-                </View>
+                </LiquidPanel>
               ) : null}
 
               {voice.lastAppliedSummary ? (
-                <View style={styles.voiceSummaryCard}>
+                <LiquidPanel style={styles.voiceSummaryCard}>
                   <Text style={styles.voiceSummaryTitle}>最近一次语音增量</Text>
                   <Text style={styles.voiceSummaryText}>{voice.lastAppliedSummary}</Text>
-                </View>
+                </LiquidPanel>
               ) : null}
 
               <View style={styles.voiceActions}>
@@ -1245,18 +1265,18 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
                   )}
                 </View>
               ) : null}
-            </View>
+            </LiquidPanel>
 
-            <View style={styles.blockCard}>
+            <LiquidPanel style={styles.blockCard}>
               <Text style={styles.blockTitle}>预设</Text>
               <PresetSelector
                 presets={BUILTIN_PRESETS}
                 selectedPresetId={selectedPresetId}
                 onSelectPreset={handleSelectPreset}
               />
-            </View>
+            </LiquidPanel>
 
-            <View style={styles.blockCard}>
+            <LiquidPanel style={styles.blockCard}>
               <Text style={styles.blockTitle}>参数调节</Text>
               <BasicLightModule params={params.basic} onChange={handleBasicChange} />
               <ColorBalanceModule
@@ -1271,7 +1291,7 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
                 wheels={params.pro.wheels}
                 onChange={handleProWheelsChange}
               />
-            </View>
+            </LiquidPanel>
 
             <TouchableOpacity
               style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
@@ -1286,9 +1306,9 @@ const GPUColorGradingScreen: React.FC<GPUColorGradingScreenProps> = ({
             </TouchableOpacity>
 
             {lastExportSummary ? (
-              <View style={styles.exportSummaryCard}>
+              <LiquidPanel style={styles.exportSummaryCard}>
                 <Text style={styles.exportSummaryText}>最近导出: {lastExportSummary}</Text>
-              </View>
+              </LiquidPanel>
             ) : null}
           </>
         ) : null}

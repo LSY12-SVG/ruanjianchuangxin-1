@@ -18,13 +18,20 @@ describe('mmkv storage fallback', () => {
       }),
     }));
 
-    let mmkvStorage: {
+    let mmkvStorage!: {
       setItem: (name: string, value: string) => Promise<void>;
       getItem: (name: string) => Promise<string | null>;
       removeItem: (name: string) => Promise<void>;
     };
     jest.isolateModules(() => {
-      ({mmkvStorage} = require('../../src/store/mmkvStorage'));
+      const loaded = require('../../src/store/mmkvStorage') as {
+        mmkvStorage: {
+          setItem: (name: string, value: string) => Promise<void>;
+          getItem: (name: string) => Promise<string | null>;
+          removeItem: (name: string) => Promise<void>;
+        };
+      };
+      mmkvStorage = loaded.mmkvStorage;
     });
     await expect(mmkvStorage.setItem('visiongenie.app.store', '{}')).resolves.toBeUndefined();
     await expect(mmkvStorage.getItem('visiongenie.app.store')).resolves.toBe('{}');

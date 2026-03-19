@@ -27,15 +27,22 @@ import {
   ProfileSettingsScreen,
   type ProfileSettingsAgentBridge,
 } from './src/screens/ProfileSettingsScreen';
-import {HomeHubScreen} from './src/screens/HomeHubScreen';
-import {HomeModuleShell} from './src/components/home/HomeModuleShell';
+import {CreateHubScreen} from './src/screens/CreateHubScreen';
+import {WorksScreen} from './src/screens/WorksScreen';
 import {AgentRuntimeProvider, useAgentRuntime} from './src/agent/runtimeContext';
 import type {AgentAppTab} from './src/agent/types';
-import type {HomeRouteKey, MainTabKey} from './src/types/navigation';
+import {
+  applySettingsPatchWithBridge,
+  type AgentSettingsPatch,
+} from './src/agent/operations/settingsApplyPatch';
 import {GlobalAgentSprite} from './src/components/agent/GlobalAgentSprite';
-import type {ColorGradingParams} from './src/types/colorGrading';
+import {BottomSheetPanel, StatusStrip} from './src/components/design';
+import {resolveAgentNavigationTarget, mapCreateRouteToLegacy} from './src/navigation/compat';
 import {RootProviders} from './src/providers/RootProviders';
 import {useAppStore} from './src/store/appStore';
+import {VISION_THEME} from './src/theme/visionTheme';
+import type {ColorGradingParams} from './src/types/colorGrading';
+import type {CreateRouteKey, MainTabKey, WorksSubPageKey} from './src/types/navigation';
 
 interface TabConfig {
   key: MainTabKey;
@@ -44,16 +51,14 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  {key: 'home', label: '首页', icon: 'home-outline'},
-  {key: 'agent', label: '助手', icon: 'sparkles-outline'},
-  {key: 'community', label: '社区', icon: 'people-outline'},
-  {key: 'profile', label: '我的', icon: 'person-outline'},
+  {key: 'create', label: '创作', icon: 'sparkles-outline'},
+  {key: 'assistant', label: 'AI助手', icon: 'chatbubble-ellipses-outline'},
+  {key: 'works', label: '作品', icon: 'layers-outline'},
 ];
 
-const HOME_ROUTES: Array<{key: HomeRouteKey; label: string; icon: string}> = [
-  {key: 'hub', label: '总览', icon: 'grid-outline'},
-  {key: 'grading', label: '调色', icon: 'color-filter-outline'},
-  {key: 'modeling', label: '建模', icon: 'cube-outline'},
+const CREATE_ROUTES: Array<{key: CreateRouteKey; label: string}> = [
+  {key: 'hub', label: '创作入口'},
+  {key: 'editor', label: '编辑器'},
 ];
 
 const AGENT_RUNTIME_USER_ID = 'local_debug_user';
@@ -72,34 +77,49 @@ const AGENT_DEFAULT_GRANTED_SCOPES = [
 interface AppShellContentProps {
   activeMainTab: MainTabKey;
   setActiveMainTab: (tab: MainTabKey) => void;
-  homeRoute: HomeRouteKey;
-  setHomeRoute: (route: HomeRouteKey) => void;
+  createRoute: CreateRouteKey;
+  setCreateRoute: (route: CreateRouteKey) => void;
+  worksSubPage: WorksSubPageKey;
+  setWorksSubPage: (page: WorksSubPageKey) => void;
+  worksFilter: 'all' | 'native' | 'degraded';
+  setWorksFilter: (filter: 'all' | 'native' | 'degraded') => void;
+  worksToolsOpen: boolean;
+  setWorksToolsOpen: (open: boolean) => void;
+  worksSettingsOpen: boolean;
+  setWorksSettingsOpen: (open: boolean) => void;
 }
 
-const asTab = (value: unknown): MainTabKey => {
-  if (value === 'home' || value === 'agent' || value === 'community' || value === 'profile') {
-    return value;
+const worksPageLabel = (subPage: WorksSubPageKey): string => {
+  if (subPage === 'community') {
+    return '社区';
   }
-  return 'agent';
-};
-
-const asHomeRoute = (value: unknown): HomeRouteKey => {
-  if (value === 'hub' || value === 'grading' || value === 'modeling') {
-    return value;
+  if (subPage === 'modeling') {
+    return '2D转3D';
   }
-  return 'hub';
+  if (subPage === 'settings') {
+    return '设置';
+  }
+  return '作品库';
 };
 
 const AppShellContent: React.FC<AppShellContentProps> = ({
   activeMainTab,
   setActiveMainTab,
-  homeRoute,
-  setHomeRoute,
+  createRoute,
+  setCreateRoute,
+  worksSubPage,
+  setWorksSubPage,
+  worksFilter,
+  setWorksFilter,
+  worksToolsOpen,
+  setWorksToolsOpen,
+  worksSettingsOpen,
+  setWorksSettingsOpen,
 }) => {
   const insets = useSafeAreaInsets();
-  const {registerOperation} = useAgentRuntime();
+  const {registerOperation, submitGoal} = useAgentRuntime();
+  const motionEnabled = useAppStore(state => state.motionEnabled);
   const shellAnim = useRef(new Animated.Value(0)).current;
-
   const gradingBridgeRef = useRef<GPUColorGradingAgentBridge | null>(null);
   const convertBridgeRef = useRef<TwoDToThreeDAgentBridge | null>(null);
   const communityBridgeRef = useRef<CommunityAgentBridge | null>(null);
@@ -108,6 +128,16 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     id: number;
     params: ColorGradingParams;
   } | null>(null);
+  const [importRequest, setImportRequest] = useState<{
+    id: number;
+    source?: 'gallery' | 'camera';
+  } | null>(null);
+
+  const openSettingsSheet = useCallback(() => {
+    setActiveMainTab('works');
+    setWorksSubPage('settings');
+    setWorksSettingsOpen(true);
+  }, [setActiveMainTab, setWorksSettingsOpen, setWorksSubPage]);
 
   const collectAgentSnapshot = useCallback(() => {
     const grading = gradingBridgeRef.current?.getSnapshot() || null;
@@ -116,23 +146,29 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     const profile = profileBridgeRef.current?.getSnapshot() || null;
     return {
       currentMainTab: activeMainTab,
-      currentHomeRoute: homeRoute,
-      'home.grading': grading || undefined,
-      'home.modeling': convert || undefined,
-      'community.snapshot': community || undefined,
-      'profile.snapshot': profile || undefined,
+      currentCreateRoute: createRoute,
+      currentWorksSubPage: worksSubPage,
+      currentHomeRoute: mapCreateRouteToLegacy(createRoute),
+      'create.editor': grading || undefined,
+      'works.modeling': convert || undefined,
+      'works.community': community || undefined,
+      'works.settings': profile || undefined,
       'community.lastDraftTitle': community?.draftTitle || '',
     };
-  }, [activeMainTab, homeRoute]);
+  }, [activeMainTab, createRoute, worksSubPage]);
 
   useEffect(() => {
+    if (!motionEnabled) {
+      shellAnim.setValue(1);
+      return;
+    }
     Animated.timing(shellAnim, {
       toValue: 1,
       duration: 420,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [shellAnim]);
+  }, [motionEnabled, shellAnim]);
 
   useEffect(() => {
     const unregisterList: Array<() => void> = [];
@@ -149,16 +185,25 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         snapshot: collectAgentSnapshot,
         execute: async action => {
           const args = action.args || {};
-          const tab = asTab(args.mainTab ?? args.tab);
-          const hasExplicitHomeRoute =
-            typeof args.homeRoute === 'string' || typeof args.route === 'string';
-          setActiveMainTab(tab);
-          if (tab === 'home' && hasExplicitHomeRoute) {
-            setHomeRoute(asHomeRoute(args.homeRoute ?? args.route));
+          const target = resolveAgentNavigationTarget(args);
+          setActiveMainTab(target.mainTab);
+          if (target.mainTab === 'create') {
+            setCreateRoute(target.createRoute || 'hub');
+          }
+          if (target.mainTab === 'works') {
+            const nextSubPage = target.worksSubPage || 'library';
+            setWorksSubPage(nextSubPage);
+            setWorksToolsOpen(nextSubPage !== 'library');
+            setWorksSettingsOpen(Boolean(target.openSettingsSheet));
           }
           return {
             ok: true,
-            message: `已跳转到 ${tab}${tab === 'home' && hasExplicitHomeRoute ? `/${asHomeRoute(args.homeRoute ?? args.route)}` : ''}`,
+            message:
+              target.mainTab === 'works'
+                ? `已跳转到 works/${target.worksSubPage || 'library'}`
+                : target.mainTab === 'create'
+                  ? `已跳转到 create/${target.createRoute || 'hub'}`
+                  : '已跳转到 assistant',
           };
         },
       }),
@@ -175,8 +220,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         defaultSkillName: 'agent-tool-router',
         snapshot: () => gradingBridgeRef.current?.getSnapshot() || null,
         execute: async () => {
-          setActiveMainTab('home');
-          setHomeRoute('grading');
+          setActiveMainTab('create');
+          setCreateRoute('editor');
           const bridge = gradingBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '调色页面未就绪'};
@@ -198,8 +243,8 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         defaultSkillName: 'agent-permission-gate',
         snapshot: () => gradingBridgeRef.current?.getSnapshot() || null,
         execute: async () => {
-          setActiveMainTab('home');
-          setHomeRoute('grading');
+          setActiveMainTab('create');
+          setCreateRoute('editor');
           const bridge = gradingBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '调色页面未就绪'};
@@ -221,8 +266,9 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         defaultSkillName: 'agent-permission-gate',
         snapshot: () => convertBridgeRef.current?.getSnapshot() || null,
         execute: async action => {
-          setActiveMainTab('home');
-          setHomeRoute('modeling');
+          setActiveMainTab('works');
+          setWorksSubPage('modeling');
+          setWorksToolsOpen(true);
           const bridge = convertBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '2D转3D页面未就绪'};
@@ -244,7 +290,9 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         defaultSkillName: 'agent-tool-router',
         snapshot: () => communityBridgeRef.current?.getSnapshot() || null,
         execute: async action => {
-          setActiveMainTab('community');
+          setActiveMainTab('works');
+          setWorksSubPage('community');
+          setWorksToolsOpen(true);
           const bridge = communityBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '社区页面未就绪'};
@@ -273,7 +321,9 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         defaultSkillName: 'agent-permission-gate',
         snapshot: () => communityBridgeRef.current?.getSnapshot() || null,
         execute: async () => {
-          setActiveMainTab('community');
+          setActiveMainTab('works');
+          setWorksSubPage('community');
+          setWorksToolsOpen(true);
           const bridge = communityBridgeRef.current;
           if (!bridge) {
             return {ok: false, message: '社区页面未就绪'};
@@ -298,18 +348,20 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
           return snapshot ? {...snapshot} : null;
         },
         execute: async action => {
-          setActiveMainTab('profile');
-          const bridge = profileBridgeRef.current;
-          if (!bridge) {
-            return {ok: false, message: '设置页面未就绪'};
-          }
           const args = action.args || {};
-          return bridge.applyPatch({
+          const patch: AgentSettingsPatch = {
             syncOnWifi: typeof args.syncOnWifi === 'boolean' ? args.syncOnWifi : undefined,
             communityNotify:
               typeof args.communityNotify === 'boolean' ? args.communityNotify : undefined,
             voiceAutoApply:
               typeof args.voiceAutoApply === 'boolean' ? args.voiceAutoApply : undefined,
+          };
+          return applySettingsPatchWithBridge({
+            openSettings: openSettingsSheet,
+            getBridge: () => profileBridgeRef.current,
+            patch,
+            timeoutMs: 2000,
+            pollIntervalMs: 50,
           });
         },
       }),
@@ -327,7 +379,12 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
         snapshot: collectAgentSnapshot,
         execute: async () => ({
           ok: true,
-          message: `当前页面: ${activeMainTab}${activeMainTab === 'home' ? `/${homeRoute}` : ''}`,
+          message:
+            activeMainTab === 'create'
+              ? `当前页面: create/${createRoute}`
+              : activeMainTab === 'works'
+                ? `当前页面: works/${worksSubPage}`
+                : '当前页面: assistant',
         }),
       }),
     );
@@ -335,84 +392,153 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
     return () => {
       unregisterList.forEach(unregister => unregister());
     };
-  }, [activeMainTab, collectAgentSnapshot, homeRoute, registerOperation, setActiveMainTab, setHomeRoute]);
+  }, [
+    activeMainTab,
+    collectAgentSnapshot,
+    createRoute,
+    registerOperation,
+    setActiveMainTab,
+    setCreateRoute,
+    openSettingsSheet,
+    setWorksSettingsOpen,
+    setWorksSubPage,
+    setWorksToolsOpen,
+    worksSubPage,
+  ]);
 
-  const homeScreen = useMemo(() => {
-    if (homeRoute === 'hub') {
-      return <HomeHubScreen onNavigateModule={route => setHomeRoute(route)} />;
-    }
-    if (homeRoute === 'grading') {
+  const createScreen =
+    createRoute === 'hub' ? (
+      <CreateHubScreen
+        onImportPhoto={() => {
+          setCreateRoute('editor');
+          setImportRequest({id: Date.now(), source: 'gallery'});
+        }}
+        onContinueEdit={() => {
+          setCreateRoute('editor');
+        }}
+        onApplySuggestion={goal => {
+          setActiveMainTab('assistant');
+          submitGoal(goal).catch(() => undefined);
+        }}
+      />
+    ) : (
+      <GPUColorGradingScreen
+        onAgentBridgeReady={bridge => {
+          gradingBridgeRef.current = bridge;
+        }}
+        externalApplyParamsRequest={reuseRequest}
+        externalImportRequest={importRequest}
+      />
+    );
+
+  const worksScreen = useMemo(() => {
+    if (worksSubPage === 'community') {
       return (
-        <HomeModuleShell route={homeRoute} onRouteChange={setHomeRoute}>
-          <GPUColorGradingScreen
-            onAgentBridgeReady={bridge => {
-              gradingBridgeRef.current = bridge;
-            }}
-            externalApplyParamsRequest={reuseRequest}
-          />
-        </HomeModuleShell>
+        <View style={styles.secondaryPage}>
+          <View style={styles.secondaryHeader}>
+            <Pressable
+              style={styles.backChip}
+              onPress={() => {
+                setWorksSubPage('library');
+                setWorksToolsOpen(false);
+              }}>
+              <Icon name="chevron-back-outline" size={14} color={VISION_THEME.text.secondary} />
+              <Text style={styles.backChipText}>返回作品</Text>
+            </Pressable>
+          </View>
+          <View style={styles.secondaryBody}>
+            <CommunityScreen
+              onAgentBridgeReady={bridge => {
+                communityBridgeRef.current = bridge;
+              }}
+              onReuseGradingParams={params => {
+                setReuseRequest({id: Date.now(), params});
+                setActiveMainTab('create');
+                setCreateRoute('editor');
+              }}
+            />
+          </View>
+        </View>
+      );
+    }
+    if (worksSubPage === 'modeling') {
+      return (
+        <View style={styles.secondaryPage}>
+          <View style={styles.secondaryHeader}>
+            <Pressable
+              style={styles.backChip}
+              onPress={() => {
+                setWorksSubPage('library');
+                setWorksToolsOpen(false);
+              }}>
+              <Icon name="chevron-back-outline" size={14} color={VISION_THEME.text.secondary} />
+              <Text style={styles.backChipText}>返回作品</Text>
+            </Pressable>
+          </View>
+          <View style={styles.secondaryBody}>
+            <TwoDToThreeDScreen
+              onAgentBridgeReady={bridge => {
+                convertBridgeRef.current = bridge;
+              }}
+            />
+          </View>
+        </View>
       );
     }
     return (
-      <HomeModuleShell route={homeRoute} onRouteChange={setHomeRoute}>
-        <TwoDToThreeDScreen
-          onAgentBridgeReady={bridge => {
-            convertBridgeRef.current = bridge;
-          }}
-        />
-      </HomeModuleShell>
+      <WorksScreen
+        filter={worksFilter}
+        onChangeFilter={setWorksFilter}
+        onOpenCommunity={() => {
+          setWorksSubPage('community');
+          setWorksToolsOpen(true);
+        }}
+        onOpenModeling={() => {
+          setWorksSubPage('modeling');
+          setWorksToolsOpen(true);
+        }}
+        onOpenSettings={() => {
+          setWorksSubPage('settings');
+          setWorksSettingsOpen(true);
+        }}
+        onReuseInEditor={() => {
+          setActiveMainTab('create');
+          setCreateRoute('editor');
+        }}
+      />
     );
-  }, [homeRoute, reuseRequest, setHomeRoute]);
+  }, [
+    setActiveMainTab,
+    setCreateRoute,
+    setWorksFilter,
+    setWorksSettingsOpen,
+    setWorksSubPage,
+    setWorksToolsOpen,
+    worksFilter,
+    worksSubPage,
+  ]);
 
   const screen = useMemo(() => {
-    switch (activeMainTab) {
-      case 'home':
-        return homeScreen;
-      case 'agent':
-        return <AIAgentScreen />;
-      case 'community':
-        return (
-          <CommunityScreen
-            onAgentBridgeReady={bridge => {
-              communityBridgeRef.current = bridge;
-            }}
-            onReuseGradingParams={params => {
-              setReuseRequest({
-                id: Date.now(),
-                params,
-              });
-              setActiveMainTab('home');
-              setHomeRoute('grading');
-            }}
-          />
-        );
-      case 'profile':
-        return (
-          <ProfileSettingsScreen
-            onAgentBridgeReady={bridge => {
-              profileBridgeRef.current = bridge;
-            }}
-          />
-        );
-      default:
-        return homeScreen;
+    if (activeMainTab === 'create') {
+      return createScreen;
     }
-  }, [activeMainTab, homeScreen, setActiveMainTab, setHomeRoute]);
+    if (activeMainTab === 'assistant') {
+      return <AIAgentScreen />;
+    }
+    return worksScreen;
+  }, [activeMainTab, createScreen, worksScreen]);
 
   const activeTabMeta = useMemo(
     () => TABS.find(tab => tab.key === activeMainTab) || TABS[0],
     [activeMainTab],
   );
 
-  const homeRouteMeta = useMemo(
-    () => HOME_ROUTES.find(route => route.key === homeRoute) || HOME_ROUTES[0],
-    [homeRoute],
-  );
-
-  const headerSubtitle =
-    activeMainTab === 'home'
-      ? `当前模块 · ${homeRouteMeta.label}`
-      : `当前区域 · ${activeTabMeta.label}`;
+  const subtitle =
+    activeMainTab === 'create'
+      ? `创作/${createRoute === 'hub' ? '入口' : '编辑器'}`
+      : activeMainTab === 'works'
+        ? `作品/${worksPageLabel(worksSubPage)}`
+        : 'AI 助手';
 
   const topPanelAnimatedStyle = {
     opacity: shellAnim,
@@ -420,7 +546,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
       {
         translateY: shellAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [-14, 0],
+          outputRange: [-16, 0],
         }),
       },
     ],
@@ -432,73 +558,72 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
       {
         translateY: shellAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [18, 0],
+          outputRange: [20, 0],
         }),
       },
     ],
   };
 
   return (
-    <LinearGradient
-      colors={['#2a0f18', '#4a1628', '#1d0b12']}
-      locations={[0.02, 0.48, 1]}
-      style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#2a0f18" />
+    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={VISION_THEME.background.top} />
       <Animated.View
         style={[
           styles.topPanel,
           topPanelAnimatedStyle,
-          {
-            paddingTop: Math.max(insets.top + 10, 20),
-          },
+          {paddingTop: Math.max(insets.top + 8, 16)},
         ]}>
         <View style={styles.topPanelCard}>
-          <Text style={styles.brandTitle}>VISION GENIE STUDIO</Text>
-          <Text style={styles.brandSubtitle}>{headerSubtitle}</Text>
-          <View style={styles.topPanelMetaRow}>
-            <View style={styles.metaBadge}>
-              <Icon name={activeTabMeta.icon} size={14} color="#ffc799" />
-              <Text style={styles.metaBadgeText}>{activeTabMeta.label}</Text>
+          <Text style={styles.brandTitle}>AI CAMERA STUDIO</Text>
+          <Text style={styles.brandSubtitle}>{subtitle}</Text>
+          <StatusStrip
+            compact
+            items={[
+              {label: activeTabMeta.label, icon: activeTabMeta.icon, tone: 'active'},
+              {
+                label: activeMainTab === 'works' && worksToolsOpen ? '工具态' : '主流程',
+                icon: activeMainTab === 'works' ? 'construct-outline' : 'navigate-outline',
+                tone: activeMainTab === 'works' && worksToolsOpen ? 'warning' : 'idle',
+                pulse: activeMainTab === 'works' && worksToolsOpen,
+              },
+            ]}
+          />
+          {activeMainTab === 'create' ? (
+            <View style={styles.routeChipRow}>
+              {CREATE_ROUTES.map(route => {
+                const active = route.key === createRoute;
+                return (
+                  <Pressable
+                    key={route.key}
+                    style={[styles.routeChip, active && styles.routeChipActive]}
+                    onPress={() => setCreateRoute(route.key)}>
+                    <Text style={[styles.routeChipText, active && styles.routeChipTextActive]}>
+                      {route.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            <View style={styles.metaBadgeMuted}>
-              <Text style={styles.metaBadgeMutedText}>AI Driven Workflow</Text>
+          ) : null}
+          {activeMainTab === 'works' ? (
+            <View style={styles.routeChipRow}>
+              <View style={[styles.routeChip, styles.routeChipActive]}>
+                <Text style={styles.routeChipTextActive}>{worksPageLabel(worksSubPage)}</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.routeChipRow}>
-            {HOME_ROUTES.map(route => {
-              const active = activeMainTab === 'home' && homeRoute === route.key;
-              return (
-                <Pressable
-                  key={route.key}
-                  style={[styles.routeChip, active && styles.routeChipActive]}
-                  onPress={() => {
-                    setActiveMainTab('home');
-                    setHomeRoute(route.key);
-                  }}>
-                  <Icon
-                    name={route.icon}
-                    size={14}
-                    color={active ? '#ffe9d6' : 'rgba(255, 226, 202, 0.72)'}
-                  />
-                  <Text style={[styles.routeChipText, active && styles.routeChipTextActive]}>
-                    {route.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          ) : null}
         </View>
       </Animated.View>
+
       <View style={styles.screenArea}>
         <View style={styles.screenSurface}>{screen}</View>
       </View>
+
       <Animated.View
         style={[
           styles.tabBarOuter,
           dockAnimatedStyle,
-          {
-            paddingBottom: Math.max(insets.bottom, 10),
-          },
+          {paddingBottom: Math.max(insets.bottom, 10)},
         ]}>
         <View style={styles.tabBar}>
           {TABS.map(tab => {
@@ -512,7 +637,7 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
                   <Icon
                     name={tab.icon}
                     size={18}
-                    color={active ? '#fff3e8' : 'rgba(255, 225, 198, 0.68)'}
+                    color={active ? '#EAF4FF' : 'rgba(245,247,251,0.66)'}
                   />
                 </View>
                 <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{tab.label}</Text>
@@ -521,6 +646,18 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
           })}
         </View>
       </Animated.View>
+
+      <BottomSheetPanel
+        visible={worksSettingsOpen}
+        title="账号与偏好"
+        onClose={() => setWorksSettingsOpen(false)}>
+        <ProfileSettingsScreen
+          onAgentBridgeReady={bridge => {
+            profileBridgeRef.current = bridge;
+          }}
+        />
+      </BottomSheetPanel>
+
       <GlobalAgentSprite />
     </LinearGradient>
   );
@@ -529,8 +666,16 @@ const AppShellContent: React.FC<AppShellContentProps> = ({
 const AppShell: React.FC = () => {
   const activeMainTab = useAppStore(state => state.activeMainTab);
   const setActiveMainTab = useAppStore(state => state.setActiveMainTab);
-  const homeRoute = useAppStore(state => state.homeRoute);
-  const setHomeRoute = useAppStore(state => state.setHomeRoute);
+  const createRoute = useAppStore(state => state.createRoute);
+  const setCreateRoute = useAppStore(state => state.setCreateRoute);
+  const worksSubPage = useAppStore(state => state.worksSubPage);
+  const setWorksSubPage = useAppStore(state => state.setWorksSubPage);
+  const worksFilter = useAppStore(state => state.worksFilter);
+  const setWorksFilter = useAppStore(state => state.setWorksFilter);
+  const worksToolsOpen = useAppStore(state => state.worksToolsOpen);
+  const setWorksToolsOpen = useAppStore(state => state.setWorksToolsOpen);
+  const worksSettingsOpen = useAppStore(state => state.worksSettingsOpen);
+  const setWorksSettingsOpen = useAppStore(state => state.setWorksSettingsOpen);
 
   return (
     <AgentRuntimeProvider
@@ -541,13 +686,23 @@ const AppShell: React.FC = () => {
       debugPermissionOverride={AGENT_DEBUG_PERMISSION_OVERRIDE}
       contextSnapshot={() => ({
         currentMainTab: activeMainTab,
-        currentHomeRoute: homeRoute,
+        currentCreateRoute: createRoute,
+        currentWorksSubPage: worksSubPage,
+        currentHomeRoute: mapCreateRouteToLegacy(createRoute),
       })}>
       <AppShellContent
         activeMainTab={activeMainTab}
         setActiveMainTab={setActiveMainTab}
-        homeRoute={homeRoute}
-        setHomeRoute={setHomeRoute}
+        createRoute={createRoute}
+        setCreateRoute={setCreateRoute}
+        worksSubPage={worksSubPage}
+        setWorksSubPage={setWorksSubPage}
+        worksFilter={worksFilter}
+        setWorksFilter={setWorksFilter}
+        worksToolsOpen={worksToolsOpen}
+        setWorksToolsOpen={setWorksToolsOpen}
+        worksSettingsOpen={worksSettingsOpen}
+        setWorksSettingsOpen={setWorksSettingsOpen}
       />
     </AgentRuntimeProvider>
   );
@@ -567,61 +722,27 @@ const styles = StyleSheet.create({
   },
   topPanel: {
     paddingHorizontal: 14,
-    paddingBottom: 10,
+    paddingBottom: 8,
   },
   topPanelCard: {
     borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: 'rgba(22, 10, 16, 0.72)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(14, 24, 40, 0.76)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 188, 150, 0.24)',
+    borderColor: VISION_THEME.border.soft,
     gap: 8,
   },
   brandTitle: {
-    color: '#ffe9d2',
+    color: VISION_THEME.text.primary,
     fontSize: 13,
-    letterSpacing: 1.4,
+    letterSpacing: 1.2,
     fontWeight: '800',
   },
   brandSubtitle: {
-    color: 'rgba(255, 224, 201, 0.86)',
+    color: VISION_THEME.text.secondary,
     fontSize: 12,
     fontWeight: '500',
-  },
-  topPanelMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  metaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255, 144, 84, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 177, 124, 0.32)',
-  },
-  metaBadgeText: {
-    color: '#ffd9bc',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  metaBadgeMuted: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255, 237, 224, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 192, 160, 0.2)',
-  },
-  metaBadgeMutedText: {
-    color: 'rgba(255, 221, 198, 0.72)',
-    fontSize: 10,
-    fontWeight: '600',
   },
   routeChipRow: {
     flexDirection: 'row',
@@ -629,27 +750,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   routeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 198, 164, 0.2)',
-    backgroundColor: 'rgba(255, 246, 236, 0.04)',
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
   routeChipActive: {
-    borderColor: 'rgba(255, 203, 148, 0.72)',
-    backgroundColor: 'rgba(255, 153, 102, 0.24)',
+    borderColor: 'rgba(77,163,255,0.6)',
+    backgroundColor: 'rgba(77,163,255,0.2)',
   },
   routeChipText: {
-    color: 'rgba(255, 214, 185, 0.8)',
+    color: VISION_THEME.text.secondary,
     fontSize: 11,
     fontWeight: '600',
   },
   routeChipTextActive: {
-    color: '#fff3e8',
+    color: '#EAF4FF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   screenArea: {
     flex: 1,
@@ -661,8 +781,8 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 191, 150, 0.24)',
-    backgroundColor: 'rgba(24, 11, 17, 0.48)',
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(12, 18, 31, 0.6)',
   },
   tabBarOuter: {
     paddingHorizontal: 16,
@@ -674,15 +794,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255, 185, 145, 0.28)',
-    backgroundColor: 'rgba(16, 8, 12, 0.86)',
+    borderColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(10, 16, 27, 0.9)',
     paddingVertical: 8,
     paddingHorizontal: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
+    shadowColor: '#4DA3FF',
+    shadowOpacity: 0.18,
     shadowRadius: 16,
-    shadowOffset: {width: 0, height: 8},
-    elevation: 10,
+    shadowOffset: {width: 0, height: 6},
+    elevation: 8,
   },
   tabItem: {
     flex: 1,
@@ -694,7 +814,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   tabItemActive: {
-    backgroundColor: 'rgba(255, 143, 86, 0.22)',
+    backgroundColor: 'rgba(77,163,255,0.2)',
   },
   iconWrap: {
     width: 34,
@@ -704,15 +824,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconWrapActive: {
-    backgroundColor: 'rgba(255, 178, 133, 0.28)',
+    backgroundColor: 'rgba(111,231,255,0.2)',
   },
   tabLabel: {
     fontSize: 11,
-    color: 'rgba(255, 216, 188, 0.68)',
+    color: 'rgba(245,247,251,0.66)',
     fontWeight: '700',
   },
   tabLabelActive: {
-    color: '#fff4e8',
+    color: '#EAF4FF',
+  },
+  secondaryPage: {
+    flex: 1,
+    backgroundColor: VISION_THEME.background.secondary,
+  },
+  secondaryHeader: {
+    paddingTop: 8,
+    paddingHorizontal: 10,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: VISION_THEME.border.soft,
+    backgroundColor: 'rgba(10,16,27,0.74)',
+  },
+  backChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: VISION_THEME.border.soft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  backChipText: {
+    color: VISION_THEME.text.secondary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  secondaryBody: {
+    flex: 1,
   },
 });
 

@@ -3,7 +3,7 @@ import type {AgentPlanRequest} from '../../src/agent/types';
 
 const request = (goal: string): AgentPlanRequest => ({
   intent: {goal},
-  currentTab: 'home',
+  currentTab: 'create',
   capabilities: [
     {
       domain: 'navigation',
@@ -24,7 +24,7 @@ const request = (goal: string): AgentPlanRequest => ({
   ],
   pageSnapshot: {
     'community.lastDraftTitle': '已有草稿标题',
-    currentHomeRoute: 'grading',
+    currentCreateRoute: 'editor',
   },
 });
 
@@ -50,6 +50,6 @@ describe('local planner', () => {
   test('keeps current home route for fallback navigation', () => {
     const plan = buildLocalAgentPlan(request('随便说点什么') as AgentPlanRequest);
     const navAction = plan.actions.find(item => item.domain === 'navigation' && item.operation === 'navigate_tab');
-    expect(navAction?.args).toMatchObject({tab: 'home', route: 'grading'});
+    expect(navAction?.args).toMatchObject({tab: 'create', route: 'editor'});
   });
 });

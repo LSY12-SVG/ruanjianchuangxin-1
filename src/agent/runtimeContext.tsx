@@ -81,14 +81,11 @@ interface ActionRunOutcome {
 const AgentRuntimeContext = createContext<AgentRuntimeContextValue | null>(null);
 
 const quickGoalByTab = (tab: AgentAppTab): string => {
-  if (tab === 'home') {
-    return '根据首页上下文选择调色或建模模块并执行优化';
+  if (tab === 'create') {
+    return '根据创作页上下文执行导入后首轮 AI 调色优化';
   }
-  if (tab === 'community') {
+  if (tab === 'works') {
     return '生成当前内容的社区发布草稿';
-  }
-  if (tab === 'profile') {
-    return '根据当前配置提供并应用设置优化建议';
   }
   return '总结当前页面并给出下一步自动操作';
 };

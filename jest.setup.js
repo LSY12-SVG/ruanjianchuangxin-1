@@ -3,6 +3,46 @@ require('react-native-gesture-handler/jestSetup');
 
 jest.mock('react-native-vector-icons/Ionicons', () => 'Icon');
 jest.mock('react-native-linear-gradient', () => 'LinearGradient');
+jest.mock('@uginy/react-native-liquid-glass', () => {
+  const React = require('react');
+  const {View} = require('react-native');
+  const LiquidGlassView = ({children, style}) => React.createElement(View, {style}, children);
+  return {
+    __esModule: true,
+    default: LiquidGlassView,
+    LiquidGlassView,
+    LIQUID_GLASS_DEFAULTS: {},
+    LIQUID_GLASS_FROSTED: {},
+    LIQUID_GLASS_CRYSTAL: {},
+    LIQUID_GLASS_WARM: {},
+    LIQUID_GLASS_IRIDESCENT: {},
+  };
+});
+jest.mock('react-native-keyboard-controller', () => {
+  const React = require('react');
+  const {View} = require('react-native');
+  return {
+    KeyboardAvoidingView: View,
+    KeyboardProvider: ({children}) => React.createElement(React.Fragment, null, children),
+  };
+});
+jest.mock('react-native-gifted-chat', () => {
+  const React = require('react');
+  const {View, Text} = require('react-native');
+  const GiftedChat = ({renderChatFooter}) =>
+    React.createElement(
+      View,
+      null,
+      React.createElement(Text, null, 'GiftedChatMock'),
+      renderChatFooter ? renderChatFooter() : null,
+    );
+  return {
+    GiftedChat,
+    Bubble: ({children}) => React.createElement(View, null, children),
+    InputToolbar: ({children}) => React.createElement(View, null, children),
+    Send: ({children}) => React.createElement(View, null, children),
+  };
+});
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );

@@ -1,5 +1,5 @@
-export type AgentAppTab = 'home' | 'agent' | 'community' | 'profile';
-export type AgentHomeRoute = 'hub' | 'grading' | 'modeling';
+export type AgentAppTab = 'create' | 'assistant' | 'works';
+export type AgentCreateRoute = 'hub' | 'editor';
 
 export type AgentDomain =
   | 'navigation'
