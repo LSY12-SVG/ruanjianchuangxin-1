@@ -613,6 +613,33 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
     };
   }, []);
 
+  const openPanel = useCallback(() => {
+    setAssistantPanelMode('full');
+  }, []);
+
+  const closePanel = useCallback(() => {
+    setAssistantPanelMode('hidden');
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    setAssistantPanelMode(mode => (mode === 'hidden' ? 'full' : 'hidden'));
+  }, []);
+
+  const openAssistantHalfPanel = useCallback(() => {
+    setAssistantPanelMode('half');
+  }, []);
+
+  const openAssistantFullPanel = useCallback(() => {
+    setAssistantPanelMode('full');
+  }, []);
+
+  const emitAssistantEvent = useCallback((event: Omit<AssistantSceneEvent, 'timestamp'>) => {
+    setLastAssistantEvent({
+      ...event,
+      timestamp: Date.now(),
+    });
+  }, []);
+
   const spriteState = useMemo(() => {
     if (pendingActions.length > 0) {
       return 'confirm' as const;
@@ -643,17 +670,12 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       pendingActions,
       memory,
       setGoalInput,
-      openPanel: () => setAssistantPanelMode('full'),
-      closePanel: () => setAssistantPanelMode('hidden'),
-      togglePanel: () =>
-        setAssistantPanelMode(mode => (mode === 'hidden' ? 'full' : 'hidden')),
-      openAssistantHalfPanel: () => setAssistantPanelMode('half'),
-      openAssistantFullPanel: () => setAssistantPanelMode('full'),
-      emitAssistantEvent: event =>
-        setLastAssistantEvent({
-          ...event,
-          timestamp: Date.now(),
-        }),
+      openPanel,
+      closePanel,
+      togglePanel,
+      openAssistantHalfPanel,
+      openAssistantFullPanel,
+      emitAssistantEvent,
       registerOperation,
       submitGoal,
       runQuickOptimizeCurrentPage,
@@ -666,6 +688,8 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       confirmPendingActions,
       continueLastTask,
       currentTab,
+      emitAssistantEvent,
+      closePanel,
       dismissPendingActions,
       goalInput,
       lastError,
@@ -675,6 +699,9 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       latestExecution,
       latestPlan,
       memory,
+      openAssistantFullPanel,
+      openAssistantHalfPanel,
+      openPanel,
       assistantPanelMode,
       pendingActions,
       phase,
@@ -682,6 +709,7 @@ export const AgentRuntimeProvider: React.FC<AgentRuntimeProviderProps> = ({
       runQuickOptimizeCurrentPage,
       spriteState,
       submitGoal,
+      togglePanel,
       undoLastExecution,
     ],
   );

@@ -46,10 +46,18 @@ async function proxyRemoteAsset(res, asset) {
   res.status(200).send(bodyBuffer);
 }
 
-function createImageTo3DRouter({ config, service, captureService, rateLimiter, upload }) {
+function createImageTo3DRouter({
+  config,
+  service,
+  captureService,
+  rateLimiter,
+  upload,
+  basePath = '/api/v1/image-to-3d',
+  modelPath = '/api/models',
+}) {
   const router = express.Router();
 
-  router.post('/api/v1/image-to-3d/jobs', rateLimiter, upload.single('image'), async (req, res, next) => {
+  router.post(`${basePath}/jobs`, rateLimiter, upload.single('image'), async (req, res, next) => {
     try {
       const validationError = validateImageUpload(req.file, config.maxUploadBytes);
       if (validationError) {
@@ -67,7 +75,7 @@ function createImageTo3DRouter({ config, service, captureService, rateLimiter, u
     }
   });
 
-  router.get('/api/v1/image-to-3d/jobs/:taskId', async (req, res, next) => {
+  router.get(`${basePath}/jobs/:taskId`, async (req, res, next) => {
     try {
       const task = await service.getTask(req.params.taskId);
 
@@ -81,12 +89,12 @@ function createImageTo3DRouter({ config, service, captureService, rateLimiter, u
     }
   });
 
-  router.options('/api/v1/image-to-3d/jobs/:taskId/assets/:assetIndex', (_req, res) => {
+  router.options(`${basePath}/jobs/:taskId/assets/:assetIndex`, (_req, res) => {
     setAssetCorsHeaders(res);
     res.status(204).end();
   });
 
-  router.get('/api/v1/image-to-3d/jobs/:taskId/assets/:assetIndex', async (req, res, next) => {
+  router.get(`${basePath}/jobs/:taskId/assets/:assetIndex`, async (req, res, next) => {
     try {
       const task = await service.getTask(req.params.taskId);
 
@@ -105,27 +113,7 @@ function createImageTo3DRouter({ config, service, captureService, rateLimiter, u
     }
   });
 
-  router.get('/api/reconstruction-tasks/:taskId', async (req, res, next) => {
-    try {
-      const task = await service.getTask(req.params.taskId);
-      if (!task) {
-        throw new ApiError(404, 'TASK_NOT_FOUND', 'Task not found.');
-      }
-
-      const publicTask = serializeTask(req, config, service.toPublicTask(task));
-      const session = captureService.syncSessionTask(task);
-
-      res.json({
-        ...publicTask,
-        sessionId: session?.id || null,
-        modelId: task.status === 'succeeded' ? task.taskId : null,
-      });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.get('/api/models/:modelId', async (req, res, next) => {
+  router.get(`${modelPath}/:modelId`, async (req, res, next) => {
     try {
       const model = await captureService.getPublicModelAsset(req.params.modelId);
       if (!model) {

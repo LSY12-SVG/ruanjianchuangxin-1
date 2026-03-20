@@ -14,17 +14,38 @@ const {createImageTo3DRouter} = require('./routes/imageTo3dRoutes');
 
 function createImageTo3DModule(overrides = {}) {
   const config = {...defaultConfig, ...(overrides.config || {})};
+  const routeConfig = {
+    jobsBasePath:
+      typeof overrides.jobsBasePath === 'string'
+        ? overrides.jobsBasePath
+        : '/api/v1/image-to-3d',
+    captureBasePath:
+      typeof overrides.captureBasePath === 'string'
+        ? overrides.captureBasePath
+        : '/api/capture-sessions',
+    modelsBasePath:
+      typeof overrides.modelsBasePath === 'string'
+        ? overrides.modelsBasePath
+        : '/api/models',
+  };
   const logger = overrides.logger || createLogger();
   const db = overrides.db || createDatabase(config.databasePath);
   const repository = createTaskRepository(db);
   const captureRepository = createCaptureRepository(db);
   const provider = overrides.provider || createProvider(config);
-  const service = createImageTo3DService({provider, repository, logger, config});
+  const service = createImageTo3DService({
+    provider,
+    repository,
+    logger,
+    config,
+    jobsBasePath: routeConfig.jobsBasePath,
+  });
   const captureService = createCaptureSessionService({
     captureRepository,
     imageService: service,
     logger,
     config,
+    captureBasePath: routeConfig.captureBasePath,
   });
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -41,12 +62,15 @@ function createImageTo3DModule(overrides = {}) {
     captureService,
     rateLimiter,
     upload,
+    basePath: routeConfig.jobsBasePath,
+    modelPath: routeConfig.modelsBasePath,
   });
   const captureRouter = createCaptureRouter({
     config,
     captureService,
     rateLimiter,
     upload,
+    basePath: routeConfig.captureBasePath,
   });
 
   const handleError = (error, _req, res, next) => {

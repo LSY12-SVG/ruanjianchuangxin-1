@@ -2,8 +2,8 @@ const crypto = require('crypto');
 const {ApiError} = require('./errors');
 const {mapProviderStatus, buildViewerPayload, toPublicTask} = require('./jobMapper');
 
-function buildAssetUrl(taskId, assetIndex) {
-  return `/api/v1/image-to-3d/jobs/${taskId}/assets/${assetIndex}`;
+function buildAssetUrl(basePath, taskId, assetIndex) {
+  return `${basePath}/jobs/${taskId}/assets/${assetIndex}`;
 }
 
 function getAssetIndex(task, targetUrl) {
@@ -14,11 +14,11 @@ function getAssetIndex(task, targetUrl) {
   return (task.viewerFiles || []).findIndex(file => file?.url === targetUrl);
 }
 
-function buildPublicTask(task) {
+function buildPublicTask(task, jobsBasePath) {
   const publicTask = toPublicTask(task);
   const viewerFiles = (task.viewerFiles || []).map((file, index) => ({
     ...file,
-    url: buildAssetUrl(task.taskId, index),
+    url: buildAssetUrl(jobsBasePath, task.taskId, index),
   }));
 
   const previewIndex = getAssetIndex(task, task.previewUrl);
@@ -26,14 +26,25 @@ function buildPublicTask(task) {
 
   return {
     ...publicTask,
-    previewUrl: previewIndex >= 0 ? buildAssetUrl(task.taskId, previewIndex) : publicTask.previewUrl,
+    previewUrl:
+      previewIndex >= 0
+        ? buildAssetUrl(jobsBasePath, task.taskId, previewIndex)
+        : publicTask.previewUrl,
     downloadUrl:
-      downloadIndex >= 0 ? buildAssetUrl(task.taskId, downloadIndex) : publicTask.downloadUrl,
+      downloadIndex >= 0
+        ? buildAssetUrl(jobsBasePath, task.taskId, downloadIndex)
+        : publicTask.downloadUrl,
     viewerFiles,
   };
 }
 
-function createImageTo3DService({provider, repository, logger, config}) {
+function createImageTo3DService({
+  provider,
+  repository,
+  logger,
+  config,
+  jobsBasePath = '/api/v1/image-to-3d',
+}) {
   return {
     async createTask(file, options = {}) {
       const now = new Date().toISOString();
@@ -176,7 +187,7 @@ function createImageTo3DService({provider, repository, logger, config}) {
     },
 
     toPublicTask(task) {
-      return buildPublicTask(task);
+      return buildPublicTask(task, jobsBasePath);
     },
   };
 }

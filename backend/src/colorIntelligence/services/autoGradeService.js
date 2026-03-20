@@ -5,17 +5,42 @@ const {
 } = require('../../autoGrade');
 const {normalizeAutoGradeRequest} = require('../contracts/autoGrade');
 
-const handleAutoGrade = async (requestBodyRaw, modelHealthSnapshot) => {
+const handleAutoGrade = async (requestBodyRaw, modelHealthSnapshot, options = {}) => {
+  const strictMode = options.strictMode === true;
+  const responseShape = options.responseShape === 'module' ? 'module' : 'legacy';
   const requestBody = normalizeAutoGradeRequest(requestBodyRaw);
-  const validation = validateAutoGradeRequest(requestBody);
+  const validation = validateAutoGradeRequest(requestBody, {strictMode});
   if (!validation.ok) {
     return {
       status: 400,
-      payload: {error: validation.message},
+      payload:
+        responseShape === 'module'
+          ? {
+              error: {
+                code: 'BAD_REQUEST',
+                message: validation.message,
+              },
+            }
+          : {error: validation.message},
     };
   }
   const phase = requestBody?.phase === 'refine' ? 'refine' : 'fast';
   if (phase === 'refine' && !modelHealthSnapshot.refineModelReady) {
+    if (strictMode) {
+      return {
+        status: 503,
+        payload: {
+          error: {
+            code: 'MODEL_UNAVAILABLE',
+            message: 'Refine model is not ready.',
+            details: {
+              modelCheckError: modelHealthSnapshot.modelCheckError || '',
+              missingModels: modelHealthSnapshot.missingModelIds || [],
+            },
+          },
+        },
+      };
+    }
     const fallback = conservativeFallbackResult(requestBody, 'model_unavailable');
     console.warn(
       '[auto-grade-proxy] fallback',
@@ -39,7 +64,7 @@ const handleAutoGrade = async (requestBodyRaw, modelHealthSnapshot) => {
   }
 
   try {
-    const result = await runAutoGrade(requestBody);
+    const result = await runAutoGrade(requestBody, {strictMode});
     console.log(
       '[auto-grade-proxy] metrics',
       JSON.stringify({
@@ -62,6 +87,21 @@ const handleAutoGrade = async (requestBodyRaw, modelHealthSnapshot) => {
       payload: result,
     };
   } catch (_error) {
+    if (strictMode) {
+      const statusCode =
+        typeof _error?.statusCode === 'number' && _error.statusCode >= 400 && _error.statusCode < 600
+          ? _error.statusCode
+          : 502;
+      return {
+        status: statusCode,
+        payload: {
+          error: {
+            code: String(_error?.code || 'REAL_MODEL_REQUIRED'),
+            message: String(_error?.message || 'Strict mode requires real model output.'),
+          },
+        },
+      };
+    }
     const fallback = conservativeFallbackResult(requestBody, 'http_5xx');
     console.warn(
       '[auto-grade-proxy] fallback',

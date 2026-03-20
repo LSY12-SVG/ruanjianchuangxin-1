@@ -38,15 +38,99 @@ const resolveInterpretRuntimeOptions = mode => {
   };
 };
 
-const handleInterpret = async requestBodyRaw => {
+const toModuleInterpretPayload = interpreted => ({
+  actions: Array.isArray(interpreted.intent_actions) ? interpreted.intent_actions : [],
+  confidence: Number.isFinite(interpreted.confidence) ? interpreted.confidence : 0,
+  reasoningSummary: interpreted.reasoning_summary || '',
+  needsConfirmation:
+    typeof interpreted.needsConfirmation === 'boolean' ? interpreted.needsConfirmation : true,
+  message: interpreted.message || '',
+  source: interpreted.source || 'cloud',
+  analysisSummary: interpreted.analysis_summary || '',
+  appliedProfile: interpreted.applied_profile || '',
+  sceneProfile: interpreted.scene_profile || 'general',
+  sceneConfidence:
+    typeof interpreted.scene_confidence === 'number' ? interpreted.scene_confidence : 0,
+  qualityRiskFlags: Array.isArray(interpreted.quality_risk_flags)
+    ? interpreted.quality_risk_flags
+    : [],
+  recommendedIntensity: interpreted.recommended_intensity || 'normal',
+  modelUsed: typeof interpreted.model_used === 'string' ? interpreted.model_used : '',
+  modelRoute: typeof interpreted.model_route === 'string' ? interpreted.model_route : '',
+  latencyMs: typeof interpreted.latency_ms === 'number' ? interpreted.latency_ms : -1,
+});
+
+const toInterpretError = error => {
+  const code = String(error?.code || '');
+  const status = Number(error?.status || 0);
+  if (status >= 400 && status < 600 && code) {
+    return {
+      status,
+      payload: {
+        error: {
+          code,
+          message: String(error?.message || 'interpret_failed'),
+        },
+      },
+    };
+  }
+
+  if (code === 'MODEL_UNAVAILABLE') {
+    return {
+      status: 503,
+      payload: {
+        error: {
+          code: 'MODEL_UNAVAILABLE',
+          message: String(error?.message || 'Model is unavailable.'),
+        },
+      },
+    };
+  }
+  if (code === 'PROVIDER_TIMEOUT' || code === 'TIMEOUT') {
+    return {
+      status: 504,
+      payload: {
+        error: {
+          code: 'PROVIDER_TIMEOUT',
+          message: String(error?.message || 'Provider timeout.'),
+        },
+      },
+    };
+  }
+
+  return {
+    status: 502,
+    payload: {
+      error: {
+        code: 'REAL_MODEL_REQUIRED',
+        message: String(error?.message || 'Strict mode requires real model output.'),
+      },
+    },
+  };
+};
+
+const handleInterpret = async (requestBodyRaw, options = {}) => {
+  const strictMode = options.strictMode === true;
+  const responseShape = options.responseShape === 'module' ? 'module' : 'legacy';
   const requestBody = normalizeInterpretRequest(requestBodyRaw);
+  if (options.forceMode === 'initial_visual_suggest' || options.forceMode === 'voice_refine') {
+    requestBody.mode = options.forceMode;
+  }
   const validation = validateInterpretRequest(requestBody);
   if (!validation.ok) {
     return {
       status: 400,
-      payload: {
-        error: validation.message,
-      },
+      payload:
+        responseShape === 'module'
+          ? {
+              error: {
+                code: 'BAD_REQUEST',
+                message: validation.message,
+              },
+            }
+          : {
+              error: validation.message,
+            },
     };
   }
 
@@ -54,9 +138,15 @@ const handleInterpret = async requestBodyRaw => {
   try {
     providerResult = await interpretWithProvider(
       requestBody,
-      resolveInterpretRuntimeOptions(requestBody.mode),
+      {
+        ...resolveInterpretRuntimeOptions(requestBody.mode),
+        strictMode,
+      },
     );
   } catch (error) {
+    if (strictMode) {
+      return toInterpretError(error);
+    }
     return {
       status: 502,
       payload: {
@@ -80,6 +170,17 @@ const handleInterpret = async requestBodyRaw => {
 
   const interpreted = normalizeInterpretResponse(providerResult);
   if (!interpreted) {
+    if (strictMode) {
+      return {
+        status: 502,
+        payload: {
+          error: {
+            code: 'BAD_PROVIDER_PAYLOAD',
+            message: 'provider returned invalid schema',
+          },
+        },
+      };
+    }
     return {
       status: 502,
       payload: {
@@ -124,9 +225,21 @@ const handleInterpret = async requestBodyRaw => {
     }),
   );
 
+  if (strictMode && (interpreted.fallback_used || interpreted.source === 'fallback')) {
+    return {
+      status: 502,
+      payload: {
+        error: {
+          code: 'REAL_MODEL_REQUIRED',
+          message: 'Fallback output is not allowed in strict mode.',
+        },
+      },
+    };
+  }
+
   return {
     status: 200,
-    payload: interpreted,
+    payload: responseShape === 'module' ? toModuleInterpretPayload(interpreted) : interpreted,
   };
 };
 

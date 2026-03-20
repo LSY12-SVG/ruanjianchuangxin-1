@@ -24,6 +24,13 @@ const asBoolean = (value, fallback) => {
 
 const isNonEmpty = value => typeof value === 'string' && value.trim().length > 0;
 const resolveUserId = req => String(req.user?.id || '').trim();
+const sendRouteError = (res, status, code, message) =>
+  res.status(status).json({
+    error: {
+      code,
+      message: message || code,
+    },
+  });
 
 const createCommunityRouter = ({
   repo,
@@ -43,7 +50,7 @@ const createCommunityRouter = ({
       res.json(result);
     } catch (error) {
       console.error('[community] feed failed', error);
-      res.status(500).json({error: 'failed_to_fetch_feed'});
+      sendRouteError(res, 500, 'failed_to_fetch_feed');
     }
   });
 
@@ -56,7 +63,7 @@ const createCommunityRouter = ({
       res.json(result);
     } catch (error) {
       console.error('[community] my posts failed', error);
-      res.status(500).json({error: 'failed_to_fetch_my_posts'});
+      sendRouteError(res, 500, 'failed_to_fetch_my_posts');
     }
   });
 
@@ -64,7 +71,7 @@ const createCommunityRouter = ({
     const userId = resolveUserId(req);
     const payload = sanitizePostPayload(req.body);
     if (!isNonEmpty(payload.title)) {
-      res.status(400).json({error: 'title_required'});
+      sendRouteError(res, 400, 'title_required');
       return;
     }
     try {
@@ -72,7 +79,7 @@ const createCommunityRouter = ({
       res.status(201).json({item: draft});
     } catch (error) {
       console.error('[community] create draft failed', error);
-      res.status(500).json({error: 'failed_to_create_draft'});
+      sendRouteError(res, 500, 'failed_to_create_draft');
     }
   });
 
@@ -80,19 +87,19 @@ const createCommunityRouter = ({
     const userId = resolveUserId(req);
     const payload = sanitizePostPayload(req.body);
     if (!isNonEmpty(payload.title)) {
-      res.status(400).json({error: 'title_required'});
+      sendRouteError(res, 400, 'title_required');
       return;
     }
     try {
       const updated = await repo.updateDraft(userId, req.params.id, payload);
       if (!updated) {
-        res.status(404).json({error: 'draft_not_found'});
+        sendRouteError(res, 404, 'draft_not_found');
         return;
       }
       res.json({item: updated});
     } catch (error) {
       console.error('[community] update draft failed', error);
-      res.status(500).json({error: 'failed_to_update_draft'});
+      sendRouteError(res, 500, 'failed_to_update_draft');
     }
   });
 
@@ -101,13 +108,13 @@ const createCommunityRouter = ({
     try {
       const published = await repo.publishDraft(userId, req.params.id);
       if (!published) {
-        res.status(404).json({error: 'draft_not_found'});
+        sendRouteError(res, 404, 'draft_not_found');
         return;
       }
       res.json({item: published});
     } catch (error) {
       console.error('[community] publish draft failed', error);
-      res.status(500).json({error: 'failed_to_publish_draft'});
+      sendRouteError(res, 500, 'failed_to_publish_draft');
     }
   });
 
@@ -117,17 +124,17 @@ const createCommunityRouter = ({
     try {
       const result = await repo.toggleLike(userId, req.params.id, liked);
       if (result?.error === 'not_found') {
-        res.status(404).json({error: 'post_not_found'});
+        sendRouteError(res, 404, 'post_not_found');
         return;
       }
       if (result?.error === 'not_published') {
-        res.status(403).json({error: 'post_not_published'});
+        sendRouteError(res, 403, 'post_not_published');
         return;
       }
       res.json(result);
     } catch (error) {
       console.error('[community] toggle like failed', error);
-      res.status(500).json({error: 'failed_to_toggle_like'});
+      sendRouteError(res, 500, 'failed_to_toggle_like');
     }
   });
 
@@ -137,17 +144,17 @@ const createCommunityRouter = ({
     try {
       const result = await repo.toggleSave(userId, req.params.id, saved);
       if (result?.error === 'not_found') {
-        res.status(404).json({error: 'post_not_found'});
+        sendRouteError(res, 404, 'post_not_found');
         return;
       }
       if (result?.error === 'not_published') {
-        res.status(403).json({error: 'post_not_published'});
+        sendRouteError(res, 403, 'post_not_published');
         return;
       }
       res.json(result);
     } catch (error) {
       console.error('[community] toggle save failed', error);
-      res.status(500).json({error: 'failed_to_toggle_save'});
+      sendRouteError(res, 500, 'failed_to_toggle_save');
     }
   });
 
@@ -157,13 +164,13 @@ const createCommunityRouter = ({
     try {
       const result = await repo.getComments(userId, req.params.id, pagination);
       if (result?.error === 'not_found') {
-        res.status(404).json({error: 'post_not_found'});
+        sendRouteError(res, 404, 'post_not_found');
         return;
       }
       res.json(result);
     } catch (error) {
       console.error('[community] get comments failed', error);
-      res.status(500).json({error: 'failed_to_fetch_comments'});
+      sendRouteError(res, 500, 'failed_to_fetch_comments');
     }
   });
 
@@ -171,31 +178,31 @@ const createCommunityRouter = ({
     const userId = resolveUserId(req);
     const payload = sanitizeCommentPayload(req.body);
     if (!isNonEmpty(payload.content)) {
-      res.status(400).json({error: 'comment_content_required'});
+      sendRouteError(res, 400, 'comment_content_required');
       return;
     }
     try {
       const result = await repo.createComment(userId, req.params.id, payload);
       if (result?.error === 'not_found') {
-        res.status(404).json({error: 'post_not_found'});
+        sendRouteError(res, 404, 'post_not_found');
         return;
       }
       if (result?.error === 'parent_not_found') {
-        res.status(404).json({error: 'parent_comment_not_found'});
+        sendRouteError(res, 404, 'parent_comment_not_found');
         return;
       }
       if (result?.error === 'reply_depth_exceeded') {
-        res.status(400).json({error: 'reply_depth_exceeded'});
+        sendRouteError(res, 400, 'reply_depth_exceeded');
         return;
       }
       if (result?.error === 'not_published') {
-        res.status(403).json({error: 'post_not_published'});
+        sendRouteError(res, 403, 'post_not_published');
         return;
       }
       res.status(201).json({item: result});
     } catch (error) {
       console.error('[community] create comment failed', error);
-      res.status(500).json({error: 'failed_to_create_comment'});
+      sendRouteError(res, 500, 'failed_to_create_comment');
     }
   });
 

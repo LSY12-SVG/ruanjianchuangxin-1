@@ -4,6 +4,41 @@ const {createSegmentationResult} = require('./segmentation/service');
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const isObject = value => typeof value === 'object' && value !== null;
 
+const createAutoGradeError = (message, code, statusCode) => {
+  const error = new Error(message);
+  error.code = code;
+  error.statusCode = statusCode;
+  return error;
+};
+
+const mapProviderErrorToAutoGradeError = error => {
+  const code = String(error?.code || '');
+  const status = Number(error?.status || error?.statusCode || 0);
+  const message = String(error?.message || 'provider execution failed');
+
+  if (status >= 400 && status < 600 && code) {
+    return createAutoGradeError(message, code, status);
+  }
+  if (code === 'MODEL_UNAVAILABLE') {
+    return createAutoGradeError(message, 'MODEL_UNAVAILABLE', 503);
+  }
+  if (code === 'TIMEOUT' || code === 'PROVIDER_TIMEOUT') {
+    return createAutoGradeError(message, 'PROVIDER_TIMEOUT', 504);
+  }
+  if (code === 'NETWORK' || code === 'PROVIDER_NETWORK_ERROR') {
+    return createAutoGradeError(message, 'PROVIDER_NETWORK_ERROR', 502);
+  }
+  if (
+    code === 'BAD_PAYLOAD' ||
+    code === 'INVALID_JSON' ||
+    code === 'SCHEMA_INVALID' ||
+    code === 'HTTP_400'
+  ) {
+    return createAutoGradeError(message, 'BAD_PROVIDER_PAYLOAD', 502);
+  }
+  return createAutoGradeError(message, 'REAL_MODEL_REQUIRED', 502);
+};
+
 const AUTO_GRADE_PHASE_DEFAULTS = {
   fast: {
     timeoutMs: 5000,
@@ -82,7 +117,8 @@ const withRuntimeDiagnostics = (result, request, phaseRuntime) => {
   };
 };
 
-const validateAutoGradeRequest = body => {
+const validateAutoGradeRequest = (body, options = {}) => {
+  const strictMode = options.strictMode === true;
   if (!isObject(body)) {
     return {ok: false, message: 'request body must be object'};
   }
@@ -106,6 +142,9 @@ const validateAutoGradeRequest = body => {
   const phase = body.phase === 'refine' ? 'refine' : 'fast';
   const hasBase64 = typeof body.image.base64 === 'string' && body.image.base64.length > 0;
   const hasUri = typeof body.image.uri === 'string' && body.image.uri.length > 0;
+  if (strictMode && !hasBase64) {
+    return {ok: false, message: 'strict mode requires image.base64'};
+  }
   if (phase === 'refine' && !hasBase64) {
     return {ok: false, message: 'refine phase requires image.base64'};
   }
@@ -278,11 +317,15 @@ const getAutoGradeModelConfig = () => ({
   refineModelChain: getRefineModelChain(),
 });
 
-const runAutoGradeFast = async request => {
+const runAutoGradeFast = async (request, options = {}) => {
+  const strictMode = options.strictMode === true;
   const startedAt = Date.now();
   const phaseRuntime = resolveAutoGradePhaseRuntime('fast');
   const hasBase64 = typeof request?.image?.base64 === 'string' && request.image.base64.length > 0;
   if (!hasBase64) {
+    if (strictMode) {
+      throw createAutoGradeError('strict mode requires image.base64', 'BAD_REQUEST', 400);
+    }
     return withRuntimeDiagnostics(
       {
         ...buildFastHeuristicResult(request),
@@ -314,6 +357,9 @@ const runAutoGradeFast = async request => {
       },
     );
   } catch (_error) {
+    if (strictMode) {
+      throw mapProviderErrorToAutoGradeError(_error);
+    }
     return withRuntimeDiagnostics(
       {
         ...buildFastHeuristicResult(request),
@@ -342,7 +388,22 @@ const runAutoGradeFast = async request => {
   const modelUsed = typeof fastPass.model_used === 'string' ? fastPass.model_used : undefined;
   const modelRoute = typeof fastPass.model_route === 'string' ? fastPass.model_route : undefined;
 
+  if (strictMode && (fallbackUsed || String(fastPass.source || '') === 'fallback')) {
+    throw createAutoGradeError(
+      'Fallback output is not allowed in strict mode.',
+      'REAL_MODEL_REQUIRED',
+      502,
+    );
+  }
+
   if (!globalActions.length && !localMaskPlan.length) {
+    if (strictMode) {
+      throw createAutoGradeError(
+        'No model actions produced in strict mode.',
+        'REAL_MODEL_REQUIRED',
+        502,
+      );
+    }
     return withRuntimeDiagnostics(
       {
         ...buildFastHeuristicResult(request),
@@ -374,26 +435,36 @@ const runAutoGradeFast = async request => {
   );
 };
 
-const runAutoGradeRefine = async request => {
+const runAutoGradeRefine = async (request, options = {}) => {
+  const strictMode = options.strictMode === true;
   const startedAt = Date.now();
   const phaseRuntime = resolveAutoGradePhaseRuntime('refine');
-  const refinePass = await interpretWithProvider(
-    {
-      mode: 'voice_refine',
-      transcript: '请在保持自然的前提下细化主体、天空、肤色、背景的局部调色建议。',
-      currentParams: request.currentParams,
-      locale: request.locale || 'zh-CN',
-      image: request.image,
-      imageStats: request.imageStats,
-      sceneHints: ['upload_autograde', 'refine_pass'],
-    },
-    {
-      mode: 'voice_refine',
-      timeoutMs: phaseRuntime.timeoutMs,
-      totalBudgetMs: phaseRuntime.totalBudgetMs,
-      modelChain: getRefineModelChain(),
-    },
-  );
+  let refinePass;
+  try {
+    refinePass = await interpretWithProvider(
+      {
+        mode: 'voice_refine',
+        transcript: '请在保持自然的前提下细化主体、天空、肤色、背景的局部调色建议。',
+        currentParams: request.currentParams,
+        locale: request.locale || 'zh-CN',
+        image: request.image,
+        imageStats: request.imageStats,
+        sceneHints: ['upload_autograde', 'refine_pass'],
+      },
+      {
+        mode: 'voice_refine',
+        timeoutMs: phaseRuntime.timeoutMs,
+        totalBudgetMs: phaseRuntime.totalBudgetMs,
+        modelChain: getRefineModelChain(),
+        strictMode,
+      },
+    );
+  } catch (error) {
+    if (strictMode) {
+      throw mapProviderErrorToAutoGradeError(error);
+    }
+    throw error;
+  }
 
   const sceneProfile = refinePass.scene_profile || 'general';
   const qualityRiskFlags = Array.isArray(refinePass.quality_risk_flags)
@@ -413,7 +484,22 @@ const runAutoGradeRefine = async request => {
   const modelRoute =
     typeof refinePass.model_route === 'string' ? refinePass.model_route : undefined;
 
+  if (strictMode && (fallbackUsed || String(refinePass.source || '') === 'fallback')) {
+    throw createAutoGradeError(
+      'Fallback output is not allowed in strict mode.',
+      'REAL_MODEL_REQUIRED',
+      502,
+    );
+  }
+
   if (!globalActions.length && !localMaskPlan.length) {
+    if (strictMode) {
+      throw createAutoGradeError(
+        'No model actions produced in strict mode.',
+        'REAL_MODEL_REQUIRED',
+        502,
+      );
+    }
     return withRuntimeDiagnostics(
       conservativeFallbackResult({...request, phase: 'refine'}, 'bad_payload'),
       request,
@@ -441,12 +527,12 @@ const runAutoGradeRefine = async request => {
   );
 };
 
-const runAutoGrade = async request => {
+const runAutoGrade = async (request, options = {}) => {
   const phase = request.phase === 'refine' ? 'refine' : 'fast';
   if (phase === 'refine') {
-    return runAutoGradeRefine(request);
+    return runAutoGradeRefine(request, options);
   }
-  return runAutoGradeFast(request);
+  return runAutoGradeFast(request, options);
 };
 
 module.exports = {

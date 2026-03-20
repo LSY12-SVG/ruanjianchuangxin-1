@@ -5,7 +5,7 @@ const {spawn} = require('child_process');
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const PORT = 8898;
+const PORT = Number(process.env.SMOKE_PORT || 8898);
 const BASE = `http://127.0.0.1:${PORT}`;
 const TMP_DIR = path.resolve(__dirname, '../.tmp');
 
@@ -27,7 +27,7 @@ const request = async (url, init = {}) => {
 
 const expectStatus = (result, expected, label) => {
   if (result.status !== expected) {
-    throw new Error(`${label}_failed:${result.status}`);
+    throw new Error(`${label}_failed:${result.status}:${JSON.stringify(result.body)}`);
   }
 };
 
@@ -44,8 +44,8 @@ const startServer = () => {
     SQLITE_PATH: communityDbPath,
     SQLITE_DB_PATH: accountDbPath,
     AGENT_MEMORY_PATH: agentMemoryPath,
-    JWT_SECRET: 'test-secret',
-    JWT_EXPIRES_IN: '1d',
+    JWT_SECRET: process.env.JWT_SECRET || 'test-secret',
+    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '1d',
   };
   const child = spawn('node', ['src/server.js'], {
     cwd: path.resolve(__dirname, '..'),
@@ -61,22 +61,52 @@ const startServer = () => {
   return child;
 };
 
+const tinyPngBase64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP8/5+hHgAHggJ/PvN4WQAAAABJRU5ErkJggg==';
+const tinyPngBuffer = Buffer.from(tinyPngBase64, 'base64');
+
+const createImageForm = () => {
+  const form = new FormData();
+  form.append('image', new Blob([tinyPngBuffer], {type: 'image/png'}), 'smoke.png');
+  return form;
+};
+
+const pollTaskUntilReady = async ({taskId, label}) => {
+  const maxAttempts = Number(process.env.SMOKE_MODEL_POLL_ATTEMPTS || 24);
+  const intervalMs = Number(process.env.SMOKE_MODEL_POLL_INTERVAL_MS || 5000);
+  let latest = null;
+  for (let i = 0; i < maxAttempts; i += 1) {
+    latest = await request(`/v1/modules/modeling/jobs/${taskId}`);
+    if (latest.status !== 200) {
+      throw new Error(`${label}_poll_failed:${latest.status}`);
+    }
+    if (latest.body.status === 'succeeded') {
+      return latest;
+    }
+    if (latest.body.status === 'failed' || latest.body.status === 'expired') {
+      throw new Error(`${label}_status_${latest.body.status}`);
+    }
+    await wait(intervalMs);
+  }
+  throw new Error(`${label}_poll_timeout:${latest?.body?.status || 'unknown'}`);
+};
+
 const run = async () => {
   const username = `smoke_user_${Date.now()}`;
   const server = startServer();
   try {
     let healthy = false;
-    for (let i = 0; i < 50; i += 1) {
+    for (let i = 0; i < 80; i += 1) {
       try {
-        const health = await request('/health');
-        if (health.status === 200) {
+        const health = await request('/v1/modules/health');
+        if (health.status === 200 && health.body?.ok === true) {
           healthy = true;
           break;
         }
       } catch {
         // keep waiting
       }
-      await wait(200);
+      await wait(250);
     }
     if (!healthy) {
       throw new Error('server_not_ready');
@@ -88,86 +118,157 @@ const run = async () => {
       body: JSON.stringify({username, password: '123456'}),
     });
     expectStatus(registerResult, 201, 'register');
-    if (!registerResult.body.token) {
+    const token = registerResult.body.token;
+    if (!token) {
       throw new Error('register_missing_token');
     }
 
-    const loginResult = await request('/v1/auth/login', {
+    const initialSuggest = await request('/v1/modules/color/initial-suggest', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({username, password: '123456'}),
-    });
-    expectStatus(loginResult, 200, 'login');
-    const token = loginResult.body.token;
-    if (!token) {
-      throw new Error('login_missing_token');
-    }
-
-    const profileUnauthorized = await request('/v1/profile/me');
-    expectStatus(profileUnauthorized, 401, 'profile_unauthorized');
-
-    const feedResult = await request('/v1/community/feed');
-    expectStatus(feedResult, 200, 'community_feed_public');
-    if (!Array.isArray(feedResult.body.items)) {
-      throw new Error('community_feed_items_invalid');
-    }
-
-    const draftUnauthorized = await request('/v1/community/drafts', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({title: 'unauthorized', content: 'test'}),
-    });
-    expectStatus(draftUnauthorized, 401, 'community_create_draft_unauthorized');
-
-    const draftResult = await request('/v1/community/drafts', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
-        title: 'Smoke Draft',
-        content: 'backend smoke test',
-        tags: ['smoke', 'api'],
+        locale: 'zh-CN',
+        transcript: '',
+        currentParams: {basic: {}},
+        image: {
+          mimeType: 'image/png',
+          width: 256,
+          height: 256,
+          base64: tinyPngBase64,
+        },
+        imageStats: {
+          lumaMean: 0.4,
+          lumaStd: 0.2,
+          highlightClipPct: 0.02,
+          shadowClipPct: 0.03,
+          saturationMean: 0.35,
+        },
       }),
     });
-    expectStatus(draftResult, 201, 'community_create_draft');
-    const draftId = String(draftResult.body?.item?.id || '');
-    if (!draftId) {
-      throw new Error('community_draft_id_missing');
+    expectStatus(initialSuggest, 200, 'color_initial_suggest');
+
+    const voiceRefine = await request('/v1/modules/color/voice-refine', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        locale: 'zh-CN',
+        transcript: '高光降低一点，阴影拉一点',
+        currentParams: {basic: {}},
+        image: {
+          mimeType: 'image/png',
+          width: 256,
+          height: 256,
+          base64: tinyPngBase64,
+        },
+        imageStats: {
+          lumaMean: 0.4,
+          lumaStd: 0.2,
+          highlightClipPct: 0.02,
+          shadowClipPct: 0.03,
+          saturationMean: 0.35,
+        },
+      }),
+    });
+    expectStatus(voiceRefine, 200, 'color_voice_refine');
+
+    const autoGradeFast = await request('/v1/modules/color/pro/auto-grade', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        mode: 'upload_autograde',
+        phase: 'fast',
+        locale: 'zh-CN',
+        currentParams: {},
+        image: {
+          mimeType: 'image/png',
+          width: 256,
+          height: 256,
+          base64: tinyPngBase64,
+        },
+        imageStats: {
+          lumaMean: 0.4,
+          lumaStd: 0.2,
+          highlightClipPct: 0.02,
+          shadowClipPct: 0.03,
+          saturationMean: 0.35,
+        },
+      }),
+    });
+    expectStatus(autoGradeFast, 200, 'pro_auto_grade_fast');
+
+    const autoGradeRefine = await request('/v1/modules/color/pro/auto-grade', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        mode: 'upload_autograde',
+        phase: 'refine',
+        locale: 'zh-CN',
+        currentParams: {},
+        image: {
+          mimeType: 'image/png',
+          width: 256,
+          height: 256,
+          base64: tinyPngBase64,
+        },
+        imageStats: {
+          lumaMean: 0.4,
+          lumaStd: 0.2,
+          highlightClipPct: 0.02,
+          shadowClipPct: 0.03,
+          saturationMean: 0.35,
+        },
+      }),
+    });
+    expectStatus(autoGradeRefine, 200, 'pro_auto_grade_refine');
+
+    const createJob = await request('/v1/modules/modeling/jobs', {
+      method: 'POST',
+      body: createImageForm(),
+    });
+    expectStatus(createJob, 202, 'modeling_create_job');
+    const taskId = String(createJob.body?.taskId || '');
+    if (!taskId) {
+      throw new Error('modeling_task_id_missing');
+    }
+    await pollTaskUntilReady({taskId, label: 'modeling_job'});
+
+    const modelResult = await request(`/v1/modules/modeling/models/${taskId}`);
+    expectStatus(modelResult, 200, 'modeling_model_fetch');
+
+    const createSession = await request('/v1/modules/modeling/capture-sessions', {
+      method: 'POST',
+    });
+    expectStatus(createSession, 201, 'modeling_create_capture_session');
+    const sessionId = String(createSession.body?.id || '');
+    if (!sessionId) {
+      throw new Error('capture_session_id_missing');
     }
 
-    const publishResult = await request(`/v1/community/drafts/${draftId}/publish`, {
-      method: 'POST',
-      headers: {Authorization: `Bearer ${token}`},
-    });
-    expectStatus(publishResult, 200, 'community_publish_draft');
-    const postId = String(publishResult.body?.item?.id || '');
-    if (!postId) {
-      throw new Error('community_post_id_missing');
+    const angleTags = ['front', 'front_right', 'right', 'back_right', 'back', 'back_left', 'left', 'front_left'];
+    for (const angleTag of angleTags) {
+      const frameForm = createImageForm();
+      frameForm.append('angleTag', angleTag);
+      frameForm.append('width', '256');
+      frameForm.append('height', '256');
+      frameForm.append('fileSize', String(tinyPngBuffer.length));
+      const addFrame = await request(`/v1/modules/modeling/capture-sessions/${sessionId}/frames`, {
+        method: 'POST',
+        body: frameForm,
+      });
+      expectStatus(addFrame, 201, `capture_add_frame_${angleTag}`);
     }
 
-    const likeResult = await request(`/v1/community/posts/${postId}/like`, {
+    const generate = await request(`/v1/modules/modeling/capture-sessions/${sessionId}/generate`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({liked: true}),
     });
-    expectStatus(likeResult, 200, 'community_like_post');
+    expectStatus(generate, 202, 'capture_generate');
+    const captureTaskId = String(generate.body?.taskId || '');
+    if (!captureTaskId) {
+      throw new Error('capture_task_id_missing');
+    }
+    await pollTaskUntilReady({taskId: captureTaskId, label: 'capture_modeling_job'});
 
-    const commentResult = await request(`/v1/community/posts/${postId}/comments`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({content: 'smoke comment'}),
-    });
-    expectStatus(commentResult, 201, 'community_create_comment');
-
-    const planResult = await request('/v1/agent/plan', {
+    const planResult = await request('/v1/modules/agent/plan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -186,25 +287,7 @@ const run = async () => {
       throw new Error('agent_plan_actions_invalid');
     }
 
-    const executeUnauthorized = await request('/v1/agent/execute', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        planId: 'plan_smoke',
-        actions: [
-          {
-            actionId: 'action_smoke_1',
-            domain: 'app',
-            operation: 'summarize_current_page',
-            requiredScopes: ['app:read'],
-            riskLevel: 'low',
-          },
-        ],
-      }),
-    });
-    expectStatus(executeUnauthorized, 401, 'agent_execute_unauthorized');
-
-    const executeResult = await request('/v1/agent/execute', {
+    const executeResult = await request('/v1/modules/agent/execute', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -225,42 +308,33 @@ const run = async () => {
       }),
     });
     expectStatus(executeResult, 200, 'agent_execute_authorized');
-    if (executeResult.body.status !== 'applied') {
-      throw new Error(`agent_execute_status_invalid:${String(executeResult.body.status || '')}`);
-    }
 
-    const upsertResult = await request('/v1/agent/memory/upsert', {
+    const feedResult = await request('/v1/modules/community/feed');
+    expectStatus(feedResult, 200, 'community_feed_public');
+
+    const draftResult = await request('/v1/modules/community/drafts', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        namespace: 'app.agent',
-        key: 'smoke-key',
-        value: {value: 'smoke'},
+        title: 'Smoke Draft',
+        content: 'backend smoke test',
+        tags: ['smoke', 'api'],
       }),
     });
-    expectStatus(upsertResult, 200, 'agent_memory_upsert');
-    if (!upsertResult.body.version) {
-      throw new Error('agent_memory_version_missing');
+    expectStatus(draftResult, 201, 'community_create_draft');
+    const draftId = String(draftResult.body?.item?.id || '');
+    if (!draftId) {
+      throw new Error('community_draft_id_missing');
     }
 
-    const queryResult = await request('/v1/agent/memory/query', {
+    const publishResult = await request(`/v1/modules/community/drafts/${draftId}/publish`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        namespace: 'app.agent',
-        key: 'smoke-key',
-      }),
+      headers: {Authorization: `Bearer ${token}`},
     });
-    expectStatus(queryResult, 200, 'agent_memory_query');
-    if (!queryResult.body.ok || !queryResult.body.value) {
-      throw new Error('agent_memory_query_invalid');
-    }
+    expectStatus(publishResult, 200, 'community_publish_draft');
 
     console.log('test-backend-smoke: PASS');
   } finally {

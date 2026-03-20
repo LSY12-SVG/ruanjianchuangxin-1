@@ -16,6 +16,16 @@ const providerMap = {
   openai_compat: interpretWithOpenAICompat,
 };
 
+const createStrictProviderError = (message, code, status, details) => {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  if (details && typeof details === 'object') {
+    error.details = details;
+  }
+  return error;
+};
+
 const isRetryableModelError = error => {
   if (!error) {
     return false;
@@ -113,6 +123,71 @@ const inferFallbackReasonFromProviderReason = reason => {
     return 'bad_payload';
   }
   return 'unknown';
+};
+
+const classifyStrictProviderFailure = errors => {
+  const list = Array.isArray(errors) ? errors : [];
+  const normalized = list.map(item => ({
+    code: String(item?.code || ''),
+    status: Number(item?.status || 0),
+    message: String(item?.message || '').toLowerCase(),
+  }));
+
+  if (
+    normalized.some(
+      item =>
+        item.code === 'MODEL_UNAVAILABLE' ||
+        item.message.includes('model does not exist') ||
+        item.message.includes('model unavailable'),
+    )
+  ) {
+    return {code: 'MODEL_UNAVAILABLE', status: 503};
+  }
+
+  if (
+    normalized.some(
+      item =>
+        item.code === 'TIMEOUT' ||
+        item.message.includes('timeout') ||
+        item.message.includes('budget_exceeded'),
+    )
+  ) {
+    return {code: 'PROVIDER_TIMEOUT', status: 504};
+  }
+
+  if (
+    normalized.some(
+      item =>
+        item.code === 'NETWORK' ||
+        item.message.includes('failed to fetch') ||
+        item.message.includes('econnrefused') ||
+        item.message.includes('enotfound') ||
+        item.message.includes('getaddrinfo'),
+    )
+  ) {
+    return {code: 'PROVIDER_NETWORK_ERROR', status: 502};
+  }
+
+  if (
+    normalized.some(
+      item =>
+        item.code === 'UNSUPPORTED_RESPONSE_FORMAT' ||
+        item.code === 'SCHEMA_INVALID' ||
+        item.code === 'INVALID_JSON' ||
+        item.code === 'BAD_PAYLOAD' ||
+        item.code === 'HTTP_400' ||
+        item.message.includes('invalid') ||
+        item.message.includes('bad payload'),
+    )
+  ) {
+    return {code: 'BAD_PROVIDER_PAYLOAD', status: 502};
+  }
+
+  if (normalized.some(item => item.status === 401 || item.status === 403)) {
+    return {code: 'PROVIDER_AUTH_ERROR', status: 502};
+  }
+
+  return {code: 'REAL_MODEL_REQUIRED', status: 502};
 };
 
 const fetchProviderModelIds = async (options = {}) => {
@@ -265,6 +340,7 @@ const invokeModelAndNormalize = async ({
   modelName,
   timeoutMs,
   route,
+  strictMode = false,
 }) => {
   const startAt = Date.now();
   const raw = await provider(request, {model: modelName, timeoutMs});
@@ -280,6 +356,17 @@ const invokeModelAndNormalize = async ({
     );
     error.code = 'SCHEMA_INVALID';
     throw error;
+  }
+
+  if (
+    strictMode &&
+    (normalized.fallback_used === true || String(normalized.source || '') === 'fallback')
+  ) {
+    throw createStrictProviderError(
+      'Fallback output is not allowed in strict mode.',
+      'REAL_MODEL_REQUIRED',
+      502,
+    );
   }
 
   const withMetadata = appendModelMetadata(
@@ -364,13 +451,22 @@ const interpretWithProvider = async (request, runtimeOptions = {}) => {
       ? [configuredFast, configuredPrimary, configuredFallback]
       : [configuredPrimary, configuredFallback, configuredFast];
   const dedupedChain = modelChain.filter((model, index, arr) => model && arr.indexOf(model) === index);
+  const strictMode = runtimeOptions.strictMode === true;
 
   if (!dedupedChain.length) {
+    if (strictMode) {
+      throw createStrictProviderError(
+        'Missing model configuration in strict mode.',
+        'MODEL_UNAVAILABLE',
+        503,
+      );
+    }
     console.warn('[provider] missing primary model, use parser fallback');
     return fallbackWithMetadata(request, 'missing_model_config');
   }
 
   const errors = [];
+  const attemptErrors = [];
   const startedAt = Date.now();
   for (let index = 0; index < dedupedChain.length; index += 1) {
     const elapsedMs = Date.now() - startedAt;
@@ -393,6 +489,7 @@ const interpretWithProvider = async (request, runtimeOptions = {}) => {
         request,
         modelName,
         timeoutMs: attemptTimeoutMs,
+        strictMode,
         route:
           mode === 'initial_visual_suggest'
             ? index === 0
@@ -405,8 +502,18 @@ const interpretWithProvider = async (request, runtimeOptions = {}) => {
     } catch (error) {
       const message = error && error.message ? error.message : 'unknown_error';
       errors.push(`${modelName}:${message}`);
+      attemptErrors.push({
+        code: String(error?.code || ''),
+        status: Number(error?.status || 0),
+        message,
+      });
       if (Date.now() - startedAt >= totalBudgetMs) {
         errors.push(`budget_exceeded:${totalBudgetMs}`);
+        attemptErrors.push({
+          code: 'TIMEOUT',
+          status: 504,
+          message: `budget_exceeded:${totalBudgetMs}`,
+        });
         break;
       }
       const continueNext = index < dedupedChain.length - 1 && isRetryableModelError(error);
@@ -419,6 +526,17 @@ const interpretWithProvider = async (request, runtimeOptions = {}) => {
   const reason = errors.length
     ? `model_chain_failed:${errors.join('|')}`
     : 'model_chain_failed:unknown';
+
+  if (strictMode) {
+    const strictFailure = classifyStrictProviderFailure(attemptErrors);
+    throw createStrictProviderError(
+      `strict_model_chain_failed:${reason}`,
+      strictFailure.code,
+      strictFailure.status,
+      {attemptErrors},
+    );
+  }
+
   console.warn('[provider] use parser fallback due to:', reason);
   return fallbackWithMetadata(request, reason);
 };

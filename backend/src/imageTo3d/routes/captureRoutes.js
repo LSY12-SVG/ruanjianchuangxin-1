@@ -14,10 +14,16 @@ function sendLocalAsset(res, frame) {
   res.status(200).send(fs.readFileSync(frame.storagePath));
 }
 
-function createCaptureRouter({ config, captureService, rateLimiter, upload }) {
+function createCaptureRouter({
+  config,
+  captureService,
+  rateLimiter,
+  upload,
+  basePath = '/api/capture-sessions',
+}) {
   const router = express.Router();
 
-  router.post('/api/capture-sessions', async (req, res, next) => {
+  router.post(`${basePath}`, async (req, res, next) => {
     try {
       const session = captureService.createSession();
       res.status(201).json(serializeSession(req, config, session));
@@ -26,7 +32,7 @@ function createCaptureRouter({ config, captureService, rateLimiter, upload }) {
     }
   });
 
-  router.get('/api/capture-sessions/:sessionId', async (req, res, next) => {
+  router.get(`${basePath}/:sessionId`, async (req, res, next) => {
     try {
       const session = captureService.getPublicSession(req.params.sessionId);
       if (!session) {
@@ -39,7 +45,7 @@ function createCaptureRouter({ config, captureService, rateLimiter, upload }) {
     }
   });
 
-  router.post('/api/capture-sessions/:sessionId/frames', rateLimiter, upload.single('image'), async (req, res, next) => {
+  router.post(`${basePath}/:sessionId/frames`, rateLimiter, upload.single('image'), async (req, res, next) => {
     try {
       const validationError = validateImageUpload(req.file, config.maxUploadBytes);
       if (validationError) {
@@ -62,7 +68,7 @@ function createCaptureRouter({ config, captureService, rateLimiter, upload }) {
     }
   });
 
-  router.get('/api/capture-sessions/:sessionId/frames/:frameId/asset', async (req, res, next) => {
+  router.get(`${basePath}/:sessionId/frames/:frameId/asset`, async (req, res, next) => {
     try {
       const frame = captureService.getFrameAsset(req.params.sessionId, req.params.frameId);
       if (!frame) {
@@ -75,7 +81,7 @@ function createCaptureRouter({ config, captureService, rateLimiter, upload }) {
     }
   });
 
-  router.post('/api/capture-sessions/:sessionId/generate', async (req, res, next) => {
+  router.post(`${basePath}/:sessionId/generate`, async (req, res, next) => {
     try {
       const result = await captureService.generateFromSession(req.params.sessionId);
       res.status(202).json(result);

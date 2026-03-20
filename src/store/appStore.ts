@@ -80,7 +80,11 @@ interface AppStoreState {
   pushConversation: (message: Omit<ConversationMessage, 'id' | 'timestamp'>) => void;
   clearConversation: () => void;
   addRecentTask: (task: string) => void;
-  setAssistantFrequency: (state: AssistantFrequencyState) => void;
+  setAssistantFrequency: (
+    next:
+      | AssistantFrequencyState
+      | ((prev: AssistantFrequencyState) => AssistantFrequencyState),
+  ) => void;
   resetAssistantFrequency: () => void;
 }
 
@@ -147,7 +151,13 @@ export const useAppStore = create<AppStoreState>()(
         const current = get().recentTasks.filter(item => item !== normalized);
         set({recentTasks: [normalized, ...current].slice(0, 8)});
       },
-      setAssistantFrequency: assistantFrequency => set({assistantFrequency}),
+      setAssistantFrequency: next =>
+        set(state => ({
+          assistantFrequency:
+            typeof next === 'function'
+              ? next(state.assistantFrequency)
+              : next,
+        })),
       resetAssistantFrequency: () =>
         set({
           assistantFrequency: createEmptyAssistantFrequencyState(),

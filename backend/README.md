@@ -1,4 +1,11 @@
-# Voice Color Agent Proxy
+# VisionGenie Modules Gateway
+
+Strict backend gateway for five modules:
+- Color intelligence (`initial-suggest`, `voice-refine`, `pro auto-grade`, `segment`)
+- Pro editor grading parameters
+- 2D -> 3D modeling + capture workflow (Tripo only)
+- AI Agent planning/execution/memory
+- Community feed/draft/publish/comment
 
 ## Start
 
@@ -6,143 +13,79 @@
 cd backend
 cp .env.example .env
 npm install
+npm run precheck:strict
 npm start
 ```
 
-## SiliconFlow Configuration
+If `precheck:strict` fails, startup will also fail.
 
-`backend/.env` default values are set for SiliconFlow OpenAI-compatible API:
+## Strict Requirements
 
-```bash
-MODEL_BASE_URL=https://api.siliconflow.cn/v1
-MODEL_PRIMARY_NAME=Qwen/Qwen2.5-32B-Instruct
-MODEL_FALLBACK_NAME=Qwen/Qwen2.5-14B-Instruct
-MODEL_TIMEOUT_MS=8000
-MODEL_API_KEY=<your_rotated_key>
-```
+- Real model output is mandatory for color endpoints.
+  - Fallback payloads are rejected with `4xx/5xx` (`REAL_MODEL_REQUIRED`, `MODEL_UNAVAILABLE`, `PROVIDER_TIMEOUT`, etc.)
+- `IMAGE_TO_3D_PROVIDER` must be `tripo`.
+  - Missing Tripo key/network/auth check fails startup.
+- Legacy APIs are removed from the runtime gateway.
 
-Notes:
-- Rotate exposed keys before writing to `.env`.
-- Keep `MODEL_NAME` for legacy compatibility; when `MODEL_PRIMARY_NAME` is present, it takes priority.
+## Gateway Endpoints
 
-## Android device routing
+- `GET /v1/modules/health`
+- `GET /v1/modules/capabilities`
 
-For a physical Android device, run:
+## Color Module
 
-```bash
-adb reverse tcp:8787 tcp:8787
-```
+- `POST /v1/modules/color/initial-suggest`
+- `POST /v1/modules/color/voice-refine`
+- `POST /v1/modules/color/pro/auto-grade`
+- `POST /v1/modules/color/pro/segment`
+- `GET /v1/modules/color/health`
 
-The app calls `http://127.0.0.1:8787/v1/color/interpret`.
+## Modeling Module (Tripo)
 
-You can validate proxy and model route:
+- `POST /v1/modules/modeling/jobs`
+- `GET /v1/modules/modeling/jobs/:taskId`
+- `GET /v1/modules/modeling/jobs/:taskId/assets/:assetIndex`
+- `POST /v1/modules/modeling/capture-sessions`
+- `GET /v1/modules/modeling/capture-sessions/:sessionId`
+- `POST /v1/modules/modeling/capture-sessions/:sessionId/frames`
+- `POST /v1/modules/modeling/capture-sessions/:sessionId/generate`
+- `GET /v1/modules/modeling/models/:modelId`
+- `GET /v1/modules/modeling/health`
 
-```bash
-curl http://127.0.0.1:8787/health
-curl -X GET https://api.siliconflow.cn/v1/models -H "Authorization: Bearer $MODEL_API_KEY"
-```
+## Agent Module
 
-## Endpoint
+- `POST /v1/modules/agent/plan`
+- `POST /v1/modules/agent/execute`
+- `POST /v1/modules/agent/memory/upsert`
+- `POST /v1/modules/agent/memory/query`
+- `GET /v1/modules/agent/health`
 
-- `POST /v1/color/interpret`
-- Body: `transcript`, `currentParams`, `locale`, optional `sceneHints`
-- Response: `intent_actions`, `confidence`, `reasoning_summary`, `fallback_used`, `needsConfirmation`, `message`, `source`
+## Community Module
 
-## Community (SQLite local)
+- `GET /v1/modules/community/feed`
+- `GET /v1/modules/community/me/posts`
+- `POST /v1/modules/community/drafts`
+- `PUT /v1/modules/community/drafts/:id`
+- `POST /v1/modules/community/drafts/:id/publish`
+- `POST /v1/modules/community/posts/:id/like`
+- `POST /v1/modules/community/posts/:id/save`
+- `GET /v1/modules/community/posts/:id/comments`
+- `POST /v1/modules/community/posts/:id/comments`
+- `GET /v1/modules/community/health`
 
-Set local SQLite env in `backend/.env`:
+## Account/Auth (kept for login/profile)
 
-```bash
-COMMUNITY_ENABLE=true
-DB_CLIENT=sqlite
-SQLITE_PATH=./data/community.sqlite
-DB_SSL=false
-COMMUNITY_PAGE_SIZE_DEFAULT=10
-COMMUNITY_PAGE_SIZE_MAX=30
-```
-
-Default local data file path is `backend/data/community.sqlite`.
-
-The service auto-runs SQL migrations in `backend/migrations/*.sql` on startup.
-
-Community endpoints:
-
-- `GET /v1/community/feed?page&size&filter`
-- `GET /v1/community/me/posts?status&page&size`
-- `POST /v1/community/drafts`
-- `PUT /v1/community/drafts/:id`
-- `POST /v1/community/drafts/:id/publish`
-- `POST /v1/community/posts/:id/like`
-- `POST /v1/community/posts/:id/save`
-- `GET /v1/community/posts/:id/comments?page&size`
-- `POST /v1/community/posts/:id/comments`
-
-Auth policy:
-
-- Public read: `GET /v1/community/feed`, `GET /v1/community/posts/:id/comments`
-- Login required: `GET /v1/community/me/posts` and all `POST`/`PUT` community endpoints
-
-Login-required endpoints must include header:
-
-- `Authorization: Bearer <token>`
-
-Use `/v1/auth/register` or `/v1/auth/login` to obtain token.
-
-## Account + Profile (SQLite + JWT)
-
-Set account env in `backend/.env`:
-
-```bash
-JWT_SECRET=<strong_secret>
-JWT_EXPIRES_IN=7d
-SQLITE_DB_PATH=./data/app.db
-```
-
-Default account data file path is `backend/data/app.db`.
-Account migrations run from `backend/migrations-account/*.sql` on startup.
-
-Auth endpoints:
-
-- `POST /v1/auth/register` (`username`, `password`)
-- `POST /v1/auth/login` (`username`, `password`)
-
-Profile endpoints (require `Authorization: Bearer <token>`):
-
+- `POST /v1/auth/register`
+- `POST /v1/auth/login`
 - `GET /v1/profile/me`
-- `PATCH /v1/profile/me` (`displayName`, `avatarUrl`, `tier`)
-- `PATCH /v1/profile/me/settings` (`syncOnWifi`, `communityNotify`, `voiceAutoApply`)
+- `PATCH /v1/profile/me`
+- `PATCH /v1/profile/me/settings`
 
-## Debug no-login mode
-
-For local debugging, auth can be bypassed so all features are available without manual login:
+## Smoke Test
 
 ```bash
-AUTH_BYPASS=true
-AUTH_BYPASS_USER_ID=1
-AUTH_BYPASS_USERNAME=debug_user_1
+npm run precheck:strict
+npm run test:smoke
 ```
 
-When `AUTH_BYPASS` is enabled, protected endpoints automatically run under the debug user.
-
-## AI Agent API
-
-Agent plan request now uses app-level tabs:
-
-- `currentTab`: `home | agent | community | profile`
-- optional context: `pageSnapshot`, `lastExecution`
-
-Agent plan response shape:
-
-- `planId`, `plannerSource`, `actions`, `reasoningSummary`, `estimatedSteps`, `undoPlan`
-
-Agent execute endpoint:
-
-- `POST /v1/agent/execute`
-- body: `planId`, `actions`, optional `actionIds`, optional `idempotencyKey`
-- response: action-level statuses with `appliedActions`, `failedActions`, `pendingActions`
-
-Agent memory endpoints (auth-aware and scoped):
-
-- `POST /v1/agent/memory/upsert` with `namespace`, `key`, `value`, optional `ttlSeconds`
-- `POST /v1/agent/memory/query` with `namespace`, `key`
-- response includes `version` and `updatedAt`
+`test:smoke` validates all five modules against `/v1/modules/*`.

@@ -67,6 +67,7 @@ export const AvatarRendererWebView: React.FC<AvatarRendererWebViewProps> = ({
         domStorageEnabled
         allowFileAccess
         allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
         allowingReadAccessToURL="file:///android_asset/assistant/avatar/"
       />
     </View>

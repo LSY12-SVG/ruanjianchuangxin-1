@@ -98,7 +98,6 @@ export const GlobalAgentSprite: React.FC = () => {
   const activeMainTab = useAppStore(state => state.activeMainTab);
   const createRoute = useAppStore(state => state.createRoute);
   const worksSubPage = useAppStore(state => state.worksSubPage);
-  const assistantFrequency = useAppStore(state => state.assistantFrequency);
   const setAssistantFrequency = useAppStore(state => state.setAssistantFrequency);
 
   const {
@@ -158,31 +157,32 @@ export const GlobalAgentSprite: React.FC = () => {
   };
 
   const dismissBubble = useCallback(
-    (asIgnored: boolean) => {
+    (asIgnored: boolean, ruleId?: string | null) => {
       clearBubbleTimer();
-      if (asIgnored && activeBubbleRuleId) {
-        setAssistantFrequency(markRuleIgnored(assistantFrequency, activeBubbleRuleId));
+      if (asIgnored && ruleId) {
+        setAssistantFrequency(prev => markRuleIgnored(prev, ruleId));
       }
       setBubbleText('');
       setActiveBubbleRuleId(null);
       setUiState(prev => reduceAssistantUiState(prev, 'auto_reset'));
     },
-    [activeBubbleRuleId, assistantFrequency, setAssistantFrequency],
+    [setAssistantFrequency],
   );
 
   const showRuleBubble = useCallback(
     (rule: AssistantTriggerRule) => {
       const now = Date.now();
-      setAssistantFrequency(markRuleShown(assistantFrequency, rule, now));
+      setAssistantFrequency(prev => markRuleShown(prev, rule, now));
       setBubbleText(rule.text);
       setActiveBubbleRuleId(rule.id);
       setUiState(prev => reduceAssistantUiState(prev, 'system_remind'));
       clearBubbleTimer();
+      const ruleId = rule.id;
       bubbleTimerRef.current = setTimeout(() => {
-        dismissBubble(true);
+        dismissBubble(true, ruleId);
       }, BUBBLE_SHOW_MS);
     },
-    [assistantFrequency, dismissBubble, setAssistantFrequency],
+    [dismissBubble, setAssistantFrequency],
   );
 
   useEffect(() => {
@@ -353,18 +353,18 @@ export const GlobalAgentSprite: React.FC = () => {
 
   const openHalfPanel = useCallback(() => {
     if (activeBubbleRuleId) {
-      setAssistantFrequency(resetRuleIgnored(assistantFrequency, activeBubbleRuleId));
+      setAssistantFrequency(prev => resetRuleIgnored(prev, activeBubbleRuleId));
     }
-    dismissBubble(false);
+    dismissBubble(false, activeBubbleRuleId);
     openAssistantHalfPanel();
     setUiState(prev => reduceAssistantUiState(prev, 'user_open_half'));
-  }, [activeBubbleRuleId, assistantFrequency, dismissBubble, openAssistantHalfPanel, setAssistantFrequency]);
+  }, [activeBubbleRuleId, dismissBubble, openAssistantHalfPanel, setAssistantFrequency]);
 
   const openFullPanel = useCallback(() => {
-    dismissBubble(false);
+    dismissBubble(false, activeBubbleRuleId);
     openAssistantFullPanel();
     setUiState(prev => reduceAssistantUiState(prev, 'user_open_full'));
-  }, [dismissBubble, openAssistantFullPanel]);
+  }, [activeBubbleRuleId, dismissBubble, openAssistantFullPanel]);
 
   const closeAllPanels = useCallback(() => {
     closePanel();

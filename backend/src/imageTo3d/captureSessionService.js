@@ -12,8 +12,8 @@ function clampScore(value) {
   return Math.max(0, Math.min(1, Number(value.toFixed(2))));
 }
 
-function buildFrameAssetUrl(sessionId, frameId) {
-  return `/api/capture-sessions/${sessionId}/frames/${frameId}/asset`;
+function buildFrameAssetUrl(captureBasePath, sessionId, frameId) {
+  return `${captureBasePath}/${sessionId}/frames/${frameId}/asset`;
 }
 
 function getCriticalIssues(qualityIssues) {
@@ -74,11 +74,11 @@ function ensureFrameDirectory(rootDir, sessionId) {
   return sessionDir;
 }
 
-function buildPublicFrame(frame) {
+function buildPublicFrame(frame, captureBasePath = '/api/capture-sessions') {
   return {
     id: frame.id,
     sessionId: frame.sessionId,
-    imageUrl: buildFrameAssetUrl(frame.sessionId, frame.id),
+    imageUrl: buildFrameAssetUrl(captureBasePath, frame.sessionId, frame.id),
     angleTag: frame.angleTag,
     qualityScore: frame.qualityScore,
     qualityIssues: frame.qualityIssues,
@@ -111,7 +111,7 @@ function buildCaptureHints(session, frames) {
   };
 }
 
-function buildPublicSession(session, frames) {
+function buildPublicSession(session, frames, captureBasePath = '/api/capture-sessions') {
   const captureHints = buildCaptureHints(session, frames);
 
   return {
@@ -126,7 +126,7 @@ function buildPublicSession(session, frames) {
     updatedAt: session.updatedAt,
     lastErrorCode: session.lastErrorCode || null,
     lastErrorMessage: session.lastErrorMessage || null,
-    frames: frames.map(buildPublicFrame),
+    frames: frames.map(frame => buildPublicFrame(frame, captureBasePath)),
     ...captureHints,
   };
 }
@@ -154,7 +154,13 @@ function buildPublicModelAsset(task, session) {
   };
 }
 
-function createCaptureSessionService({captureRepository, imageService, logger, config}) {
+function createCaptureSessionService({
+  captureRepository,
+  imageService,
+  logger,
+  config,
+  captureBasePath = '/api/capture-sessions',
+}) {
   return {
     createSession() {
       const now = new Date().toISOString();
@@ -194,7 +200,7 @@ function createCaptureSessionService({captureRepository, imageService, logger, c
         return null;
       }
 
-      return buildPublicSession(payload.session, payload.frames);
+      return buildPublicSession(payload.session, payload.frames, captureBasePath);
     },
 
     getFrameAsset(sessionId, frameId) {
@@ -267,8 +273,8 @@ function createCaptureSessionService({captureRepository, imageService, logger, c
       });
 
       return {
-        session: buildPublicSession(session, nextFrames),
-        frame: buildPublicFrame(frame),
+        session: buildPublicSession(session, nextFrames, captureBasePath),
+        frame: buildPublicFrame(frame, captureBasePath),
       };
     },
 
