@@ -21,6 +21,10 @@ export const interpretWithCloud = async (
   request: InterpretRequest,
   endpoint?: string,
 ): Promise<CloudInterpretResult> => {
+  const servicePath =
+    request.mode === 'initial_visual_suggest'
+      ? '/v1/modules/color/initial-suggest'
+      : '/v1/modules/color/voice-refine';
   const payload = {
     mode: request.mode || 'voice_refine',
     transcript: request.transcript,
@@ -31,7 +35,7 @@ export const interpretWithCloud = async (
     imageStats: request.imageStats,
   };
   const cloudResult: CloudRequestResult<unknown> = await requestCloudJson({
-    servicePath: '/v1/color/interpret',
+    servicePath,
     explicitEndpoint: endpoint,
     method: 'POST',
     body: payload,

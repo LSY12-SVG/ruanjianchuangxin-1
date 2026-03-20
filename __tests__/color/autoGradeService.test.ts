@@ -39,7 +39,7 @@ describe('auto grade service', () => {
       cloudState: 'degraded',
       fallbackReason: 'timeout',
       latencyMs: 3200,
-      endpoint: 'http://127.0.0.1:8787/v1/color/auto-grade',
+      endpoint: 'http://127.0.0.1:8787/v1/modules/color/pro/auto-grade',
       lockedEndpoint: 'http://127.0.0.1:8787',
       nextRecoveryAction: 'retry_with_backoff',
     });
@@ -70,7 +70,7 @@ describe('auto grade service', () => {
       cloudState: 'degraded',
       fallbackReason: 'timeout',
       latencyMs: 4200,
-      endpoint: 'http://127.0.0.1:8787/v1/color/auto-grade',
+      endpoint: 'http://127.0.0.1:8787/v1/modules/color/pro/auto-grade',
       lockedEndpoint: 'http://127.0.0.1:8787',
       nextRecoveryAction: 'retry_with_backoff',
     });
@@ -100,7 +100,7 @@ describe('auto grade service', () => {
       ok: true,
       cloudState: 'healthy',
       latencyMs: 680,
-      endpoint: 'http://127.0.0.1:8787/v1/color/auto-grade',
+      endpoint: 'http://127.0.0.1:8787/v1/modules/color/pro/auto-grade',
       lockedEndpoint: 'http://127.0.0.1:8787',
       nextRecoveryAction: 'cloud_available',
       data: {
@@ -132,7 +132,7 @@ describe('auto grade service', () => {
       ok: true,
       cloudState: 'healthy',
       latencyMs: 520,
-      endpoint: 'http://127.0.0.1:8787/v1/color/auto-grade',
+      endpoint: 'http://127.0.0.1:8787/v1/modules/color/pro/auto-grade',
       lockedEndpoint: 'http://127.0.0.1:8787',
       nextRecoveryAction: 'cloud_available',
       data: {

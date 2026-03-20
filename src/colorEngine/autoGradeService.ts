@@ -198,7 +198,7 @@ export const requestAutoGrade = async (
   const isFastPhase = phase === 'fast';
   const payloadDiagnostics = getRequestPayloadDiagnostics(request);
   const cloudResult = await requestCloudJson<unknown>({
-    servicePath: '/v1/color/auto-grade',
+    servicePath: '/v1/modules/color/pro/auto-grade',
     explicitEndpoint: endpoint,
     method: 'POST',
     body: {

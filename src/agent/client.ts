@@ -71,8 +71,8 @@ const buildBaseFromScriptURL = (): string | null => {
 const resolveBases = (override?: string): string[] => {
   if (override && override.trim()) {
     const trimmed = override.trim();
-    if (trimmed.includes('/v1/agent/')) {
-      return [trimmed.split('/v1/agent/')[0]];
+    if (trimmed.includes('/v1/modules/agent/')) {
+      return [trimmed.split('/v1/modules/agent/')[0]];
     }
     return [trimmed.replace(/\/$/, '')];
   }
@@ -231,7 +231,7 @@ export const planAgentWithCloud = async (request: AgentPlanRequest, endpoint?: s
       resolveWorksSubPageFromSnapshot(request.pageSnapshot),
     ),
   };
-  const response = await postAgentJson<unknown>('/v1/agent/plan', payload, endpoint);
+  const response = await postAgentJson<unknown>('/v1/modules/agent/plan', payload, endpoint);
   return normalizePlan(response);
 };
 
@@ -239,16 +239,16 @@ export const executeAgentWithCloud = async (
   request: AgentExecuteRequest,
   endpoint?: string,
 ): Promise<AgentExecuteResponse | null> => {
-  return postAgentJson<AgentExecuteResponse>('/v1/agent/execute', request, endpoint);
+  return postAgentJson<AgentExecuteResponse>('/v1/modules/agent/execute', request, endpoint);
 };
 
 export const upsertAgentMemory = async (request: AgentMemoryUpsertRequest, endpoint?: string): Promise<void> => {
-  await postAgentJson('/v1/agent/memory/upsert', request, endpoint);
+  await postAgentJson('/v1/modules/agent/memory/upsert', request, endpoint);
 };
 
 export const queryAgentMemory = async (
   request: AgentMemoryQueryRequest,
   endpoint?: string,
 ): Promise<AgentMemoryQueryResponse | null> => {
-  return postAgentJson<AgentMemoryQueryResponse>('/v1/agent/memory/query', request, endpoint);
+  return postAgentJson<AgentMemoryQueryResponse>('/v1/modules/agent/memory/query', request, endpoint);
 };

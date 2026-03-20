@@ -26,14 +26,14 @@ describe('cloud endpoint resolver', () => {
       'http://192.168.50.10:8081/index.bundle?platform=android&dev=true';
 
     const endpoints = resolveCloudEndpointsForService(
-      '/v1/color/segment',
+      '/v1/modules/color/pro/segment',
       'http://192.168.50.20:8787',
     );
 
     expect(endpoints).toEqual([
-      'http://192.168.50.20:8787/v1/color/segment',
-      'http://192.168.50.10:8787/v1/color/segment',
-      'http://127.0.0.1:8787/v1/color/segment',
+      'http://192.168.50.20:8787/v1/modules/color/pro/segment',
+      'http://192.168.50.10:8787/v1/modules/color/pro/segment',
+      'http://127.0.0.1:8787/v1/modules/color/pro/segment',
     ]);
   });
 
@@ -57,7 +57,7 @@ describe('cloud endpoint resolver', () => {
     globalThis.fetch = fetchMock as typeof globalThis.fetch;
 
     const first = await requestCloudJson({
-      servicePath: '/v1/color/interpret',
+      servicePath: '/v1/modules/color/initial-suggest',
       explicitEndpoint: 'http://192.168.50.20:8787',
       method: 'POST',
       body: {},
@@ -65,7 +65,7 @@ describe('cloud endpoint resolver', () => {
       retries: 0,
     });
     const second = await requestCloudJson({
-      servicePath: '/v1/color/segment',
+      servicePath: '/v1/modules/color/pro/segment',
       method: 'POST',
       body: {},
       timeoutMs: 1200,
@@ -98,7 +98,7 @@ describe('cloud endpoint resolver', () => {
     globalThis.fetch = fetchMock as typeof globalThis.fetch;
 
     const result = await requestCloudJson({
-      servicePath: '/v1/color/auto-grade',
+      servicePath: '/v1/modules/color/pro/auto-grade',
       method: 'POST',
       body: {},
       timeoutMs: 900,

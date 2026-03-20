@@ -105,8 +105,13 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
 const parseErrorCode = (value: unknown): string => {
-  if (isObject(value) && typeof value.error === 'string') {
-    return value.error;
+  if (isObject(value)) {
+    if (typeof value.error === 'string') {
+      return value.error;
+    }
+    if (isObject(value.error) && typeof value.error.code === 'string') {
+      return value.error.code;
+    }
   }
   return '';
 };
@@ -633,7 +638,7 @@ export const fetchCommunityFeed = async (
   return withFallback(
     async () => {
       const query = `?filter=${encodeURIComponent(filter)}&page=${page}&size=${size}`;
-      const response = await requestCommunity(`/v1/community/feed${query}`, {method: 'GET'}, userId);
+      const response = await requestCommunity(`/v1/modules/community/feed${query}`, {method: 'GET'}, userId);
       return parsePagination(response, parsePost);
     },
     async () => mockFetchFeed(filter, page, size, userId),
@@ -649,7 +654,7 @@ export const fetchMyCommunityPosts = async (
   return withFallback(
     async () => {
       const query = `?status=${status}&page=${page}&size=${size}`;
-      const response = await requestCommunity(`/v1/community/me/posts${query}`, {method: 'GET'}, userId);
+      const response = await requestCommunity(`/v1/modules/community/me/posts${query}`, {method: 'GET'}, userId);
       return parsePagination(response, parsePost);
     },
     async () => mockFetchMyPosts(status, page, size, userId),
@@ -663,7 +668,7 @@ export const createCommunityDraft = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        '/v1/community/drafts',
+        '/v1/modules/community/drafts',
         {
           method: 'POST',
           body: JSON.stringify(payload),
@@ -687,7 +692,7 @@ export const updateCommunityDraft = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        `/v1/community/drafts/${draftId}`,
+        `/v1/modules/community/drafts/${draftId}`,
         {
           method: 'PUT',
           body: JSON.stringify(payload),
@@ -710,7 +715,7 @@ export const publishCommunityDraft = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        `/v1/community/drafts/${draftId}/publish`,
+        `/v1/modules/community/drafts/${draftId}/publish`,
         {method: 'POST', body: JSON.stringify({})},
         userId,
       );
@@ -731,7 +736,7 @@ export const toggleCommunityLike = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        `/v1/community/posts/${postId}/like`,
+        `/v1/modules/community/posts/${postId}/like`,
         {method: 'POST', body: JSON.stringify({liked})},
         userId,
       );
@@ -752,7 +757,7 @@ export const toggleCommunitySave = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        `/v1/community/posts/${postId}/save`,
+        `/v1/modules/community/posts/${postId}/save`,
         {method: 'POST', body: JSON.stringify({saved})},
         userId,
       );
@@ -774,7 +779,7 @@ export const fetchCommunityComments = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        `/v1/community/posts/${postId}/comments?page=${page}&size=${size}`,
+        `/v1/modules/community/posts/${postId}/comments?page=${page}&size=${size}`,
         {method: 'GET'},
         userId,
       );
@@ -793,7 +798,7 @@ export const createCommunityComment = async (
   return withFallback(
     async () => {
       const response = await requestCommunity(
-        `/v1/community/posts/${postId}/comments`,
+        `/v1/modules/community/posts/${postId}/comments`,
         {
           method: 'POST',
           body: JSON.stringify({

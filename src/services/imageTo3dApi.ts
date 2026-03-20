@@ -109,7 +109,7 @@ export const createImageTo3DJob = async (
     name: image.fileName || `image-${Date.now()}.jpg`,
   } as never);
 
-  const payload = await requestImageTo3D('/api/v1/image-to-3d/jobs', {
+  const payload = await requestImageTo3D('/v1/modules/modeling/jobs', {
     method: 'POST',
     body: formData,
   });
@@ -122,12 +122,14 @@ export const createImageTo3DJob = async (
 };
 
 export const getReconstructionTask = async (taskId: string): Promise<ReconstructionTask> => {
-  const payload = await requestImageTo3D(`/api/reconstruction-tasks/${encodeURIComponent(taskId)}`);
+  const payload = await requestImageTo3D(`/v1/modules/modeling/jobs/${encodeURIComponent(taskId)}`);
+  const status = payload.status as ImageTo3DJobStatus;
+  const modelId = status === 'succeeded' ? String(payload.taskId || taskId) : null;
   return {
     taskId: String(payload.taskId || ''),
-    status: payload.status as ImageTo3DJobStatus,
+    status,
     message: typeof payload.message === 'string' ? payload.message : null,
-    modelId: typeof payload.modelId === 'string' ? payload.modelId : null,
+    modelId,
     sessionId: typeof payload.sessionId === 'string' ? payload.sessionId : null,
     viewerFormat: payload.viewerFormat || null,
     downloadUrl: typeof payload.downloadUrl === 'string' ? payload.downloadUrl : null,
@@ -135,7 +137,7 @@ export const getReconstructionTask = async (taskId: string): Promise<Reconstruct
 };
 
 export const getModelAsset = async (modelId: string): Promise<ModelAsset> => {
-  const payload = await requestImageTo3D(`/api/models/${encodeURIComponent(modelId)}`);
+  const payload = await requestImageTo3D(`/v1/modules/modeling/models/${encodeURIComponent(modelId)}`);
   return {
     id: String(payload.id || ''),
     sessionId: String(payload.sessionId || ''),
@@ -143,4 +145,3 @@ export const getModelAsset = async (modelId: string): Promise<ModelAsset> => {
     viewerFormat: payload.viewerFormat || null,
   };
 };
-

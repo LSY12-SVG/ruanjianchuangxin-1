@@ -84,7 +84,7 @@ export const requestSegmentation = async ({
   };
 
   const cloudResult = await requestCloudJson<SegmentationResult>({
-    servicePath: '/v1/color/segment',
+    servicePath: '/v1/modules/color/pro/segment',
     explicitEndpoint: endpoint,
     method: 'POST',
     body: payload,
