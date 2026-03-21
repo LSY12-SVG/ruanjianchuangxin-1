@@ -36,6 +36,8 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   private var currentLocale: String = "zh-CN"
   private var usingActivityFallback: Boolean = false
   private var retriedWithActivityFallback: Boolean = false
+  private var isListening: Boolean = false
+  private var stopRequested: Boolean = false
 
   init {
     reactContext.addActivityEventListener(this)
@@ -59,6 +61,8 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   fun start(locale: String?, promise: Promise) {
     currentLocale = if (locale.isNullOrBlank()) "zh-CN" else locale
     retriedWithActivityFallback = false
+    stopRequested = false
+    isListening = false
     
     android.util.Log.d("VoiceRecognitionModule", "start() called with locale: $currentLocale")
     
@@ -71,6 +75,7 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
           ensureRecognizer()
           val intent = createRecognitionIntent()
           usingActivityFallback = false
+          isListening = true
           speechRecognizer?.startListening(intent)
           android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer started successfully")
           promise.resolve(null)
@@ -108,10 +113,17 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   fun stop(promise: Promise) {
     Handler(Looper.getMainLooper()).post {
       try {
+        stopRequested = true
         if (usingActivityFallback) {
+          usingActivityFallback = false
+          isListening = false
           emit(EVENT_END, null)
         } else {
-          speechRecognizer?.stopListening()
+          if (isListening) {
+            speechRecognizer?.stopListening()
+          } else {
+            emit(EVENT_END, null)
+          }
         }
         promise.resolve(null)
       } catch (error: Exception) {
@@ -127,6 +139,9 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       try {
         speechRecognizer?.destroy()
         speechRecognizer = null
+        isListening = false
+        stopRequested = false
+        usingActivityFallback = false
         promise.resolve(null)
       } catch (error: Exception) {
         promise.reject("E_DESTROY", error)
@@ -181,8 +196,11 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLocale)
       putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
       putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-      // Prefer on-device recognition to reduce dependency on unstable network.
-      putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+      // Prefer real-time partial transcription while speaking.
+      putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
+      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
     }
   }
 
@@ -215,6 +233,8 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   }
 
   override fun onReadyForSpeech(params: Bundle?) {
+    isListening = true
+    stopRequested = false
     emit(EVENT_START, null)
   }
 
@@ -224,11 +244,17 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
 
   override fun onBufferReceived(buffer: ByteArray?) {}
 
-  override fun onEndOfSpeech() {
-    emit(EVENT_END, null)
-  }
+  override fun onEndOfSpeech() {}
 
   override fun onError(error: Int) {
+    if (error == SpeechRecognizer.ERROR_CLIENT && stopRequested) {
+      stopRequested = false
+      isListening = false
+      usingActivityFallback = false
+      emit(EVENT_END, null)
+      return
+    }
+
     if (
       (error == SpeechRecognizer.ERROR_NETWORK ||
         error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) &&
@@ -243,6 +269,9 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       }
     }
 
+    isListening = false
+    usingActivityFallback = false
+    stopRequested = false
     val message = when (error) {
       SpeechRecognizer.ERROR_CLIENT -> "语音识别异常（客户端）"
       SpeechRecognizer.ERROR_AUDIO -> "语音识别异常（麦克风音频）"
@@ -257,22 +286,28 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       else -> "语音识别异常（错误码: $error）"
     }
     emitError(message)
+    emit(EVENT_END, null)
   }
 
   private fun launchActivityFallback(): Boolean {
     val activity = reactContext.currentActivity ?: return false
     return try {
       usingActivityFallback = true
+      isListening = true
+      stopRequested = false
       emit(EVENT_START, null)
       activity.startActivityForResult(createRecognitionIntent(), REQUEST_CODE_RECOGNIZE)
       true
     } catch (_: Exception) {
       usingActivityFallback = false
+      isListening = false
       false
     }
   }
 
   override fun onResults(results: Bundle?) {
+    isListening = false
+    stopRequested = false
     val texts = results
       ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
       ?.filterNotNull()
@@ -281,6 +316,7 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
       putArray("value", toWritableArray(texts))
     }
     emit(EVENT_RESULTS, map)
+    emit(EVENT_END, null)
   }
 
   override fun onPartialResults(partialResults: Bundle?) {
@@ -307,12 +343,18 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
     }
 
     usingActivityFallback = false
+    isListening = false
     emit(EVENT_END, null)
 
     if (resultCode != Activity.RESULT_OK) {
-      emitError("Speech recognition canceled")
+      if (!stopRequested) {
+        emitError("Speech recognition canceled")
+      }
+      stopRequested = false
       return
     }
+
+    stopRequested = false
 
     val texts = data
       ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)

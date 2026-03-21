@@ -22,7 +22,7 @@ interface VoiceRecognitionModuleType {
 }
 
 interface SpeechValueEvent {
-  value?: string[];
+  value?: unknown;
 }
 
 interface SpeechErrorEvent {
@@ -40,11 +40,30 @@ interface ActiveRecognizerController {
 let activeRecognizerController: ActiveRecognizerController | null = null;
 
 const pickFirstText = (value: unknown): string => {
-  if (!value || !Array.isArray(value)) {
+  if (!value) {
     return '';
   }
-  const first = value[0];
-  return typeof first === 'string' ? first : '';
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const first = value[0];
+    return typeof first === 'string' ? first.trim() : '';
+  }
+  if (typeof value === 'object') {
+    const asRecord = value as Record<string, unknown>;
+    const zeroValue = asRecord[0];
+    if (typeof zeroValue === 'string') {
+      return zeroValue.trim();
+    }
+    const joined = Object.values(asRecord)
+      .filter(item => typeof item === 'string')
+      .map(item => String(item).trim())
+      .filter(Boolean)
+      .join(' ');
+    return joined;
+  }
+  return '';
 };
 
 export const requestRecordAudioPermission = async (): Promise<boolean> => {
@@ -88,6 +107,43 @@ export const createSpeechRecognizer = (
     : new NativeEventEmitter();
   const recognizerToken = Symbol('speech_recognizer');
   const isActiveRecognizer = () => activeRecognizerToken === recognizerToken;
+  const extractEventText = (event: unknown): string => {
+    if (!event) {
+      return '';
+    }
+    if (typeof event === 'string' || Array.isArray(event)) {
+      return pickFirstText(event);
+    }
+    if (typeof event === 'object') {
+      const textFromValue = pickFirstText((event as SpeechValueEvent).value);
+      if (textFromValue) {
+        return textFromValue;
+      }
+      return pickFirstText(event);
+    }
+    return '';
+  };
+
+  const onPartial = (event: SpeechValueEvent) => {
+    if (!isActiveRecognizer()) {
+      return;
+    }
+    const text = extractEventText(event);
+    if (text) {
+      callbacks.onPartial?.(text);
+    }
+  };
+
+  const onFinal = (event: SpeechValueEvent) => {
+    if (!isActiveRecognizer()) {
+      return;
+    }
+    const text = extractEventText(event);
+    if (text) {
+      callbacks.onFinal?.(text);
+    }
+  };
+
   const subscriptions = [
     emitter.addListener('VoiceRecognition:onStart', () => {
       if (!isActiveRecognizer()) {
@@ -101,24 +157,11 @@ export const createSpeechRecognizer = (
       }
       callbacks.onEnd?.();
     }),
-    emitter.addListener('VoiceRecognition:onPartialResults', (event: SpeechValueEvent) => {
-      if (!isActiveRecognizer()) {
-        return;
-      }
-      const text = pickFirstText(event?.value);
-      if (text) {
-        callbacks.onPartial?.(text);
-      }
-    }),
-    emitter.addListener('VoiceRecognition:onResults', (event: SpeechValueEvent) => {
-      if (!isActiveRecognizer()) {
-        return;
-      }
-      const text = pickFirstText(event?.value);
-      if (text) {
-        callbacks.onFinal?.(text);
-      }
-    }),
+    emitter.addListener('VoiceRecognition:onPartialResults', onPartial),
+    emitter.addListener('VoiceRecognition:onResults', onFinal),
+    // Compatibility listeners for some vendor/legacy bridges.
+    emitter.addListener('onSpeechPartialResults', onPartial),
+    emitter.addListener('onSpeechResults', onFinal),
     emitter.addListener('VoiceRecognition:onError', (event: SpeechErrorEvent) => {
       if (!isActiveRecognizer()) {
         return;

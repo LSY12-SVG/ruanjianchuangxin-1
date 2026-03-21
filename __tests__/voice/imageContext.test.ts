@@ -35,7 +35,7 @@ describe('voice image context cloud payloads', () => {
     expect(context).not.toBeNull();
     expect(context?.image.mimeType).toBe('image/jpeg');
     expect(context?.cloudPayloads.refine.mimeType).toBe('image/jpeg');
-    expect(context?.cloudPayloads.fast.base64).toBe('');
+    expect((context?.cloudPayloads.fast.base64 || '').length).toBeGreaterThan(0);
   });
 
   it('falls back to lower quality when payload exceeds budget', () => {
@@ -56,5 +56,14 @@ describe('voice image context cloud payloads', () => {
     expect(context?.cloudPayloads.refine.encodeQuality).toBe(78);
     expect((context?.cloudPayloads.refine.payloadBytes || 0) <= 1_800_000).toBe(true);
     expect(context?.cloudPayloads.refine.mimeType).toBe('image/jpeg');
+  });
+
+  it('keeps request context available when skia decode is unavailable', () => {
+    const context = buildVoiceImageContext(buildSelectedImage('image/jpeg'), null);
+
+    expect(context).not.toBeNull();
+    expect(context?.image.base64).toBe('ZmFrZQ==');
+    expect(context?.cloudPayloads.refine.payloadBytes).toBeGreaterThan(0);
+    expect(context?.imageStats.lumaMean).toBe(0.5);
   });
 });

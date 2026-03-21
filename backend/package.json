@@ -11,14 +11,15 @@
     "precheck:strict": "node ./scripts/precheck-strict-modules.js"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1",
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.4.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "mysql2": "^3.15.3",
-    "tencentcloud-sdk-nodejs": "^4.1.112"
+    "tencentcloud-sdk-nodejs": "^4.1.112",
+    "undici": "^6.24.1"
   }
 }

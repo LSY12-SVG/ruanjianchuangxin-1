@@ -1,15 +1,26 @@
+const {fetch: undiciFetch, ProxyAgent} = require('undici');
+
 const toNonEmptyString = value => {
   const text = String(value || '').trim();
   return text.length > 0 ? text : '';
 };
 
+const resolveTripoProxyUrl = () =>
+  toNonEmptyString(
+    process.env.TRIPO_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY,
+  );
+
+const tripoProxyUrl = resolveTripoProxyUrl();
+const tripoDispatcher = tripoProxyUrl ? new ProxyAgent(tripoProxyUrl) : undefined;
+
 const requestWithTimeout = async (url, init, timeoutMs) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, {
+    return await undiciFetch(url, {
       ...init,
       signal: controller.signal,
+      dispatcher: tripoDispatcher,
     });
   } finally {
     clearTimeout(timer);

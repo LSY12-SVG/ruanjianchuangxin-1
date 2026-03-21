@@ -1,5 +1,19 @@
 const path = require('path');
+const {fetch: undiciFetch, ProxyAgent} = require('undici');
 const { ApiError } = require('../errors');
+
+const toNonEmptyString = value => {
+  const text = String(value || '').trim();
+  return text.length > 0 ? text : '';
+};
+
+const resolveTripoProxyUrl = () =>
+  toNonEmptyString(
+    process.env.TRIPO_PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY,
+  );
+
+const tripoProxyUrl = resolveTripoProxyUrl();
+const tripoDispatcher = tripoProxyUrl ? new ProxyAgent(tripoProxyUrl) : undefined;
 
 function parseJsonSafely(rawBody) {
   if (!rawBody) {
@@ -42,10 +56,11 @@ async function requestTripo({ baseUrl, apiKey, pathname, method = 'GET', body, i
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(`${baseUrl}${pathname}`, {
+  const response = await undiciFetch(`${baseUrl}${pathname}`, {
     method,
     headers,
     body: body == null ? undefined : isMultipart ? body : JSON.stringify(body),
+    dispatcher: tripoDispatcher,
   });
 
   const rawBody = await response.text();

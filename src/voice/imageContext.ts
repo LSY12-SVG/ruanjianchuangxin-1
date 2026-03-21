@@ -5,9 +5,11 @@ import type {InterpretImagePayload, InterpretImageStats} from './types';
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 const JPEG_FORMAT = 3;
 const CLOUD_MAX_BYTES = 1_800_000;
-const PREVIEW_QUALITY_LADDER = [84, 78, 72] as const;
+const PREVIEW_QUALITY_LADDER = [84, 78, 72, 66, 58] as const;
 const PHASE_FAST_MAX_EDGE = 1280;
 const PHASE_REFINE_MAX_EDGE = 1664;
+const MIN_PREVIEW_MAX_EDGE = 640;
+const EDGE_REDUCE_FACTOR = 0.82;
 
 export type CloudPreviewPhase = 'fast' | 'refine';
 
@@ -130,22 +132,6 @@ const resizeImageForCloud = (
   };
 };
 
-const resolveScaledDimensions = (
-  width: number,
-  height: number,
-  targetMaxEdge: number,
-): {width: number; height: number} => {
-  const longEdge = Math.max(width, height);
-  if (targetMaxEdge <= 0 || longEdge <= targetMaxEdge) {
-    return {width, height};
-  }
-  const scale = targetMaxEdge / longEdge;
-  return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
-  };
-};
-
 const encodeCloudPayload = (
   image: SkImage,
   width: number,
@@ -154,38 +140,67 @@ const encodeCloudPayload = (
   fallbackBase64: string,
 ): CloudPreviewPayload => {
   const policy = resolveCloudPreviewPolicy(width, height, phase);
-  const resized = resizeImageForCloud(image, policy.maxEdge);
   let selectedBase64 = '';
   let selectedBytes = 0;
   let selectedQuality = policy.qualityLadder[policy.qualityLadder.length - 1] || 76;
+  let selectedWidth = width;
+  let selectedHeight = height;
+  let selectedMaxEdge = policy.maxEdge;
+  let currentMaxEdge = policy.maxEdge;
 
-  for (const quality of policy.qualityLadder) {
-    const encoded = resized.image.encodeToBase64(JPEG_FORMAT, quality);
-    if (!encoded) {
-      continue;
+  while (currentMaxEdge >= MIN_PREVIEW_MAX_EDGE) {
+    const resized = resizeImageForCloud(image, currentMaxEdge);
+    for (const quality of policy.qualityLadder) {
+      const encoded = resized.image.encodeToBase64(JPEG_FORMAT, quality);
+      if (!encoded) {
+        continue;
+      }
+      const payloadBytes = estimateBase64Bytes(encoded);
+      selectedBase64 = encoded;
+      selectedBytes = payloadBytes;
+      selectedQuality = quality;
+      selectedWidth = resized.width;
+      selectedHeight = resized.height;
+      selectedMaxEdge = currentMaxEdge;
+      if (payloadBytes <= CLOUD_MAX_BYTES) {
+        return {
+          mimeType: 'image/jpeg',
+          width: selectedWidth,
+          height: selectedHeight,
+          base64: selectedBase64,
+          payloadBytes: selectedBytes,
+          encodeQuality: selectedQuality,
+          maxEdgeApplied: selectedMaxEdge,
+        };
+      }
     }
-    const payloadBytes = estimateBase64Bytes(encoded);
-    selectedBase64 = encoded;
-    selectedBytes = payloadBytes;
-    selectedQuality = quality;
-    if (payloadBytes <= CLOUD_MAX_BYTES) {
+
+    const nextMaxEdge = Math.max(
+      MIN_PREVIEW_MAX_EDGE,
+      Math.floor(currentMaxEdge * EDGE_REDUCE_FACTOR),
+    );
+    if (nextMaxEdge === currentMaxEdge) {
       break;
     }
+    currentMaxEdge = nextMaxEdge;
   }
 
   if (!selectedBase64) {
     selectedBase64 = fallbackBase64;
     selectedBytes = estimateBase64Bytes(fallbackBase64);
+    selectedWidth = width;
+    selectedHeight = height;
+    selectedMaxEdge = policy.maxEdge;
   }
 
   return {
     mimeType: 'image/jpeg',
-    width: resized.width,
-    height: resized.height,
+    width: selectedWidth,
+    height: selectedHeight,
     base64: selectedBase64,
     payloadBytes: selectedBytes,
     encodeQuality: selectedQuality,
-    maxEdgeApplied: policy.maxEdge,
+    maxEdgeApplied: selectedMaxEdge,
   };
 };
 
@@ -271,13 +286,43 @@ export const buildVoiceImageContext = (
   selectedImage: ImagePickerResult | null,
   skImage: SkImage | null,
 ): VoiceImageContext | null => {
-  if (!selectedImage?.success || !skImage) {
+  if (!selectedImage?.success) {
     return null;
   }
 
-  const sourceWidth = selectedImage.width || skImage.width();
-  const sourceHeight = selectedImage.height || skImage.height();
   const originalBase64 = sanitizePickerBase64(selectedImage.base64);
+  if (!originalBase64) {
+    return null;
+  }
+
+  const sourceWidth = Math.max(1, selectedImage.width || skImage?.width() || 1);
+  const sourceHeight = Math.max(1, selectedImage.height || skImage?.height() || 1);
+
+  if (!skImage) {
+    const fallbackPayload: CloudPreviewPayload = {
+      mimeType: selectedImage.type || 'image/jpeg',
+      width: sourceWidth,
+      height: sourceHeight,
+      base64: originalBase64,
+      payloadBytes: estimateBase64Bytes(originalBase64),
+      encodeQuality: PREVIEW_QUALITY_LADDER[0],
+      maxEdgeApplied: Math.max(sourceWidth, sourceHeight),
+    };
+    return {
+      image: {
+        mimeType: fallbackPayload.mimeType,
+        width: fallbackPayload.width,
+        height: fallbackPayload.height,
+        base64: fallbackPayload.base64,
+      },
+      imageStats: buildNeutralStats(),
+      cloudPayloads: {
+        fast: fallbackPayload,
+        refine: fallbackPayload,
+      },
+    };
+  }
+
   const refinePayload = encodeCloudPayload(
     skImage,
     sourceWidth,
@@ -285,17 +330,7 @@ export const buildVoiceImageContext = (
     'refine',
     originalBase64,
   );
-  const fastPolicy = resolveCloudPreviewPolicy(sourceWidth, sourceHeight, 'fast');
-  const fastScaled = resolveScaledDimensions(sourceWidth, sourceHeight, fastPolicy.maxEdge);
-  const fastPayload: CloudPreviewPayload = {
-    mimeType: 'image/jpeg',
-    width: fastScaled.width,
-    height: fastScaled.height,
-    base64: '',
-    payloadBytes: 0,
-    encodeQuality: fastPolicy.qualityLadder[0] || 82,
-    maxEdgeApplied: fastPolicy.maxEdge,
-  };
+  const fastPayload = encodeCloudPayload(skImage, sourceWidth, sourceHeight, 'fast', originalBase64);
 
   return {
     image: {
