@@ -42,9 +42,17 @@ const proColorEngine = NativeModules?.ProColorEngine as ProColorEngineNativeModu
 interface UseImagePickerOptions {
   onImageSelected?: (result: ImagePickerResult) => void;
   onImageError?: (error: string) => void;
+  galleryOptions?: Partial<ImageLibraryOptions> & {
+    conversionQuality?: number;
+  };
+  requireNativeDecodeForHeif?: boolean;
 }
 
-const pickerOptions: ImageLibraryOptions = {
+type ExtendedImageLibraryOptions = ImageLibraryOptions & {
+  conversionQuality?: number;
+};
+
+const defaultPickerOptions: ExtendedImageLibraryOptions = {
   mediaType: 'photo',
   quality: 1,
   includeExtra: true,
@@ -72,7 +80,14 @@ const cameraOptions: CameraOptions = {
   saveToPhotos: true,
 };
 
-const processImageResult = async (result: any): Promise<ImagePickerResult> => {
+const processImageResult = async (
+  result: any,
+  {
+    requireNativeDecodeForHeif = true,
+  }: {
+    requireNativeDecodeForHeif?: boolean;
+  } = {},
+): Promise<ImagePickerResult> => {
   if (result.didCancel) {
     return {success: false, error: '用户取消了选择'};
   }
@@ -105,7 +120,8 @@ const processImageResult = async (result: any): Promise<ImagePickerResult> => {
       (asset.fileName && /\.(heic|heif)$/i.test(asset.fileName)) ||
       (asset.uri && /\.(heic|heif)(\?|$)/i.test(asset.uri)),
   );
-  const requiresNativeDecode = processedResult.isRaw || isHeif;
+  const requiresNativeDecode =
+    processedResult.isRaw || (isHeif && requireNativeDecodeForHeif);
   const canAttemptNativeDecode = Boolean(asset.uri && proColorEngine?.decodeSource);
 
   if (requiresNativeDecode && !canAttemptNativeDecode) {
@@ -207,6 +223,8 @@ const requestCameraPermission = async (): Promise<boolean> => {
 export const useImagePicker = ({
   onImageSelected,
   onImageError,
+  galleryOptions,
+  requireNativeDecodeForHeif = true,
 }: UseImagePickerOptions = {}) => {
   const [selectedImage, setSelectedImage] = useState<ImagePickerResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -219,8 +237,14 @@ export const useImagePicker = ({
 
     setIsLoading(true);
     try {
-      const result = await launchImageLibrary(pickerOptions);
-      const processedResult = await processImageResult(result);
+      const mergedPickerOptions: ExtendedImageLibraryOptions = {
+        ...defaultPickerOptions,
+        ...(galleryOptions || {}),
+      };
+      const result = await launchImageLibrary(mergedPickerOptions as ImageLibraryOptions);
+      const processedResult = await processImageResult(result, {
+        requireNativeDecodeForHeif,
+      });
 
       if (processedResult.success) {
         setSelectedImage(processedResult);
@@ -237,7 +261,7 @@ export const useImagePicker = ({
     } finally {
       setIsLoading(false);
     }
-  }, [onImageError, onImageSelected]);
+  }, [galleryOptions, onImageError, onImageSelected, requireNativeDecodeForHeif]);
 
   const pickFromCamera = useCallback(async (): Promise<ImagePickerResult> => {
     const hasPermission = await requestCameraPermission();
@@ -248,7 +272,9 @@ export const useImagePicker = ({
     setIsLoading(true);
     try {
       const result = await launchCamera(cameraOptions);
-      const processedResult = await processImageResult(result);
+      const processedResult = await processImageResult(result, {
+        requireNativeDecodeForHeif,
+      });
 
       if (processedResult.success) {
         setSelectedImage(processedResult);
@@ -265,7 +291,7 @@ export const useImagePicker = ({
     } finally {
       setIsLoading(false);
     }
-  }, [onImageError, onImageSelected]);
+  }, [onImageError, onImageSelected, requireNativeDecodeForHeif]);
 
   const clearImage = useCallback(() => {
     setSelectedImage(null);

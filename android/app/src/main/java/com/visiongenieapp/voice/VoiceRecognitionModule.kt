@@ -1,43 +1,34 @@
 package com.visiongenieapp.voice
 
-import android.app.Activity
-import android.content.ComponentName
-import android.content.Intent
-import android.os.Bundle
+import android.media.MediaRecorder
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.WritableArray
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.io.File
+import java.util.UUID
 
 class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) :
-  ReactContextBaseJavaModule(reactContext), RecognitionListener, ActivityEventListener {
+  ReactContextBaseJavaModule(reactContext), ActivityEventListener {
 
   companion object {
     const val NAME = "VoiceRecognition"
     const val EVENT_START = "VoiceRecognition:onStart"
     const val EVENT_END = "VoiceRecognition:onEnd"
-    const val EVENT_PARTIAL_RESULTS = "VoiceRecognition:onPartialResults"
-    const val EVENT_RESULTS = "VoiceRecognition:onResults"
+    const val EVENT_AUDIO_READY = "VoiceRecognition:onAudioReady"
     const val EVENT_ERROR = "VoiceRecognition:onError"
-    private const val REQUEST_CODE_RECOGNIZE = 22041
   }
 
-  private var speechRecognizer: SpeechRecognizer? = null
-  private var currentLocale: String = "zh-CN"
-  private var usingActivityFallback: Boolean = false
-  private var retriedWithActivityFallback: Boolean = false
+  private var mediaRecorder: MediaRecorder? = null
+  private var outputFile: File? = null
   private var isListening: Boolean = false
-  private var stopRequested: Boolean = false
+  private var startedAtMs: Long = 0L
 
   init {
     reactContext.addActivityEventListener(this)
@@ -59,52 +50,57 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
 
   @ReactMethod
   fun start(locale: String?, promise: Promise) {
-    currentLocale = if (locale.isNullOrBlank()) "zh-CN" else locale
-    retriedWithActivityFallback = false
-    stopRequested = false
-    isListening = false
-    
-    android.util.Log.d("VoiceRecognitionModule", "start() called with locale: $currentLocale")
-    
     Handler(Looper.getMainLooper()).post {
       try {
-        android.util.Log.d("VoiceRecognitionModule", "Checking speech recognition availability...")
-        
-        if (canUseSpeechRecognizer()) {
-          android.util.Log.d("VoiceRecognitionModule", "Using SpeechRecognizer API")
-          ensureRecognizer()
-          val intent = createRecognitionIntent()
-          usingActivityFallback = false
-          isListening = true
-          speechRecognizer?.startListening(intent)
-          android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer started successfully")
+        if (!locale.isNullOrBlank()) {
+          // Locale is currently unused on native recorder path, but kept for API compatibility.
+          locale.trim()
+        }
+        if (isListening) {
           promise.resolve(null)
           return@post
         }
+        cleanupOutputFile()
 
-        if (canLaunchRecognitionActivity()) {
-          android.util.Log.d("VoiceRecognitionModule", "Using Activity fallback")
-          if (!launchActivityFallback()) {
-            val errorMsg = "当前页面不可用，无法打开系统语音识别"
-            android.util.Log.e("VoiceRecognitionModule", errorMsg)
-            emitError(errorMsg)
-            promise.reject("E_NO_ACTIVITY", errorMsg)
-            return@post
+        val audioDir = File(reactContext.cacheDir, "voice-recordings")
+        if (!audioDir.exists()) {
+          audioDir.mkdirs()
+        }
+        val audioFile = File(
+          audioDir,
+          "voice-${System.currentTimeMillis()}-${UUID.randomUUID()}.m4a",
+        )
+
+        val recorder =
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(reactContext)
+          } else {
+            MediaRecorder()
           }
-          android.util.Log.d("VoiceRecognitionModule", "Recognition activity launched")
-          promise.resolve(null)
-          return@post
-        }
+        recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+        recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+        recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+        recorder.setAudioChannels(1)
+        recorder.setAudioSamplingRate(16000)
+        recorder.setAudioEncodingBitRate(64000)
+        recorder.setOutputFile(audioFile.absolutePath)
+        recorder.prepare()
+        recorder.start()
 
-        val errorMsg = "No speech recognition service available on device"
-        android.util.Log.e("VoiceRecognitionModule", errorMsg)
-        emitError(errorMsg)
-        promise.reject("E_UNAVAILABLE", errorMsg)
+        mediaRecorder = recorder
+        outputFile = audioFile
+        startedAtMs = System.currentTimeMillis()
+        isListening = true
+        emit(EVENT_START, null)
+        promise.resolve(null)
       } catch (error: Exception) {
-        val errorMsg = "start failed: ${error.message ?: "Unknown error"}"
-        android.util.Log.e("VoiceRecognitionModule", errorMsg, error)
-        emitError(errorMsg)
-        promise.reject("E_START", errorMsg)
+        cleanupRecorder()
+        cleanupOutputFile()
+        isListening = false
+        startedAtMs = 0L
+        val message = "录音启动失败: ${error.message ?: "unknown"}"
+        emitError(message)
+        promise.reject("E_START", message)
       }
     }
   }
@@ -113,22 +109,67 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   fun stop(promise: Promise) {
     Handler(Looper.getMainLooper()).post {
       try {
-        stopRequested = true
-        if (usingActivityFallback) {
-          usingActivityFallback = false
-          isListening = false
+        if (!isListening) {
           emit(EVENT_END, null)
-        } else {
-          if (isListening) {
-            speechRecognizer?.stopListening()
-          } else {
-            emit(EVENT_END, null)
-          }
+          promise.resolve(null)
+          return@post
+        }
+
+        var stopFailed = false
+        try {
+          mediaRecorder?.stop()
+        } catch (_: RuntimeException) {
+          stopFailed = true
+        } finally {
+          cleanupRecorder()
+        }
+
+        isListening = false
+        val durationMs = (System.currentTimeMillis() - startedAtMs).coerceAtLeast(0L)
+        startedAtMs = 0L
+        val file = outputFile
+
+        if (stopFailed || file == null || !file.exists() || file.length() <= 0L) {
+          cleanupOutputFile()
+          emitError("未识别到有效语音，请重试。")
+          emit(EVENT_END, null)
+          promise.resolve(null)
+          return@post
+        }
+
+        val payload = Arguments.createMap().apply {
+          putString("uri", toFileUri(file))
+          putString("mimeType", "audio/mp4")
+          putDouble("durationMs", durationMs.toDouble())
+          putDouble("fileSize", file.length().toDouble())
+        }
+        emit(EVENT_AUDIO_READY, payload)
+        emit(EVENT_END, null)
+        promise.resolve(null)
+      } catch (error: Exception) {
+        isListening = false
+        startedAtMs = 0L
+        val message = "录音停止失败: ${error.message ?: "unknown"}"
+        emitError(message)
+        promise.reject("E_STOP", message)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun cleanupAudio(uri: String?, promise: Promise) {
+    Handler(Looper.getMainLooper()).post {
+      try {
+        val file = resolveFileFromUri(uri)
+        if (file != null && file.exists()) {
+          file.delete()
+        }
+        if (outputFile?.absolutePath == file?.absolutePath) {
+          outputFile = null
         }
         promise.resolve(null)
       } catch (error: Exception) {
-        emitError(error.message ?: "stop failed")
-        promise.reject("E_STOP", error)
+        promise.reject("E_CLEANUP_AUDIO", error.message ?: "cleanup failed")
       }
     }
   }
@@ -137,80 +178,63 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
   fun destroy(promise: Promise) {
     Handler(Looper.getMainLooper()).post {
       try {
-        speechRecognizer?.destroy()
-        speechRecognizer = null
+        if (isListening) {
+          try {
+            mediaRecorder?.stop()
+          } catch (_: RuntimeException) {
+            // ignore
+          }
+        }
+        cleanupRecorder()
+        cleanupOutputFile()
         isListening = false
-        stopRequested = false
-        usingActivityFallback = false
+        startedAtMs = 0L
         promise.resolve(null)
       } catch (error: Exception) {
-        promise.reject("E_DESTROY", error)
+        promise.reject("E_DESTROY", error.message ?: "destroy failed")
       }
     }
   }
 
-  private fun ensureRecognizer() {
-    if (speechRecognizer == null) {
-      val explicitService = resolveSpeechServiceComponent()
-      speechRecognizer = if (explicitService != null) {
-        SpeechRecognizer.createSpeechRecognizer(reactContext, explicitService)
-      } else {
-        SpeechRecognizer.createSpeechRecognizer(reactContext)
+  private fun cleanupRecorder() {
+    try {
+      mediaRecorder?.reset()
+    } catch (_: Exception) {
+      // ignore
+    }
+    try {
+      mediaRecorder?.release()
+    } catch (_: Exception) {
+      // ignore
+    }
+    mediaRecorder = null
+  }
+
+  private fun cleanupOutputFile() {
+    try {
+      outputFile?.let { file ->
+        if (file.exists()) {
+          file.delete()
+        }
       }
-      if (speechRecognizer != null) {
-        speechRecognizer?.setRecognitionListener(this)
-        android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer initialized successfully")
-      } else {
-        android.util.Log.e("VoiceRecognitionModule", "Failed to initialize SpeechRecognizer")
-        throw Exception("Failed to initialize SpeechRecognizer")
-      }
+    } catch (_: Exception) {
+      // ignore
     }
+    outputFile = null
   }
 
-  private fun resolveSpeechServiceComponent(): ComponentName? {
-    val raw = Settings.Secure.getString(
-      reactContext.contentResolver,
-      "voice_recognition_service",
-    ) ?: return null
+  private fun toFileUri(file: File): String =
+    "file://${file.absolutePath.replace("\\", "/")}"
 
-    return ComponentName.unflattenFromString(raw)
-  }
-
-  private fun canUseSpeechRecognizer(): Boolean {
-    if (SpeechRecognizer.isRecognitionAvailable(reactContext)) {
-      android.util.Log.d("VoiceRecognitionModule", "SpeechRecognizer.isRecognitionAvailable() = true")
-      return true
+  private fun resolveFileFromUri(uri: String?): File? {
+    if (uri.isNullOrBlank()) {
+      return null
     }
-    val explicitService = resolveSpeechServiceComponent()
-    if (explicitService != null) {
-      android.util.Log.d("VoiceRecognitionModule", "Using explicit speech service: $explicitService")
-      return true
+    val normalized = if (uri.startsWith("file://")) uri.removePrefix("file://") else uri
+    if (normalized.isBlank()) {
+      return null
     }
-    android.util.Log.w("VoiceRecognitionModule", "SpeechRecognizer not available, no explicit service configured")
-    return false
-  }
-
-  private fun createRecognitionIntent(): Intent {
-    return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-      putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLocale)
-      putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-      // Prefer real-time partial transcription while speaking.
-      putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
-      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
-      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
-      putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
-    }
-  }
-
-  private fun canLaunchRecognitionActivity(): Boolean {
-    val handlers = reactContext.packageManager.queryIntentActivities(createRecognitionIntent(), 0)
-    val canLaunch = handlers.isNotEmpty()
-    
-    android.util.Log.d("VoiceRecognitionModule", "canLaunchRecognitionActivity() = $canLaunch, found ${handlers.size} handlers")
-    
-    return canLaunch
+    return File(normalized)
   }
 
   private fun emit(eventName: String, payload: Any? = null) {
@@ -226,146 +250,16 @@ class VoiceRecognitionModule(private val reactContext: ReactApplicationContext) 
     emit(EVENT_ERROR, map)
   }
 
-  private fun toWritableArray(values: List<String>): WritableArray {
-    val array = Arguments.createArray()
-    values.forEach { value -> array.pushString(value) }
-    return array
-  }
-
-  override fun onReadyForSpeech(params: Bundle?) {
-    isListening = true
-    stopRequested = false
-    emit(EVENT_START, null)
-  }
-
-  override fun onBeginningOfSpeech() {}
-
-  override fun onRmsChanged(rmsdB: Float) {}
-
-  override fun onBufferReceived(buffer: ByteArray?) {}
-
-  override fun onEndOfSpeech() {}
-
-  override fun onError(error: Int) {
-    if (error == SpeechRecognizer.ERROR_CLIENT && stopRequested) {
-      stopRequested = false
-      isListening = false
-      usingActivityFallback = false
-      emit(EVENT_END, null)
-      return
-    }
-
-    if (
-      (error == SpeechRecognizer.ERROR_NETWORK ||
-        error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT) &&
-      !usingActivityFallback &&
-      !retriedWithActivityFallback &&
-      canLaunchRecognitionActivity()
-    ) {
-      retriedWithActivityFallback = true
-      emitError("语音网络不稳定，正在切换系统识别重试")
-      if (launchActivityFallback()) {
-        return
-      }
-    }
-
-    isListening = false
-    usingActivityFallback = false
-    stopRequested = false
-    val message = when (error) {
-      SpeechRecognizer.ERROR_CLIENT -> "语音识别异常（客户端）"
-      SpeechRecognizer.ERROR_AUDIO -> "语音识别异常（麦克风音频）"
-      SpeechRecognizer.ERROR_NETWORK ->
-        "语音识别网络不可用，请检查设备网络，或在系统中启用离线语音包后重试"
-      SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-        "语音识别网络超时，请检查设备网络，或在系统中启用离线语音包后重试"
-      SpeechRecognizer.ERROR_NO_MATCH -> "未识别到有效语音，请再说一次"
-      SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音识别正在忙，请稍后再试"
-      SpeechRecognizer.ERROR_SERVER -> "语音识别服务暂不可用，请稍后重试"
-      SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "长时间未检测到语音，请重试"
-      else -> "语音识别异常（错误码: $error）"
-    }
-    emitError(message)
-    emit(EVENT_END, null)
-  }
-
-  private fun launchActivityFallback(): Boolean {
-    val activity = reactContext.currentActivity ?: return false
-    return try {
-      usingActivityFallback = true
-      isListening = true
-      stopRequested = false
-      emit(EVENT_START, null)
-      activity.startActivityForResult(createRecognitionIntent(), REQUEST_CODE_RECOGNIZE)
-      true
-    } catch (_: Exception) {
-      usingActivityFallback = false
-      isListening = false
-      false
-    }
-  }
-
-  override fun onResults(results: Bundle?) {
-    isListening = false
-    stopRequested = false
-    val texts = results
-      ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-      ?.filterNotNull()
-      ?: emptyList()
-    val map = Arguments.createMap().apply {
-      putArray("value", toWritableArray(texts))
-    }
-    emit(EVENT_RESULTS, map)
-    emit(EVENT_END, null)
-  }
-
-  override fun onPartialResults(partialResults: Bundle?) {
-    val texts = partialResults
-      ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-      ?.filterNotNull()
-      ?: emptyList()
-    val map = Arguments.createMap().apply {
-      putArray("value", toWritableArray(texts))
-    }
-    emit(EVENT_PARTIAL_RESULTS, map)
-  }
-
-  override fun onEvent(eventType: Int, params: Bundle?) {}
-
   override fun onActivityResult(
-    activity: Activity,
+    activity: android.app.Activity,
     requestCode: Int,
     resultCode: Int,
-    data: Intent?,
+    data: android.content.Intent?,
   ) {
-    if (requestCode != REQUEST_CODE_RECOGNIZE) {
-      return
-    }
-
-    usingActivityFallback = false
-    isListening = false
-    emit(EVENT_END, null)
-
-    if (resultCode != Activity.RESULT_OK) {
-      if (!stopRequested) {
-        emitError("Speech recognition canceled")
-      }
-      stopRequested = false
-      return
-    }
-
-    stopRequested = false
-
-    val texts = data
-      ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-      ?.filterNotNull()
-      ?: emptyList()
-
-    val map = Arguments.createMap().apply {
-      putArray("value", toWritableArray(texts))
-    }
-    emit(EVENT_RESULTS, map)
+    // no-op
   }
 
-  override fun onNewIntent(intent: Intent) {}
+  override fun onNewIntent(intent: android.content.Intent) {
+    // no-op
+  }
 }

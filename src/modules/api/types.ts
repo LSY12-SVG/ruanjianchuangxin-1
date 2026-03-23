@@ -80,6 +80,13 @@ export interface ColorSegmentResponse {
   masks: ColorSegmentMask[];
 }
 
+export interface VoiceTranscribeResponse {
+  transcript: string;
+  language?: string;
+  durationMs?: number;
+  requestId?: string;
+}
+
 export interface ModelingJobResponse {
   taskId: string;
   status: 'queued' | 'processing' | 'succeeded' | 'failed' | 'expired';

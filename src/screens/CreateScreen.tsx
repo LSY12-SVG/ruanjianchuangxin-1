@@ -22,6 +22,7 @@ import {
 import {useImagePicker} from '../hooks/useImagePicker';
 import {defaultColorGradingParams, type ColorGradingParams} from '../types/colorGrading';
 import {buildVoiceImageContext} from '../voice/imageContext';
+import {parseLocalVoiceCommand} from '../voice/localParser';
 import {applyVoiceInterpretation, formatInterpretationSummary} from '../voice/paramApplier';
 import {createSpeechRecognizer, requestRecordAudioPermission} from '../voice/speechRecognizer';
 import {
@@ -30,13 +31,78 @@ import {
   type ColorRequestContext,
   type ModuleCapabilityItem,
 } from '../modules/api';
-import type {InterpretResponse} from '../voice/types';
+import {ApiRequestError} from '../modules/api/http';
+import type {InterpretResponse, VoiceAudioReadyPayload} from '../voice/types';
 import {PageHero} from '../components/app/PageHero';
 import {HERO_CREATE} from '../assets/design';
 import {canvasText, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
 import {buildPreviewColorMatrix} from '../colorEngine/previewColorMatrix';
 
 type CreateMode = 'voice' | 'pro';
+type VoiceInputPhase = 'idle' | 'listening' | 'parsing' | 'error';
+
+const VOICE_PARSE_WATCHDOG_MS = 2500;
+const VOICE_FALLBACK_HINT =
+  '未识别到明确调色命令。可尝试：亮度加10、色温冷一点、饱和度减5。';
+const VOICE_NO_TRANSCRIPT_HINT =
+  '未识别到有效语音，请重试。可尝试：亮度加10、色温冷一点、饱和度减5。';
+const VOICE_FALLBACK_ERROR_CODES = new Set([
+  'REAL_MODEL_REQUIRED',
+  'PROVIDER_TIMEOUT',
+  'MODEL_UNAVAILABLE',
+  'NETWORK_ERROR',
+]);
+
+const mapAsrErrorCodeToMessage = (code: string): string | null => {
+  switch (code) {
+    case 'ASR_TIMEOUT':
+      return '语音转写超时，请检查网络后重试。';
+    case 'ASR_MODEL_UNAVAILABLE':
+      return '语音转写模型不可用，请稍后重试。';
+    case 'ASR_BAD_AUDIO':
+      return '音频无效或过短，请按住说话 1 秒以上后重试。';
+    case 'ASR_NETWORK_ERROR':
+      return '语音转写网络异常，请检查后端与网络连接。';
+    case 'ASR_MISCONFIG':
+      return '语音转写服务未配置，请联系开发者检查 ASR 配置。';
+    default:
+      return null;
+  }
+};
+
+const normalizeSpeechErrorMessage = (rawMessage: string): string => {
+  const message = String(rawMessage || '').trim();
+  if (!message) {
+    return '语音识别失败，请重试';
+  }
+
+  const normalized = message.toLowerCase();
+  const looksLikeMissingService =
+    normalized.includes('no speech recognition service') ||
+    normalized.includes('recognitionservice') ||
+    normalized.includes('speech recognizer not present') ||
+    normalized.includes('speech service') ||
+    normalized.includes('没有语音识别服务') ||
+    normalized.includes('未安装语音识别服务') ||
+    normalized.includes('语音识别服务不可用');
+
+  if (looksLikeMissingService) {
+    return '设备未检测到可用语音识别服务，请安装并启用系统语音识别服务后重试。';
+  }
+
+  return message;
+};
+
+const formatVoiceTranscribeError = (error: unknown): string => {
+  if (error instanceof ApiRequestError) {
+    const mapped = mapAsrErrorCodeToMessage(String(error.code || '').toUpperCase());
+    if (mapped) {
+      return mapped;
+    }
+  }
+  const fallback = formatApiErrorMessage(error, '语音转写失败');
+  return normalizeSpeechErrorMessage(fallback);
+};
 
 const CREATE_PRESETS: Array<{
   name: string;
@@ -111,6 +177,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   const [loading, setLoading] = useState(false);
   const [voiceText, setVoiceText] = useState('');
   const [recording, setRecording] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<VoiceInputPhase>('idle');
   const [segmentationSummary, setSegmentationSummary] = useState('');
   const [showPresets, setShowPresets] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -120,7 +187,10 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   const [previewWidth, setPreviewWidth] = useState(0);
   const liveTranscriptRef = useRef('');
   const autoSubmittedTranscriptRef = useRef('');
+  const submittedAudioUriRef = useRef('');
   const runVoiceRefineRef = useRef<(text: string) => Promise<void>>(async () => undefined);
+  const parseWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingParseRef = useRef(false);
 
   const colorCapability = capabilities.find(item => item.module === 'color');
 
@@ -184,12 +254,33 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
     try {
       setLoading(true);
       setErrorText('');
+      setVoicePhase('parsing');
       const context = ensureContext();
       const interpretation = await colorApi.voiceRefine(context, text);
       applyInterpret(interpretation, '语音精修: ');
+      setVoicePhase('idle');
     } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        VOICE_FALLBACK_ERROR_CODES.has(String(error.code || '').toUpperCase())
+      ) {
+        const localInterpretation = parseLocalVoiceCommand(text);
+        if (Array.isArray(localInterpretation.actions) && localInterpretation.actions.length > 0) {
+          setErrorText('');
+          applyInterpret(localInterpretation, '语音精修(本地兜底): ');
+          setVoicePhase('idle');
+          return;
+        }
+
+        setVoicePhase('error');
+        setSummary(VOICE_FALLBACK_HINT);
+        setErrorText(VOICE_FALLBACK_HINT);
+        return;
+      }
+
       const message = formatApiErrorMessage(error, '语音精修失败');
       setErrorText(message);
+      setVoicePhase('error');
       Alert.alert('语音精修失败', message);
     } finally {
       setLoading(false);
@@ -247,6 +338,106 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
     }
   };
 
+  const clearParseWatchdog = () => {
+    if (parseWatchdogRef.current) {
+      clearTimeout(parseWatchdogRef.current);
+      parseWatchdogRef.current = null;
+    }
+  };
+
+  const clearVoicePendingState = () => {
+    pendingParseRef.current = false;
+    clearParseWatchdog();
+  };
+
+  const setVoiceErrorState = (message: string) => {
+    clearVoicePendingState();
+    submittedAudioUriRef.current = '';
+    setRecording(false);
+    setVoicePhase('error');
+    setErrorText(message);
+  };
+
+  const armParseWatchdog = () => {
+    clearParseWatchdog();
+    parseWatchdogRef.current = setTimeout(() => {
+      if (!pendingParseRef.current) {
+        return;
+      }
+      pendingParseRef.current = false;
+      setRecording(false);
+      setVoicePhase('error');
+      setSummary('语音采集未获得可转写内容，请重试');
+      setErrorText(VOICE_NO_TRANSCRIPT_HINT);
+    }, VOICE_PARSE_WATCHDOG_MS);
+  };
+
+  const submitVoiceTranscript = (rawText: string): boolean => {
+    const normalized = rawText.trim();
+    if (!normalized) {
+      return false;
+    }
+
+    liveTranscriptRef.current = normalized;
+    setVoiceText(normalized);
+
+    if (autoSubmittedTranscriptRef.current === normalized) {
+      clearVoicePendingState();
+      return true;
+    }
+
+    autoSubmittedTranscriptRef.current = normalized;
+    clearVoicePendingState();
+    setSummary('语音识别完成，正在解析调色指令...');
+    runVoiceRefineRef.current(normalized).catch(() => undefined);
+    return true;
+  };
+
+  const submitVoiceAudio = async (audio: VoiceAudioReadyPayload): Promise<boolean> => {
+    const audioUri = String(audio.uri || '').trim();
+    if (!audioUri) {
+      return false;
+    }
+    if (submittedAudioUriRef.current === audioUri) {
+      return true;
+    }
+    if (autoSubmittedTranscriptRef.current.trim()) {
+      return true;
+    }
+
+    submittedAudioUriRef.current = audioUri;
+    clearVoicePendingState();
+    setSummary('语音采集完成，正在转写...');
+    setVoicePhase('parsing');
+
+    try {
+      const result = await colorApi.voiceTranscribe({
+        uri: audioUri,
+        mimeType: audio.mimeType,
+        locale,
+      });
+      const transcript = String(result.transcript || '').trim();
+      if (!transcript) {
+        setVoicePhase('error');
+        setSummary('语音转写未返回有效文本，请重试');
+        setErrorText(VOICE_NO_TRANSCRIPT_HINT);
+        return false;
+      }
+
+      setVoiceText(transcript);
+      setSummary(`识别文本: ${transcript}`);
+      return submitVoiceTranscript(transcript);
+    } catch (error) {
+      setVoiceErrorState(formatVoiceTranscribeError(error));
+      return false;
+    } finally {
+      submittedAudioUriRef.current = '';
+      if (recognizerRef.current.adapter.cleanupAudio) {
+        recognizerRef.current.adapter.cleanupAudio(audioUri).catch(() => undefined);
+      }
+    }
+  };
+
   const recognizerRef = useRef({
     pressing: false,
     adapter: createSpeechRecognizer({
@@ -260,29 +451,28 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
       },
       onFinal: text => {
         const normalized = text?.trim();
-        if (normalized) {
-          liveTranscriptRef.current = normalized;
-          setVoiceText(normalized);
-          if (autoSubmittedTranscriptRef.current !== normalized) {
-            autoSubmittedTranscriptRef.current = normalized;
-            runVoiceRefineRef.current(normalized).catch(() => undefined);
-          }
+        if (!normalized) {
+          return;
         }
+        submitVoiceTranscript(normalized);
+      },
+      onAudioReady: audio => {
+        submitVoiceAudio(audio).catch(() => undefined);
       },
       onError: message => {
-        setRecording(false);
-        setErrorText(message);
+        setVoiceErrorState(normalizeSpeechErrorMessage(message || '语音识别失败，请重试'));
       },
       onPreempted: () => {
-        setRecording(false);
-        setErrorText('语音识别已被抢占，请重试。');
+        setVoiceErrorState('语音识别已被抢占，请重试。');
       },
       onEnd: () => {
         setRecording(false);
-        const buffered = liveTranscriptRef.current.trim();
-        if (buffered && autoSubmittedTranscriptRef.current !== buffered) {
-          autoSubmittedTranscriptRef.current = buffered;
-          runVoiceRefineRef.current(buffered).catch(() => undefined);
+        if (autoSubmittedTranscriptRef.current.trim()) {
+          clearVoicePendingState();
+          return;
+        }
+        if (pendingParseRef.current) {
+          armParseWatchdog();
         }
       },
     }),
@@ -291,6 +481,8 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   useEffect(() => {
     const recognizer = recognizerRef.current.adapter;
     return () => {
+      clearVoicePendingState();
+      submittedAudioUriRef.current = '';
       recognizer.destroy().catch(() => undefined);
     };
   }, []);
@@ -314,32 +506,47 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
       }
       if (!requestContext) {
         setErrorText('请先上传图片');
+        setVoicePhase('error');
         return;
       }
       setErrorText('');
+      clearVoicePendingState();
       liveTranscriptRef.current = '';
       autoSubmittedTranscriptRef.current = '';
+      submittedAudioUriRef.current = '';
       setVoiceText('');
-      setSummary('语音识别中...');
+      setSummary('语音采集中...');
+      setVoicePhase('listening');
       setRecording(true);
       await recognizerRef.current.adapter.start(locale);
       if (!recognizerRef.current.pressing) {
         await recognizerRef.current.adapter.stop();
         setRecording(false);
+        setVoicePhase('idle');
       }
     } catch (error) {
-      setRecording(false);
-      setErrorText(formatApiErrorMessage(error, '语音启动失败'));
+      const message = formatApiErrorMessage(error, '语音启动失败');
+      setVoiceErrorState(normalizeSpeechErrorMessage(message));
     }
   };
 
   const stopRecord = async () => {
-    if (!recording) {
+    if (!recording && voicePhase !== 'listening') {
       return;
     }
     try {
-      setSummary('语音识别已结束，正在解析...');
+      setSummary('语音采集结束，正在上传转写...');
+      setVoicePhase('parsing');
+      if (!autoSubmittedTranscriptRef.current.trim()) {
+        pendingParseRef.current = true;
+        armParseWatchdog();
+      } else {
+        clearVoicePendingState();
+      }
       await recognizerRef.current.adapter.stop();
+    } catch (error) {
+      const message = formatApiErrorMessage(error, '语音停止失败');
+      setVoiceErrorState(normalizeSpeechErrorMessage(message));
     } finally {
       setRecording(false);
     }
@@ -553,6 +760,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
             </Pressable>
           </View>
           <Text style={styles.metaText}>按住说话，松开后自动执行语音精修</Text>
+          <Text style={styles.metaText}>语音阶段: {voicePhase}</Text>
         </View>
       ) : (
         <View style={styles.card}>

@@ -1,8 +1,8 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {
   Alert,
+  Image,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +13,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import {WebView} from 'react-native-webview';
 import {useImagePicker} from '../hooks/useImagePicker';
 import {
+  ApiRequestError,
   formatApiErrorMessage,
   modelingApi,
   type CaptureSessionResponse,
@@ -69,6 +70,60 @@ const buildModelViewerHtml = (url: string): string => `<!doctype html>
   </body>
 </html>`;
 
+const withSlowSubmitHint = (message: string): string => {
+  const normalized = String(message || '').toLowerCase();
+  const looksLikeSlowSubmit =
+    normalized.includes('request aborted') ||
+    normalized.includes('timeout') ||
+    normalized.includes('network request failed') ||
+    normalized.includes('network_error') ||
+    normalized.includes('network error');
+  if (!looksLikeSlowSubmit) {
+    return message;
+  }
+  return `${message}（任务提交可能较慢，后端仍在处理上传，请稍候后刷新任务状态）`;
+};
+
+const bytesToMbText = (bytes?: number): string => {
+  if (!bytes || !Number.isFinite(bytes)) {
+    return '';
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+};
+
+const formatModelingUploadError = (
+  error: unknown,
+  fallbackMessage: string,
+): string => {
+  if (error instanceof ApiRequestError) {
+    if (error.code === 'UNSUPPORTED_IMAGE_TYPE') {
+      return '图片格式暂不支持，请优先选择 JPG / PNG / WebP。若是 HEIC，请在相册中导出兼容格式后重试。';
+    }
+    if (error.code === 'FILE_TOO_LARGE') {
+      const details = error.details as {maxUploadBytes?: number} | undefined;
+      const limitText = bytesToMbText(details?.maxUploadBytes);
+      return limitText
+        ? `图片过大，当前上传上限约 ${limitText}，请压缩后重试。`
+        : '图片过大，请压缩后重试。';
+    }
+  }
+  return withSlowSubmitHint(formatApiErrorMessage(error, fallbackMessage));
+};
+
+const resolveJobViewerUrl = (payload?: ModelingJobResponse | null): string => {
+  if (!payload) {
+    return '';
+  }
+  return payload.downloadUrl || payload.previewUrl || payload.viewerFiles?.[0]?.url || '';
+};
+
+const resolveCaptureViewerUrl = (payload?: ModelingModelAssetResponse | null): string => {
+  if (!payload) {
+    return '';
+  }
+  return payload.glbUrl || payload.viewerFiles?.[0]?.url || '';
+};
+
 interface ModelScreenProps {
   capabilities: ModuleCapabilityItem[];
 }
@@ -80,18 +135,38 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   const [session, setSession] = useState<CaptureSessionResponse | null>(null);
   const [captureTaskId, setCaptureTaskId] = useState('');
   const [captureModel, setCaptureModel] = useState<ModelingModelAssetResponse | null>(null);
-  const [viewerVisible, setViewerVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
 
+  const modelingGalleryOptions = useMemo(
+    () => ({
+      assetRepresentationMode: 'compatible' as const,
+      conversionQuality: 0.92,
+    }),
+    [],
+  );
+
   const jobPicker = useImagePicker({
     onImageError: message => setErrorText(message),
+    galleryOptions: modelingGalleryOptions,
+    requireNativeDecodeForHeif: false,
   });
   const capturePicker = useImagePicker({
     onImageError: message => setErrorText(message),
+    galleryOptions: modelingGalleryOptions,
+    requireNativeDecodeForHeif: false,
   });
 
   const modelingCapability = capabilities.find(item => item.module === 'modeling');
+
+  useEffect(() => {
+    if (job?.status === 'succeeded') {
+      const nextViewerUrl = resolveJobViewerUrl(job);
+      if (nextViewerUrl) {
+        setJobAssetUrl(nextViewerUrl);
+      }
+    }
+  }, [job]);
 
   useEffect(() => {
     if (!job?.taskId) {
@@ -106,9 +181,10 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         .then(next => {
           setJob(next);
           if (next.status === 'succeeded') {
-            setJobAssetUrl(
-              next.downloadUrl || next.previewUrl || next.viewerFiles?.[0]?.url || '',
-            );
+            const nextViewerUrl = resolveJobViewerUrl(next);
+            if (nextViewerUrl) {
+              setJobAssetUrl(nextViewerUrl);
+            }
           }
         })
         .catch(error => {
@@ -141,10 +217,25 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
     return () => clearInterval(timer);
   }, [captureTaskId]);
 
+  const uploadPreviewUri = jobPicker.selectedImage?.success ? jobPicker.selectedImage.uri || '' : '';
+  const captureViewerUrl = resolveCaptureViewerUrl(captureModel);
   const viewerUrl = useMemo(() => {
-    const candidate = jobAssetUrl || captureModel?.glbUrl || '';
-    return candidate;
-  }, [jobAssetUrl, captureModel]);
+    if (mode === 'capture') {
+      return captureViewerUrl || jobAssetUrl;
+    }
+    return jobAssetUrl || captureViewerUrl;
+  }, [captureViewerUrl, jobAssetUrl, mode]);
+
+  const modelEmptyText = useMemo(() => {
+    const jobRunning = job?.status === 'queued' || job?.status === 'processing';
+    if (jobRunning || (captureTaskId && !captureModel)) {
+      return '模型生成中，请稍候...';
+    }
+    if (job?.status === 'succeeded' || captureTaskId) {
+      return '暂无可预览模型，后端正在准备预览资产。';
+    }
+    return '暂无可预览模型';
+  }, [captureModel, captureTaskId, job]);
 
   const createJob = async () => {
     if (!jobPicker.selectedImage?.success || !jobPicker.selectedImage.uri) {
@@ -160,37 +251,11 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         fileName: jobPicker.selectedImage.fileName,
       });
       setJob(created);
-      setJobAssetUrl('');
+      setJobAssetUrl(resolveJobViewerUrl(created));
     } catch (error) {
-      const message = formatApiErrorMessage(error, '创建任务失败');
+      const message = formatModelingUploadError(error, '创建任务失败');
       setErrorText(message);
       Alert.alert('创建任务失败', message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadJobAsset = async () => {
-    if (!job?.taskId) {
-      return;
-    }
-    try {
-      setLoading(true);
-      const latest = await modelingApi.getJob(job.taskId);
-      setJob(latest);
-      if (latest.status !== 'succeeded') {
-        throw new Error(`任务尚未完成，当前状态: ${latest.status}`);
-      }
-      const nextUrl = latest.downloadUrl || latest.previewUrl || latest.viewerFiles?.[0]?.url || '';
-      if (!nextUrl) {
-        throw new Error('任务已完成但没有可展示资产');
-      }
-      setJobAssetUrl(nextUrl);
-      setViewerVisible(true);
-    } catch (error) {
-      const message = formatApiErrorMessage(error, '模型资产获取失败');
-      setErrorText(message);
-      Alert.alert('模型资产获取失败', message);
     } finally {
       setLoading(false);
     }
@@ -235,7 +300,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
       });
       setSession(payload.session);
     } catch (error) {
-      const message = formatApiErrorMessage(error, '上传帧失败');
+      const message = formatModelingUploadError(error, '上传帧失败');
       setErrorText(message);
       Alert.alert('上传帧失败', message);
     } finally {
@@ -252,7 +317,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
       const result = await modelingApi.generateCapture(session.id);
       setCaptureTaskId(result.taskId);
     } catch (error) {
-      const message = formatApiErrorMessage(error, '生成失败');
+      const message = withSlowSubmitHint(formatApiErrorMessage(error, '生成失败'));
       setErrorText(message);
       Alert.alert('生成失败', message);
     } finally {
@@ -313,6 +378,18 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
               <Text style={styles.primaryBtnText}>{loading ? '处理中...' : '创建任务'}</Text>
             </Pressable>
           </View>
+          {uploadPreviewUri ? (
+            <View style={styles.uploadPreviewCard} testID="job-upload-preview">
+              <Text style={styles.previewLabel}>上传图片预览</Text>
+              <Image
+                testID="job-upload-preview-image"
+                source={{uri: uploadPreviewUri}}
+                style={styles.uploadPreviewImage}
+                resizeMode="cover"
+              />
+              <Text style={styles.previewMeta}>{jobPicker.selectedImage?.fileName || uploadPreviewUri}</Text>
+            </View>
+          ) : null}
           {job ? (
             <View style={styles.statusCard}>
               <Text style={styles.statusLine}>任务ID: {job.taskId}</Text>
@@ -329,14 +406,9 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
                 />
               </View>
               <Text style={styles.statusLine}>提示: {job.message || '-'}</Text>
-              <View style={styles.actionRow}>
-                <Pressable style={styles.secondaryBtn} onPress={loadJobAsset}>
-                  <Text style={styles.secondaryBtnText}>加载模型资产</Text>
-                </Pressable>
-                <Pressable style={styles.primaryBtn} onPress={() => setViewerVisible(true)} disabled={!viewerUrl}>
-                  <Text style={styles.primaryBtnText}>查看模型</Text>
-                </Pressable>
-              </View>
+              {job.status === 'succeeded' && !jobAssetUrl ? (
+                <Text style={styles.statusLine}>模型已生成，正在准备预览资源...</Text>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -356,8 +428,6 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
               <Text style={styles.statusLine}>会话ID: {session.id}</Text>
               <Text style={styles.statusLine}>状态: {session.status}</Text>
               <Text style={styles.statusLine}>已采集: {session.acceptedFrameCount}</Text>
-              <Text style={styles.statusLine}>建议角度: {session.suggestedAngleTag || '-'}</Text>
-              <Text style={styles.statusLine}>{session.statusHint}</Text>
               <Pressable style={styles.primaryBtn} onPress={generateCaptureModel} disabled={loading}>
                 <Text style={styles.primaryBtnText}>生成3D模型</Text>
               </Pressable>
@@ -373,34 +443,26 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
           strictMode: {modelingCapability?.strictMode ? 'ON' : 'UNKNOWN'} | provider:{' '}
           {modelingCapability?.provider || '-'}
         </Text>
-        <View style={styles.actionRow}>
-          <Pressable style={styles.secondaryBtn} onPress={() => setViewerVisible(true)} disabled={!viewerUrl}>
-            <Text style={styles.secondaryBtnText}>打开内嵌预览</Text>
-          </Pressable>
-          <Pressable style={styles.primaryBtn} onPress={openDownload}>
-            <Text style={styles.primaryBtnText}>下载资产</Text>
-          </Pressable>
-        </View>
-        {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
-      </View>
-
-      <Modal visible={viewerVisible} animationType="slide" onRequestClose={() => setViewerVisible(false)}>
-        <View style={styles.modalRoot}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>模型预览</Text>
-            <Pressable style={styles.modalClose} onPress={() => setViewerVisible(false)}>
-              <Icon name="close-outline" size={22} color="#EAF6FF" />
-            </Pressable>
-          </View>
+        <Text style={styles.statusLine}>当前上传图: {uploadPreviewUri || '-'}</Text>
+        <Text style={styles.statusLine}>当前模型URL: {viewerUrl || '-'}</Text>
+        <Pressable style={styles.primaryBtn} onPress={openDownload}>
+          <Text style={styles.primaryBtnText}>下载资产</Text>
+        </Pressable>
+        <View style={styles.inlineViewerFrame}>
           {viewerUrl ? (
-            <WebView source={{html: buildModelViewerHtml(viewerUrl)}} style={styles.webview} />
+            <WebView
+              testID="inline-model-viewer"
+              source={{html: buildModelViewerHtml(viewerUrl)}}
+              style={styles.webview}
+            />
           ) : (
-            <View style={styles.emptyViewer}>
-              <Text style={styles.statusLine}>暂无可预览模型</Text>
+            <View style={styles.inlineViewerEmpty}>
+              <Text style={styles.statusLine}>{modelEmptyText}</Text>
             </View>
           )}
         </View>
-      </Modal>
+        {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
+      </View>
     </ScrollView>
   );
 };
@@ -535,35 +597,45 @@ const styles = StyleSheet.create({
     color: 'rgba(234,246,255,0.82)',
     lineHeight: 18,
   },
+  uploadPreviewCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(145, 204, 255, 0.24)',
+    backgroundColor: 'rgba(9, 20, 37, 0.84)',
+    padding: 10,
+    gap: 8,
+  },
+  previewLabel: {
+    ...canvasText.caption,
+    color: 'rgba(234,246,255,0.82)',
+  },
+  uploadPreviewImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 10,
+    backgroundColor: 'rgba(10, 20, 40, 0.82)',
+  },
+  previewMeta: {
+    ...canvasText.caption,
+    color: 'rgba(234,246,255,0.7)',
+  },
   errorText: {
     ...canvasText.body,
     color: '#FFB8C8',
   },
-  modalRoot: {
-    flex: 1,
+  inlineViewerFrame: {
+    minHeight: 320,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(145, 204, 255, 0.24)',
     backgroundColor: '#060C1E',
   },
-  modalHeader: {
-    height: 52,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(133,186,255,0.24)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-  },
-  modalTitle: {
-    ...canvasText.sectionTitle,
-    color: '#EAF6FF',
-  },
-  modalClose: {
-    width: 34,
-    height: 34,
+  webview: {flex: 1, minHeight: 320, backgroundColor: '#060C1E'},
+  inlineViewerEmpty: {
+    minHeight: 320,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 17,
-    backgroundColor: 'rgba(77,163,255,0.2)',
+    paddingHorizontal: 12,
   },
-  webview: {flex: 1, backgroundColor: '#060C1E'},
-  emptyViewer: {flex: 1, alignItems: 'center', justifyContent: 'center'},
 });

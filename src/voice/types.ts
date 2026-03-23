@@ -102,6 +102,13 @@ export interface SpeechRecognitionResult {
   partialTranscript: string;
 }
 
+export interface VoiceAudioReadyPayload {
+  uri: string;
+  mimeType?: string;
+  durationMs?: number;
+  fileSize?: number;
+}
+
 export type VoicePipelineState =
   | 'idle'
   | 'listening'
@@ -123,4 +130,5 @@ export interface SpeechRecognizerAdapter {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
   destroy: () => Promise<void>;
+  cleanupAudio?: (uri: string) => Promise<void>;
 }

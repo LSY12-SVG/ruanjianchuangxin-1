@@ -62,9 +62,15 @@ const startServer = () => {
   return child;
 };
 
-const tinyPngBase64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR42mP8/5+hHgAHggJ/PvN4WQAAAABJRU5ErkJggg==';
-const tinyPngBuffer = Buffer.from(tinyPngBase64, 'base64');
+const defaultSmokeImagePath = path.resolve(
+  __dirname,
+  '../../android/app/src/main/res/mipmap-mdpi/ic_launcher.png',
+);
+const smokeImagePath = process.env.SMOKE_IMAGE_PATH
+  ? path.resolve(process.cwd(), process.env.SMOKE_IMAGE_PATH)
+  : defaultSmokeImagePath;
+const tinyPngBuffer = fs.readFileSync(smokeImagePath);
+const tinyPngBase64 = tinyPngBuffer.toString('base64');
 
 const createImageForm = () => {
   const form = new FormData();
@@ -231,10 +237,10 @@ const run = async () => {
     if (!taskId) {
       throw new Error('modeling_task_id_missing');
     }
-    await pollTaskUntilReady({taskId, label: 'modeling_job'});
-
-    const modelResult = await request(`/v1/modules/modeling/models/${taskId}`);
-    expectStatus(modelResult, 200, 'modeling_model_fetch');
+    const modelingJob = await pollTaskUntilReady({taskId, label: 'modeling_job'});
+    if (!modelingJob.body?.downloadUrl && !Array.isArray(modelingJob.body?.viewerFiles)) {
+      throw new Error('modeling_job_missing_assets');
+    }
 
     const createSession = await request('/v1/modules/modeling/capture-sessions', {
       method: 'POST',
@@ -268,6 +274,9 @@ const run = async () => {
       throw new Error('capture_task_id_missing');
     }
     await pollTaskUntilReady({taskId: captureTaskId, label: 'capture_modeling_job'});
+
+    const modelResult = await request(`/v1/modules/modeling/models/${captureTaskId}`);
+    expectStatus(modelResult, 200, 'modeling_model_fetch');
 
     const planResult = await request('/v1/modules/agent/plan', {
       method: 'POST',

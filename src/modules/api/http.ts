@@ -6,12 +6,14 @@ export interface ApiRequestErrorPayload {
   message: string;
   requestId: string;
   status: number;
+  details?: Record<string, unknown>;
 }
 
 export class ApiRequestError extends Error {
   code: string;
   requestId: string;
   status: number;
+  details?: Record<string, unknown>;
 
   constructor(payload: ApiRequestErrorPayload) {
     super(payload.message);
@@ -19,6 +21,7 @@ export class ApiRequestError extends Error {
     this.code = payload.code;
     this.requestId = payload.requestId;
     this.status = payload.status;
+    this.details = payload.details;
   }
 }
 
@@ -64,7 +67,11 @@ const parseErrorPayload = (
       (typeof nested.requestId === 'string' && nested.requestId) ||
       (typeof payload.requestId === 'string' && payload.requestId) ||
       'unknown';
-    return {code, message, requestId, status};
+    const details =
+      (isObject(nested.details) && nested.details) ||
+      (isObject(payload.details) && payload.details) ||
+      undefined;
+    return {code, message, requestId, status, details};
   }
   return {
     code: `HTTP_${status || 0}`,

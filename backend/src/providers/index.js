@@ -1,5 +1,5 @@
 const {normalizeInterpretResponse} = require('../contracts');
-const {interpretWithOpenAICompat} = require('./openaiCompat');
+const {interpretWithOpenAICompat, transcribeWithOpenAICompat} = require('./openaiCompat');
 const {fallbackInterpret} = require('./fallback');
 const {
   estimateSceneProfile,
@@ -14,6 +14,10 @@ const {
 
 const providerMap = {
   openai_compat: interpretWithOpenAICompat,
+};
+
+const asrProviderMap = {
+  openai_compat: transcribeWithOpenAICompat,
 };
 
 const createStrictProviderError = (message, code, status, details) => {
@@ -541,8 +545,20 @@ const interpretWithProvider = async (request, runtimeOptions = {}) => {
   return fallbackWithMetadata(request, reason);
 };
 
+const transcribeWithProvider = async (request, runtimeOptions = {}) => {
+  const providerName = runtimeOptions.provider || process.env.ASR_PROVIDER || 'openai_compat';
+  const provider = asrProviderMap[providerName] || asrProviderMap.openai_compat;
+  return provider(request, {
+    model: runtimeOptions.model || process.env.ASR_MODEL,
+    timeoutMs: runtimeOptions.timeoutMs || process.env.ASR_TIMEOUT_MS,
+    baseUrl: runtimeOptions.baseUrl || process.env.ASR_BASE_URL,
+    apiKey: runtimeOptions.apiKey || process.env.ASR_API_KEY,
+  });
+};
+
 module.exports = {
   interpretWithProvider,
+  transcribeWithProvider,
   isRetryableModelError,
   inferFallbackReasonFromProviderReason,
   fetchProviderModelIds,

@@ -5,6 +5,9 @@ import type {
   ModelingModelAssetResponse,
 } from './types';
 
+const MODELING_SUBMIT_TIMEOUT_MS = 180_000;
+const MODELING_QUERY_TIMEOUT_MS = 30_000;
+
 export const modelingApi = {
   async createJob(image: {uri: string; type?: string; fileName?: string}): Promise<ModelingJobResponse> {
     const form = new FormData();
@@ -19,11 +22,14 @@ export const modelingApi = {
     return requestApi<ModelingJobResponse>('/v1/modules/modeling/jobs', {
       method: 'POST',
       body: form,
+      timeoutMs: MODELING_SUBMIT_TIMEOUT_MS,
     });
   },
 
   async getJob(taskId: string): Promise<ModelingJobResponse> {
-    return requestApi<ModelingJobResponse>(`/v1/modules/modeling/jobs/${encodeURIComponent(taskId)}`);
+    return requestApi<ModelingJobResponse>(`/v1/modules/modeling/jobs/${encodeURIComponent(taskId)}`, {
+      timeoutMs: MODELING_QUERY_TIMEOUT_MS,
+    });
   },
 
   async getAsset(taskId: string, assetIndex: number): Promise<Blob> {
@@ -41,12 +47,16 @@ export const modelingApi = {
   async createCaptureSession(): Promise<CaptureSessionResponse> {
     return requestApi<CaptureSessionResponse>('/v1/modules/modeling/capture-sessions', {
       method: 'POST',
+      timeoutMs: MODELING_QUERY_TIMEOUT_MS,
     });
   },
 
   async getCaptureSession(sessionId: string): Promise<CaptureSessionResponse> {
     return requestApi<CaptureSessionResponse>(
       `/v1/modules/modeling/capture-sessions/${encodeURIComponent(sessionId)}`,
+      {
+        timeoutMs: MODELING_QUERY_TIMEOUT_MS,
+      },
     );
   },
 
@@ -87,6 +97,7 @@ export const modelingApi = {
     return requestApi(`/v1/modules/modeling/capture-sessions/${encodeURIComponent(sessionId)}/frames`, {
       method: 'POST',
       body: form,
+      timeoutMs: MODELING_SUBMIT_TIMEOUT_MS,
     });
   },
 
@@ -101,6 +112,7 @@ export const modelingApi = {
       `/v1/modules/modeling/capture-sessions/${encodeURIComponent(sessionId)}/generate`,
       {
         method: 'POST',
+        timeoutMs: MODELING_SUBMIT_TIMEOUT_MS,
       },
     );
   },
@@ -108,7 +120,9 @@ export const modelingApi = {
   async getModelAsset(modelId: string): Promise<ModelingModelAssetResponse> {
     return requestApi<ModelingModelAssetResponse>(
       `/v1/modules/modeling/models/${encodeURIComponent(modelId)}`,
+      {
+        timeoutMs: MODELING_QUERY_TIMEOUT_MS,
+      },
     );
   },
 };
-

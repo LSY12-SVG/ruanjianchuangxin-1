@@ -1,3 +1,5 @@
+const {readFile} = require('node:fs/promises');
+
 const SYSTEM_PROMPT = [
   '你是移动端图片智能调色解析器。',
   '任务：基于图片和语音需求输出调色动作 JSON，不能输出任何额外文本。',
@@ -204,6 +206,110 @@ const interpretWithOpenAICompat = async (request, options = {}) => {
   }
 };
 
+const classifyAsrBadRequestCode = message => {
+  const lowered = String(message || '').toLowerCase();
+  if (
+    lowered.includes('model') &&
+    (lowered.includes('not found') || lowered.includes('does not exist') || lowered.includes('invalid'))
+  ) {
+    return 'MODEL_UNAVAILABLE';
+  }
+  if (
+    lowered.includes('audio') ||
+    lowered.includes('file') ||
+    lowered.includes('format') ||
+    lowered.includes('decode') ||
+    lowered.includes('duration')
+  ) {
+    return 'BAD_AUDIO';
+  }
+  return 'HTTP_400';
+};
+
+const transcribeWithOpenAICompat = async (request, options = {}) => {
+  const apiKey = String(options.apiKey || process.env.ASR_API_KEY || '').trim();
+  const baseUrl = String(options.baseUrl || process.env.ASR_BASE_URL || '').trim();
+  const model = String(options.model || process.env.ASR_MODEL || '').trim();
+  const timeoutMs = Number(options.timeoutMs || process.env.ASR_TIMEOUT_MS || 30000);
+
+  if (!apiKey || !baseUrl || !model) {
+    throw createProviderError(
+      'ASR_API_KEY/ASR_BASE_URL/ASR_MODEL is required',
+      'MISCONFIG',
+    );
+  }
+
+  const hasBuffer = request?.buffer && Buffer.isBuffer(request.buffer);
+  const hasFilePath = typeof request?.filePath === 'string' && request.filePath.trim();
+  if (!hasBuffer && !hasFilePath) {
+    throw createProviderError('audio buffer is required', 'BAD_AUDIO', 400);
+  }
+
+  const audioBuffer = hasBuffer ? request.buffer : await readFile(request.filePath);
+  if (!audioBuffer || !audioBuffer.length) {
+    throw createProviderError('audio payload is empty', 'BAD_AUDIO', 400);
+  }
+
+  const form = new FormData();
+  const mimeType = String(request?.mimeType || 'audio/mp4');
+  const fileName = String(request?.fileName || `voice-${Date.now()}.m4a`);
+  const blob = new Blob([audioBuffer], {type: mimeType});
+  form.append('file', blob, fileName);
+  form.append('model', model);
+
+  if (typeof request?.language === 'string' && request.language.trim()) {
+    form.append('language', request.language.trim());
+  }
+
+  let response;
+  try {
+    response = await requestWithTimeout(
+      `${baseUrl.replace(/\/$/, '')}/audio/transcriptions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: form,
+      },
+      timeoutMs,
+    );
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      throw createProviderError('asr request timeout', 'TIMEOUT');
+    }
+    throw createProviderError('asr network failure', 'NETWORK');
+  }
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const message = extractErrorMessage(payload) || `asr provider status ${response.status}`;
+    const code =
+      response.status === 400
+        ? classifyAsrBadRequestCode(message)
+        : `HTTP_${response.status}`;
+    throw createProviderError(message, code, response.status);
+  }
+
+  const json = await response.json().catch(() => ({}));
+  const transcript =
+    typeof json?.text === 'string'
+      ? json.text.trim()
+      : typeof json?.transcript === 'string'
+        ? json.transcript.trim()
+        : '';
+
+  return {
+    transcript,
+    language: typeof json?.language === 'string' ? json.language : undefined,
+    durationMs:
+      typeof json?.duration === 'number' && Number.isFinite(json.duration)
+        ? Number(json.duration) * 1000
+        : undefined,
+  };
+};
+
 module.exports = {
   interpretWithOpenAICompat,
+  transcribeWithOpenAICompat,
 };

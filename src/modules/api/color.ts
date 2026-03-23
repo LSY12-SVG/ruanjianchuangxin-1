@@ -5,10 +5,12 @@ import type {
   ColorInterpretModuleResponse,
   ColorRequestContext,
   ColorSegmentResponse,
+  VoiceTranscribeResponse,
 } from './types';
 
 const COLOR_TIMEOUT = {
   initialSuggest: 180_000,
+  voiceTranscribe: 60_000,
   voiceRefine: 180_000,
   autoGradeFast: 180_000,
   autoGradeRefine: 180_000,
@@ -39,6 +41,31 @@ const toInterpretResponse = (
 });
 
 export const colorApi = {
+  async voiceTranscribe(input: {
+    uri: string;
+    mimeType?: string;
+    fileName?: string;
+    locale?: string;
+  }): Promise<VoiceTranscribeResponse> {
+    const form = new FormData();
+    form.append(
+      'audio',
+      {
+        uri: input.uri,
+        type: input.mimeType || 'audio/mp4',
+        name: input.fileName || `voice-${Date.now()}.m4a`,
+      } as never,
+    );
+    if (input.locale) {
+      form.append('locale', input.locale);
+    }
+    return requestApi<VoiceTranscribeResponse>('/v1/modules/color/voice-transcribe', {
+      method: 'POST',
+      timeoutMs: COLOR_TIMEOUT.voiceTranscribe,
+      body: form,
+    });
+  },
+
   async initialSuggest(input: ColorRequestContext): Promise<InterpretResponse> {
     const payload = await requestApi<ColorInterpretModuleResponse>(
       '/v1/modules/color/initial-suggest',

@@ -4,13 +4,14 @@ import {
   PermissionsAndroid,
   Platform,
 } from 'react-native';
-import type {SpeechRecognizerAdapter} from './types';
+import type {SpeechRecognizerAdapter, VoiceAudioReadyPayload} from './types';
 
 interface SpeechCallbacks {
   onStart?: () => void;
   onEnd?: () => void;
   onPartial?: (text: string) => void;
   onFinal?: (text: string) => void;
+  onAudioReady?: (audio: VoiceAudioReadyPayload) => void;
   onError?: (message: string) => void;
   onPreempted?: () => void;
 }
@@ -19,6 +20,7 @@ interface VoiceRecognitionModuleType {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
   destroy: () => Promise<void>;
+  cleanupAudio?: (uri: string) => Promise<void>;
 }
 
 interface SpeechValueEvent {
@@ -27,6 +29,13 @@ interface SpeechValueEvent {
 
 interface SpeechErrorEvent {
   message?: string;
+}
+
+interface AudioReadyEvent {
+  uri?: string;
+  mimeType?: string;
+  durationMs?: number;
+  fileSize?: number;
 }
 
 const VoiceRecognition: VoiceRecognitionModuleType | null =
@@ -162,6 +171,27 @@ export const createSpeechRecognizer = (
     // Compatibility listeners for some vendor/legacy bridges.
     emitter.addListener('onSpeechPartialResults', onPartial),
     emitter.addListener('onSpeechResults', onFinal),
+    emitter.addListener('VoiceRecognition:onAudioReady', (event: AudioReadyEvent) => {
+      if (!isActiveRecognizer()) {
+        return;
+      }
+      const uri = typeof event?.uri === 'string' ? event.uri.trim() : '';
+      if (!uri) {
+        return;
+      }
+      callbacks.onAudioReady?.({
+        uri,
+        mimeType: typeof event?.mimeType === 'string' ? event.mimeType : undefined,
+        durationMs:
+          typeof event?.durationMs === 'number' && Number.isFinite(event.durationMs)
+            ? event.durationMs
+            : undefined,
+        fileSize:
+          typeof event?.fileSize === 'number' && Number.isFinite(event.fileSize)
+            ? event.fileSize
+            : undefined,
+      });
+    }),
     emitter.addListener('VoiceRecognition:onError', (event: SpeechErrorEvent) => {
       if (!isActiveRecognizer()) {
         return;
@@ -226,6 +256,12 @@ export const createSpeechRecognizer = (
       if (shouldDestroyNative) {
         await VoiceRecognition.destroy();
       }
+    },
+    cleanupAudio: async (uri: string) => {
+      if (!uri || typeof VoiceRecognition.cleanupAudio !== 'function') {
+        return;
+      }
+      await VoiceRecognition.cleanupAudio(uri);
     },
   };
 };

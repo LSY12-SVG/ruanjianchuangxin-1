@@ -87,7 +87,7 @@ module.exports = {
   captureFramesDir:
     process.env.IMAGE_TO_3D_CAPTURE_DIR ||
     path.join(__dirname, '..', '..', 'data', 'capture-frames'),
-  maxUploadBytes: readIntEnv('IMAGE_TO_3D_MAX_UPLOAD_BYTES', 6 * 1024 * 1024),
+  maxUploadBytes: readIntEnv('IMAGE_TO_3D_MAX_UPLOAD_BYTES', 10 * 1024 * 1024),
   pollAfterMs: readIntEnv('IMAGE_TO_3D_POLL_AFTER_MS', 5000),
   maxPollingWindowMs: readIntEnv('IMAGE_TO_3D_MAX_POLL_MS', 10 * 60 * 1000),
   resultTtlMs: readIntEnv('IMAGE_TO_3D_RESULT_TTL_MS', 24 * 60 * 60 * 1000),
