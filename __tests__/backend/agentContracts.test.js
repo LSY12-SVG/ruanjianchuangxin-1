@@ -71,6 +71,7 @@ describe('agent contracts', () => {
     expect(result.ok).toBe(true);
     expect(result.payload.planId).toBe('p1');
     expect(result.payload.actionIds).toEqual(['a1']);
+    expect(result.payload.allowConfirmActions).toBe(false);
   });
 
   test('requires namespace for memory requests', () => {

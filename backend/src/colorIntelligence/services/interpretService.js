@@ -222,6 +222,34 @@ const handleInterpret = async (requestBodyRaw, options = {}) => {
       quality_risk_flags: Array.isArray(interpreted.quality_risk_flags)
         ? interpreted.quality_risk_flags
         : [],
+      raw_action_count:
+        interpreted &&
+        interpreted.action_debug &&
+        typeof interpreted.action_debug.raw_action_count === 'number'
+          ? interpreted.action_debug.raw_action_count
+          : -1,
+      normalized_action_count:
+        interpreted &&
+        interpreted.action_debug &&
+        typeof interpreted.action_debug.normalized_action_count === 'number'
+          ? interpreted.action_debug.normalized_action_count
+          : -1,
+      final_action_count: Array.isArray(interpreted.intent_actions)
+        ? interpreted.intent_actions.length
+        : -1,
+      dropped_action_count:
+        interpreted &&
+        interpreted.action_debug &&
+        typeof interpreted.action_debug.dropped_action_count === 'number'
+          ? interpreted.action_debug.dropped_action_count
+          : -1,
+      dropped_reason_counts:
+        interpreted &&
+        interpreted.action_debug &&
+        interpreted.action_debug.dropped_reason_counts &&
+        typeof interpreted.action_debug.dropped_reason_counts === 'object'
+          ? interpreted.action_debug.dropped_reason_counts
+          : {},
     }),
   );
 

@@ -5,7 +5,7 @@ const {createAgentExecutionService} = require('../../backend/src/agentExecution'
 const {createAgentMemoryStore} = require('../../backend/src/agentMemoryStore');
 
 describe('agent execute and memory store', () => {
-  test('execute returns pending for non-low risk and supports idempotency', () => {
+  test('execute returns pending for non-low risk and supports idempotency', async () => {
     const service = createAgentExecutionService();
     const payload = {
       planId: 'plan_1',
@@ -20,17 +20,17 @@ describe('agent execute and memory store', () => {
         },
       ],
     };
-    const first = service.execute(payload);
-    const second = service.execute(payload);
+    const first = await service.execute(payload);
+    const second = await service.execute(payload);
 
     expect(first.status).toBe('pending_confirm');
     expect(first.pendingActions.length).toBe(1);
     expect(second.executionId).toBe(first.executionId);
   });
 
-  test('execute blocks action when required scope is missing', () => {
+  test('execute blocks action when required scope is missing', async () => {
     const service = createAgentExecutionService();
-    const result = service.execute({
+    const result = await service.execute({
       userId: 'u1',
       namespace: 'app.agent',
       planId: 'plan_scope_1',

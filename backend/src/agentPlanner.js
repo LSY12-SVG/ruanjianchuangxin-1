@@ -73,7 +73,7 @@ const planAgentActions = request => {
     });
   }
 
-  if (hasAny(lowered, ['社区', '分享', '发布', '帖子'])) {
+  if (hasAny(lowered, ['社区', '分享', '发布', '帖子', 'community', 'share', 'publish', 'post'])) {
     pushIfCapable(capSet, actions, {
       domain: 'navigation',
       operation: 'navigate_tab',

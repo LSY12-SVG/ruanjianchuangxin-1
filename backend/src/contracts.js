@@ -183,9 +183,9 @@ const resolveTarget = value => {
   return null;
 };
 
-const normalizeAction = value => {
+const normalizeActionWithReason = value => {
   if (!isObject(value)) {
-    return null;
+    return {action: null, reason: 'not_object'};
   }
 
   const rawAction =
@@ -221,7 +221,7 @@ const normalizeAction = value => {
     }
   }
   if (!action) {
-    return null;
+    return {action: null, reason: 'unknown_action'};
   }
 
   const target = resolveTarget(
@@ -241,18 +241,21 @@ const normalizeAction = value => {
     const styleRaw = String(rawStyle || value.value || value.label || '').trim();
     const style = resolveAlias(STYLE_ALIAS, styleRaw) || styleRaw;
     if (!style) {
-      return null;
+      return {action: null, reason: 'missing_style'};
     }
     return {
-      action: 'apply_style',
-      target: 'style',
-      style,
-      strength: toNumberOrNull(value.strength) || 1,
+      action: {
+        action: 'apply_style',
+        target: 'style',
+        style,
+        strength: toNumberOrNull(value.strength) || 1,
+      },
+      reason: null,
     };
   }
 
   if (!target || target === 'style') {
-    return null;
+    return {action: null, reason: 'invalid_or_missing_target'};
   }
 
   if (action === 'set_param') {
@@ -260,12 +263,15 @@ const normalizeAction = value => {
       value.value ?? value.amount ?? value.targetValue ?? value.set ?? value.delta,
     );
     if (valueNum === null) {
-      return null;
+      return {action: null, reason: 'missing_set_value'};
     }
     return {
-      action: 'set_param',
-      target,
-      value: valueNum,
+      action: {
+        action: 'set_param',
+        target,
+        value: valueNum,
+      },
+      reason: null,
     };
   }
 
@@ -273,7 +279,7 @@ const normalizeAction = value => {
     value.delta ?? value.amount ?? value.change ?? value.adjustment ?? value.value,
   );
   if (rawDelta === null) {
-    return null;
+    return {action: null, reason: 'missing_adjust_delta'};
   }
 
   const normalizedAction = normalizeToken(rawAction);
@@ -282,11 +288,16 @@ const normalizeAction = value => {
   const delta = isDecrease ? -Math.abs(rawDelta) : isIncrease ? Math.abs(rawDelta) : rawDelta;
 
   return {
-    action: 'adjust_param',
-    target,
-    delta,
+    action: {
+      action: 'adjust_param',
+      target,
+      delta,
+    },
+    reason: null,
   };
 };
+
+const normalizeAction = value => normalizeActionWithReason(value).action;
 
 const isAction = action => {
   if (!isObject(action)) {
@@ -405,7 +416,37 @@ const normalizeInterpretResponse = payload => {
     payload.ops,
     payload.adjustments,
   ];
+  const flattenActionContainer = value => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (!isObject(value)) {
+      return [];
+    }
+    const keys = [
+      'actions',
+      'intent_actions',
+      'intentActions',
+      'global_actions',
+      'globalActions',
+      'operations',
+      'ops',
+      'adjustments',
+      'steps',
+      'items',
+      'list',
+    ];
+    const flattened = [];
+    for (const key of keys) {
+      const candidate = value[key];
+      if (Array.isArray(candidate)) {
+        flattened.push(...candidate);
+      }
+    }
+    return flattened;
+  };
   const objectCandidates = [
+    payload.actions,
     payload.global_actions,
     payload.globalActions,
     payload.global,
@@ -422,6 +463,11 @@ const normalizeInterpretResponse = payload => {
       actionsRaw = candidate;
       break;
     }
+    const flattened = flattenActionContainer(candidate);
+    if (flattened.length > 0) {
+      actionsRaw = flattened;
+      break;
+    }
   }
   if (actionsRaw.length === 0) {
     for (const candidate of objectCandidates) {
@@ -433,15 +479,20 @@ const normalizeInterpretResponse = payload => {
     }
   }
 
-  const actions = Array.isArray(actionsRaw)
-    ? actionsRaw.map(normalizeAction).filter(item => Boolean(item))
+  const normalizedEntries = Array.isArray(actionsRaw)
+    ? actionsRaw.map(normalizeActionWithReason)
     : [];
+  const droppedReasonCounts = normalizedEntries.reduce((acc, entry) => {
+    if (!entry || entry.action) {
+      return acc;
+    }
+    const reason = entry.reason || 'unknown_drop_reason';
+    acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
+  const actions = normalizedEntries.map(entry => entry.action).filter(item => Boolean(item));
 
-  if (actions.length === 0) {
-    return null;
-  }
-
-  if (!actions.every(isAction)) {
+  if (actions.length > 0 && !actions.every(isAction)) {
     return null;
   }
 
@@ -510,6 +561,12 @@ const normalizeInterpretResponse = payload => {
         : typeof payload.fallbackReason === 'string'
           ? payload.fallbackReason
           : undefined,
+    action_debug: {
+      raw_action_count: Array.isArray(actionsRaw) ? actionsRaw.length : 0,
+      normalized_action_count: actions.length,
+      dropped_action_count: Array.isArray(actionsRaw) ? Math.max(actionsRaw.length - actions.length, 0) : 0,
+      dropped_reason_counts: droppedReasonCounts,
+    },
   };
 };
 

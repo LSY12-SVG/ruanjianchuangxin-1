@@ -106,6 +106,8 @@ function createImageTo3DModule(overrides = {}) {
     config,
     provider,
     db,
+    service,
+    captureService,
     imageTo3DRouter,
     captureRouter,
     handleError,

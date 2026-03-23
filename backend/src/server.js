@@ -62,6 +62,10 @@ const mountModules = async () => {
 
   agentModule = createAgentModule({
     getAuthMiddleware: () => accountModule?.authMiddleware || null,
+    getCommunityRepo: () => communityModule?.repo || null,
+    getSettingsRepo: () => accountModule?.repo || null,
+    getModelingService: () => modelingModule?.imageTo3DService || null,
+    getModelingConfig: () => modelingModule?.config || null,
   });
   app.use('/v1/modules/agent', agentModule.router);
 

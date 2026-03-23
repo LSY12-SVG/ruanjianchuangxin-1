@@ -24,15 +24,25 @@ export const agentApi = {
     });
   },
 
-  async executePlan(planId: string, actions: AgentPlanAction[]): Promise<AgentExecuteResponse> {
+  async executePlan(
+    planId: string,
+    actions: AgentPlanAction[],
+    options?: {
+      actionIds?: string[];
+      allowConfirmActions?: boolean;
+      idempotencyKey?: string;
+    },
+  ): Promise<AgentExecuteResponse> {
     return requestApi<AgentExecuteResponse>('/v1/modules/agent/execute', {
       method: 'POST',
       auth: true,
       body: {
         planId,
         actions,
+        actionIds: Array.isArray(options?.actionIds) ? options.actionIds : undefined,
+        allowConfirmActions: options?.allowConfirmActions === true,
+        idempotencyKey: typeof options?.idempotencyKey === 'string' ? options.idempotencyKey : undefined,
       },
     });
   },
 };
-

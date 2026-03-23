@@ -81,6 +81,9 @@ const createModelingModule = async () => {
     module: MODULE_NAME,
     basePath: BASE_PATH,
     router,
+    config: imageTo3DModule.config,
+    imageTo3DService: imageTo3DModule.service,
+    captureService: imageTo3DModule.captureService,
     async init() {},
     async healthCheck() {
       return {

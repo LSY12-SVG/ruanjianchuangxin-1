@@ -7,11 +7,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {WebView} from 'react-native-webview';
 import {useImagePicker} from '../hooks/useImagePicker';
+import {useAgentExecutionContextStore} from '../agent/executionContextStore';
 import {
   ApiRequestError,
   formatApiErrorMessage,
@@ -23,7 +25,7 @@ import {
 } from '../modules/api';
 import {PageHero} from '../components/app/PageHero';
 import {HERO_MODEL} from '../assets/design';
-import {canvasText, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
+import {canvasText, canvasUi, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
 
 type Mode = 'job' | 'capture';
 
@@ -54,7 +56,7 @@ const buildModelViewerHtml = (url: string): string => `<!doctype html>
     <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
     <style>
       html, body { margin: 0; width: 100%; height: 100%; background: #0b1220; overflow: hidden; }
-      model-viewer { width: 100%; height: 100%; --progress-bar-color: #6FE7FF; }
+      model-viewer { width: 100%; height: 100%; --progress-bar-color: #A34A3C; }
     </style>
   </head>
   <body>
@@ -64,7 +66,6 @@ const buildModelViewerHtml = (url: string): string => `<!doctype html>
       auto-rotate
       shadow-intensity="1"
       exposure="1"
-      ar
       loading="eager">
     </model-viewer>
   </body>
@@ -129,6 +130,7 @@ interface ModelScreenProps {
 }
 
 export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
+  const {width: windowWidth} = useWindowDimensions();
   const [mode, setMode] = useState<Mode>('job');
   const [job, setJob] = useState<ModelingJobResponse | null>(null);
   const [jobAssetUrl, setJobAssetUrl] = useState('');
@@ -137,6 +139,9 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   const [captureModel, setCaptureModel] = useState<ModelingModelAssetResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const setModelingImageContext = useAgentExecutionContextStore(
+    state => state.setModelingImageContext,
+  );
 
   const modelingGalleryOptions = useMemo(
     () => ({
@@ -158,6 +163,24 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   });
 
   const modelingCapability = capabilities.find(item => item.module === 'modeling');
+
+  useEffect(() => {
+    const selected = jobPicker.selectedImage;
+    const normalizedBase64 = String(selected?.base64 || '')
+      .replace(/^data:[^;]+;base64,/, '')
+      .trim();
+    if (!selected?.success || !normalizedBase64) {
+      setModelingImageContext(null);
+      return;
+    }
+    setModelingImageContext({
+      image: {
+        mimeType: selected.type || 'image/jpeg',
+        fileName: selected.fileName || 'agent-model.jpg',
+        base64: normalizedBase64,
+      },
+    });
+  }, [jobPicker.selectedImage, setModelingImageContext]);
 
   useEffect(() => {
     if (job?.status === 'succeeded') {
@@ -218,6 +241,18 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   }, [captureTaskId]);
 
   const uploadPreviewUri = jobPicker.selectedImage?.success ? jobPicker.selectedImage.uri || '' : '';
+  const uploadPreviewHeight = useMemo(() => {
+    const sourceWidth = Number(jobPicker.selectedImage?.width || 0);
+    const sourceHeight = Number(jobPicker.selectedImage?.height || 0);
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return 220;
+    }
+    const ratio = sourceWidth / sourceHeight;
+    // The preview card has horizontal paddings and borders; reserve room to avoid overflow.
+    const usableWidth = Math.max(windowWidth - 72, 220);
+    const fittedHeight = usableWidth / ratio;
+    return Math.max(170, Math.min(360, fittedHeight));
+  }, [jobPicker.selectedImage?.height, jobPicker.selectedImage?.width, windowWidth]);
   const captureViewerUrl = resolveCaptureViewerUrl(captureModel);
   const viewerUrl = useMemo(() => {
     if (mode === 'capture') {
@@ -340,20 +375,17 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         image={HERO_MODEL}
         title="3D 建模"
         subtitle="2D 转 3D + Capture Session + 实时展示"
-        overlayColors={[
-          'rgba(6, 12, 30, 0.18)',
-          'rgba(10, 24, 52, 0.64)',
-          'rgba(14, 46, 85, 0.9)',
-        ]}
+        variant="contrast"
+        overlayStrength="strong"
       />
 
       <View style={styles.modeRow}>
         <Pressable style={[styles.modeBtn, mode === 'job' && styles.modeBtnActive]} onPress={() => setMode('job')}>
-          <Icon name="cloud-upload-outline" size={15} color="#EAF6FF" />
+          <Icon name="cloud-upload" size={15} color="#3B2F29" />
           <Text style={styles.modeBtnText}>2D→3D</Text>
         </Pressable>
         <Pressable style={[styles.modeBtn, mode === 'capture' && styles.modeBtnActive]} onPress={() => setMode('capture')}>
-          <Icon name="camera-outline" size={15} color="#EAF6FF" />
+          <Icon name="camera" size={15} color="#3B2F29" />
           <Text style={styles.modeBtnText}>实景捕捉</Text>
         </Pressable>
       </View>
@@ -362,19 +394,26 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         <View style={styles.card}>
           <Pressable style={styles.newTaskCard} onPress={() => jobPicker.pickFromGallery()}>
             <View style={styles.newTaskIcon}>
-              <Icon name="add-outline" size={18} color="#031225" />
+              <Icon name="add" size={18} color="#FFF6F2" />
             </View>
             <View style={styles.newTaskCopy}>
               <Text style={styles.newTaskTitle}>创建新任务</Text>
               <Text style={styles.newTaskSub}>上传图片，AI 自动生成 3D 模型</Text>
             </View>
           </Pressable>
-          <Text style={styles.sectionTitle}>2D 转 3D 任务</Text>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon name="cube" size={13} color="#A34A3C" />
+            </View>
+            <Text style={styles.sectionTitle}>2D 转 3D 任务</Text>
+          </View>
           <View style={styles.actionRow}>
             <Pressable style={styles.secondaryBtn} onPress={() => jobPicker.pickFromGallery()}>
-              <Text style={styles.secondaryBtnText}>选择图片</Text>
+              <Icon name="image" size={15} color="#3B2F29" />
+              <Text style={styles.secondaryBtnText}>选图</Text>
             </Pressable>
             <Pressable style={styles.primaryBtn} onPress={createJob} disabled={loading}>
+              <Icon name="send" size={15} color="#FFF6F2" />
               <Text style={styles.primaryBtnText}>{loading ? '处理中...' : '创建任务'}</Text>
             </Pressable>
           </View>
@@ -384,8 +423,8 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
               <Image
                 testID="job-upload-preview-image"
                 source={{uri: uploadPreviewUri}}
-                style={styles.uploadPreviewImage}
-                resizeMode="cover"
+                style={[styles.uploadPreviewImage, {height: uploadPreviewHeight}]}
+                resizeMode="contain"
               />
               <Text style={styles.previewMeta}>{jobPicker.selectedImage?.fileName || uploadPreviewUri}</Text>
             </View>
@@ -414,12 +453,19 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         </View>
       ) : (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Capture Session</Text>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon name="aperture" size={13} color="#A34A3C" />
+            </View>
+            <Text style={styles.sectionTitle}>Capture Session</Text>
+          </View>
           <View style={styles.actionRow}>
             <Pressable style={styles.secondaryBtn} onPress={startCaptureSession}>
+              <Icon name="albums" size={15} color="#3B2F29" />
               <Text style={styles.secondaryBtnText}>创建会话</Text>
             </Pressable>
             <Pressable style={styles.primaryBtn} onPress={addCaptureFrame} disabled={!session?.id || loading}>
+              <Icon name="cloud-upload" size={15} color="#FFF6F2" />
               <Text style={styles.primaryBtnText}>上传一帧</Text>
             </Pressable>
           </View>
@@ -429,6 +475,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
               <Text style={styles.statusLine}>状态: {session.status}</Text>
               <Text style={styles.statusLine}>已采集: {session.acceptedFrameCount}</Text>
               <Pressable style={styles.primaryBtn} onPress={generateCaptureModel} disabled={loading}>
+                <Icon name="sparkles" size={15} color="#FFF6F2" />
                 <Text style={styles.primaryBtnText}>生成3D模型</Text>
               </Pressable>
               {captureTaskId ? <Text style={styles.statusLine}>生成任务: {captureTaskId}</Text> : null}
@@ -438,7 +485,12 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
       )}
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>模型展示</Text>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="eye" size={13} color="#A34A3C" />
+          </View>
+          <Text style={styles.sectionTitle}>模型展示</Text>
+        </View>
         <Text style={styles.statusLine}>
           strictMode: {modelingCapability?.strictMode ? 'ON' : 'UNKNOWN'} | provider:{' '}
           {modelingCapability?.provider || '-'}
@@ -446,6 +498,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         <Text style={styles.statusLine}>当前上传图: {uploadPreviewUri || '-'}</Text>
         <Text style={styles.statusLine}>当前模型URL: {viewerUrl || '-'}</Text>
         <Pressable style={styles.primaryBtn} onPress={openDownload}>
+          <Icon name="download" size={15} color="#FFF6F2" />
           <Text style={styles.primaryBtnText}>下载资产</Text>
         </Pressable>
         <View style={styles.inlineViewerFrame}>
@@ -453,6 +506,14 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
             <WebView
               testID="inline-model-viewer"
               source={{html: buildModelViewerHtml(viewerUrl)}}
+              originWhitelist={['*']}
+              onShouldStartLoadWithRequest={request => {
+                // Block Scene Viewer intent in WebView; keep in-page preview only.
+                if (request.url?.startsWith('intent://')) {
+                  return false;
+                }
+                return true;
+              }}
               style={styles.webview}
             />
           ) : (
@@ -472,24 +533,21 @@ const styles = StyleSheet.create({
   content: {gap: 14, paddingBottom: 24},
   modeRow: {flexDirection: 'row', gap: 10},
   modeBtn: {
+    ...canvasUi.chip,
     flex: 1,
     minHeight: 42,
     borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(145, 204, 255, 0.28)',
-    backgroundColor: 'rgba(20, 33, 58, 0.76)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
   modeBtnActive: {
-    backgroundColor: 'rgba(77,163,255,0.26)',
-    borderColor: 'rgba(111,231,255,0.42)',
+    ...canvasUi.chipActive,
   },
   modeBtnText: {
     ...canvasText.bodyStrong,
-    color: '#EAF6FF',
+    color: '#3B2F29',
   },
   card: {
     ...cardSurfaceBlue,
@@ -499,14 +557,18 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...canvasText.sectionTitle,
-    color: '#EAF6FF',
+    color: '#3B2F29',
+  },
+  sectionHead: {
+    ...canvasUi.titleWithIcon,
+  },
+  sectionIconBadge: {
+    ...canvasUi.iconBadge,
   },
   actionRow: {flexDirection: 'row', gap: 10},
   newTaskCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(145, 204, 255, 0.24)',
-    backgroundColor: 'rgba(16, 31, 56, 0.72)',
     paddingHorizontal: 12,
     paddingVertical: 11,
     flexDirection: 'row',
@@ -517,7 +579,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 11,
-    backgroundColor: '#6FE7FF',
+    backgroundColor: '#A34A3C',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -527,44 +589,42 @@ const styles = StyleSheet.create({
   },
   newTaskTitle: {
     ...canvasText.bodyStrong,
-    color: '#EAF6FF',
+    color: '#3B2F29',
   },
   newTaskSub: {
     ...canvasText.caption,
-    color: 'rgba(234,246,255,0.72)',
+    color: 'rgba(109,90,80,0.84)',
   },
   primaryBtn: {
+    ...canvasUi.primaryButton,
     flex: 1,
     minHeight: 42,
-    borderRadius: 13,
-    backgroundColor: '#6FE7FF',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   primaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#031225',
+    color: '#FFF6F2',
   },
   secondaryBtn: {
+    ...canvasUi.secondaryButton,
     flex: 1,
     minHeight: 42,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(145, 204, 255, 0.3)',
-    backgroundColor: 'rgba(16, 31, 56, 0.74)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
+    flexDirection: 'row',
+    gap: 6,
   },
   secondaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#EAF6FF',
+    color: '#3B2F29',
   },
   statusCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(145, 204, 255, 0.2)',
-    backgroundColor: 'rgba(9, 20, 37, 0.84)',
     padding: 11,
     gap: 7,
   },
@@ -575,63 +635,56 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     ...canvasText.caption,
-    color: '#6FE7FF',
-    backgroundColor: 'rgba(111,231,255,0.14)',
+    color: '#A34A3C',
+    backgroundColor: 'rgba(163,74,60,0.12)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
   },
   progressTrack: {
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(145, 204, 255, 0.18)',
-    overflow: 'hidden',
+    ...canvasUi.progressTrack,
   },
   progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#6FE7FF',
+    ...canvasUi.progressFill,
   },
   statusLine: {
     ...canvasText.body,
-    color: 'rgba(234,246,255,0.82)',
+    color: 'rgba(76,64,56,0.9)',
     lineHeight: 18,
   },
   uploadPreviewCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(145, 204, 255, 0.24)',
-    backgroundColor: 'rgba(9, 20, 37, 0.84)',
     padding: 10,
     gap: 8,
   },
   previewLabel: {
     ...canvasText.caption,
-    color: 'rgba(234,246,255,0.82)',
+    color: 'rgba(76,64,56,0.9)',
   },
   uploadPreviewImage: {
     width: '100%',
     height: 160,
     borderRadius: 10,
-    backgroundColor: 'rgba(10, 20, 40, 0.82)',
+    backgroundColor: 'rgba(241,229,220,0.95)',
   },
   previewMeta: {
     ...canvasText.caption,
-    color: 'rgba(234,246,255,0.7)',
+    color: 'rgba(109,90,80,0.8)',
   },
   errorText: {
     ...canvasText.body,
-    color: '#FFB8C8',
+    color: '#C35B63',
   },
   inlineViewerFrame: {
     minHeight: 320,
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(145, 204, 255, 0.24)',
-    backgroundColor: '#060C1E',
+    borderColor: 'rgba(171,129,110,0.3)',
+    backgroundColor: '#F3E7DF',
   },
-  webview: {flex: 1, minHeight: 320, backgroundColor: '#060C1E'},
+  webview: {flex: 1, minHeight: 320, backgroundColor: '#F3E7DF'},
   inlineViewerEmpty: {
     minHeight: 320,
     alignItems: 'center',
@@ -639,3 +692,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
 });
+

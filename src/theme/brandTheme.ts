@@ -1,4 +1,4 @@
-import {MD3DarkTheme, type MD3Theme} from 'react-native-paper';
+import {MD3LightTheme, type MD3Theme} from 'react-native-paper';
 
 export interface BrandThemeTokens {
   background: {
@@ -41,28 +41,28 @@ export interface BrandThemeTokens {
 
 export const BRAND_THEME_TOKENS: BrandThemeTokens = {
   background: {
-    primary: '#0B1020',
-    secondary: '#12192B',
-    elevated: '#182033',
+    primary: '#F5F1EE',
+    secondary: '#FFFFFF',
+    elevated: '#F8F2ED',
   },
   accent: {
-    aiBlue: '#4DA3FF',
-    electricCyan: '#6FE7FF',
-    futureViolet: '#7C6CFF',
+    aiBlue: '#A34A3C',
+    electricCyan: '#C2614F',
+    futureViolet: '#7E5A52',
   },
   warm: {
-    glow: '#FFC58F',
-    apricot: '#FFD9B8',
-    lightGold: '#FFE6A8',
+    glow: '#D27B59',
+    apricot: '#EFC9B7',
+    lightGold: '#F4D7A6',
   },
   text: {
-    primary: '#F5F7FB',
-    secondary: '#B8C0D4',
-    tertiary: '#7D879C',
+    primary: '#2B2623',
+    secondary: '#6A5D56',
+    tertiary: '#9A8B82',
   },
   border: {
-    divider: 'rgba(255,255,255,0.08)',
-    light: 'rgba(255,255,255,0.12)',
+    divider: 'rgba(116, 91, 78, 0.18)',
+    light: 'rgba(116, 91, 78, 0.28)',
   },
   radius: {
     sm: 12,
@@ -79,19 +79,19 @@ export const BRAND_THEME_TOKENS: BrandThemeTokens = {
 };
 
 export const PAPER_THEME: MD3Theme = {
-  ...MD3DarkTheme,
+  ...MD3LightTheme,
   colors: {
-    ...MD3DarkTheme.colors,
+    ...MD3LightTheme.colors,
     primary: BRAND_THEME_TOKENS.accent.aiBlue,
     secondary: BRAND_THEME_TOKENS.accent.futureViolet,
     tertiary: BRAND_THEME_TOKENS.warm.glow,
     background: BRAND_THEME_TOKENS.background.primary,
     surface: BRAND_THEME_TOKENS.background.secondary,
     surfaceVariant: BRAND_THEME_TOKENS.background.elevated,
-    error: '#FF8C9B',
+    error: '#C35B63',
     outline: BRAND_THEME_TOKENS.border.light,
-    onPrimary: '#081023',
-    onSecondary: '#0B1121',
+    onPrimary: '#FFF7F4',
+    onSecondary: '#FFF7F4',
     onBackground: BRAND_THEME_TOKENS.text.primary,
     onSurface: BRAND_THEME_TOKENS.text.secondary,
     onSurfaceVariant: BRAND_THEME_TOKENS.text.tertiary,

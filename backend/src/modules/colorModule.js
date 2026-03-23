@@ -21,10 +21,10 @@ const requiredEnv = [
   'MODEL_REFINE_NAME',
 ];
 
-const readVoiceStrictMode = () => {
-  const raw = String(process.env.COLOR_VOICE_STRICT_MODE || '').trim().toLowerCase();
+const readBooleanEnv = (name, fallback) => {
+  const raw = String(process.env[name] || '').trim().toLowerCase();
   if (!raw) {
-    return false;
+    return fallback;
   }
   if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') {
     return true;
@@ -34,6 +34,10 @@ const readVoiceStrictMode = () => {
   }
   return false;
 };
+
+const initialSuggestStrictMode = readBooleanEnv('COLOR_INITIAL_STRICT_MODE', false);
+const voiceStrictMode = readBooleanEnv('COLOR_VOICE_STRICT_MODE', false);
+const autoGradeStrictMode = readBooleanEnv('COLOR_AUTOGRADE_STRICT_MODE', true);
 
 const readAsrMaxUploadBytes = () => {
   const raw = Number(process.env.ASR_MAX_UPLOAD_BYTES || 8 * 1024 * 1024);
@@ -60,9 +64,14 @@ const mapAsrProviderError = error => {
 const capabilities = () => ({
   module: MODULE_NAME,
   enabled: true,
-  strictMode: true,
+  strictMode: initialSuggestStrictMode,
   provider: String(process.env.MODEL_PROVIDER || 'openai_compat'),
   requiredEnv,
+  strictFlags: {
+    initialSuggest: initialSuggestStrictMode,
+    voiceRefine: voiceStrictMode,
+    autoGrade: autoGradeStrictMode,
+  },
   auth: {
     required: false,
     scopes: [],
@@ -82,7 +91,12 @@ const healthCheck = () => {
   return {
     module: MODULE_NAME,
     ok: Boolean(snapshot.refineModelReady),
-    strictMode: true,
+    strictMode: initialSuggestStrictMode,
+    strictFlags: {
+      initialSuggest: initialSuggestStrictMode,
+      voiceRefine: voiceStrictMode,
+      autoGrade: autoGradeStrictMode,
+    },
     provider: String(process.env.MODEL_PROVIDER || 'openai_compat'),
     refineModelReady: Boolean(snapshot.refineModelReady),
     missingModelIds: Array.isArray(snapshot.missingModelIds) ? snapshot.missingModelIds : [],
@@ -93,7 +107,6 @@ const healthCheck = () => {
 
 const createColorModule = () => {
   const router = express.Router();
-  const voiceStrictMode = readVoiceStrictMode();
   const asrMaxUploadBytes = readAsrMaxUploadBytes();
   const handleVoiceUpload = multer({
     storage: multer.memoryStorage(),
@@ -108,7 +121,11 @@ const createColorModule = () => {
         ...req.body,
         mode: 'initial_visual_suggest',
       },
-      {strictMode: true, responseShape: 'module', forceMode: 'initial_visual_suggest'},
+      {
+        strictMode: initialSuggestStrictMode,
+        responseShape: 'module',
+        forceMode: 'initial_visual_suggest',
+      },
     );
     if (result.status !== 200) {
       const errorPayload = result.payload?.error || {};
@@ -225,7 +242,7 @@ const createColorModule = () => {
 
   router.post('/pro/auto-grade', async (req, res) => {
     const result = await handleAutoGrade(req.body, getRuntimeSnapshot(), {
-      strictMode: true,
+      strictMode: autoGradeStrictMode,
       responseShape: 'module',
     });
     if (result.status !== 200) {

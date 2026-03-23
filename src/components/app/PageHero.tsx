@@ -8,12 +8,16 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {canvasText} from '../../theme/canvasDesign';
+import {VISION_THEME} from '../../theme/visionTheme';
 
 interface PageHeroProps {
   image: ImageSourcePropType;
   title: string;
   subtitle: string;
-  overlayColors: [string, string, string];
+  overlayColors?: [string, string, string];
+  variant?: 'warm' | 'editorial' | 'contrast';
+  overlayStrength?: 'soft' | 'normal' | 'strong';
+  height?: number;
 }
 
 export const PageHero: React.FC<PageHeroProps> = ({
@@ -21,10 +25,23 @@ export const PageHero: React.FC<PageHeroProps> = ({
   title,
   subtitle,
   overlayColors,
+  variant = 'warm',
+  overlayStrength = 'normal',
+  height = 136,
 }) => {
+  const resolvedColors =
+    overlayColors ||
+    (variant === 'contrast'
+      ? (['rgba(20,16,14,0.12)', 'rgba(85,44,35,0.5)', 'rgba(113,42,31,0.72)'] as [string, string, string])
+      : variant === 'editorial'
+        ? (['rgba(255,248,243,0.1)', 'rgba(199,132,108,0.4)', 'rgba(153,71,56,0.58)'] as [string, string, string])
+        : VISION_THEME.gradients.hero);
+  const overlayOpacity =
+    overlayStrength === 'soft' ? 0.85 : overlayStrength === 'strong' ? 1 : 0.94;
+
   return (
-    <ImageBackground source={image} style={styles.hero} imageStyle={styles.heroImage}>
-      <LinearGradient colors={overlayColors} style={styles.overlay} />
+    <ImageBackground source={image} style={[styles.hero, {height}]} imageStyle={styles.heroImage}>
+      <LinearGradient colors={resolvedColors} style={[styles.overlay, {opacity: overlayOpacity}]} />
       <View style={styles.copyWrap}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
@@ -35,12 +52,12 @@ export const PageHero: React.FC<PageHeroProps> = ({
 
 const styles = StyleSheet.create({
   hero: {
-    height: 132,
+    height: 136,
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(172, 219, 255, 0.28)',
-    backgroundColor: '#0F172A',
+    borderColor: 'rgba(171, 129, 110, 0.35)',
+    backgroundColor: '#EADBD1',
   },
   heroImage: {
     borderRadius: 24,
@@ -57,11 +74,11 @@ const styles = StyleSheet.create({
   },
   title: {
     ...canvasText.heroTitle,
-    color: '#EEF5FF',
+    color: '#2B2623',
   },
   subtitle: {
     ...canvasText.body,
     marginTop: 3,
-    color: 'rgba(238,245,255,0.78)',
+    color: 'rgba(70, 58, 52, 0.84)',
   },
 });

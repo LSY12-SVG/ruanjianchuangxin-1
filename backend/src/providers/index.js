@@ -319,6 +319,8 @@ const postProcessInterpretation = (normalized, request) => {
     ...layeredActions.scene_refine,
     ...layeredActions.safety_clamp,
   ];
+  const baseDebug =
+    normalized && typeof normalized.action_debug === 'object' ? normalized.action_debug : {};
 
   return {
     ...normalized,
@@ -335,6 +337,12 @@ const postProcessInterpretation = (normalized, request) => {
           : 0.55,
     quality_risk_flags: qualityRiskFlags,
     recommended_intensity: recommendedIntensity || 'normal',
+    action_debug: {
+      ...baseDebug,
+      pre_process_action_count: sourceActions.length,
+      post_process_action_count: finalActions.length,
+      post_process_added_safety_clamp_count: safetyClampActions.length,
+    },
   };
 };
 
@@ -546,13 +554,42 @@ const interpretWithProvider = async (request, runtimeOptions = {}) => {
 };
 
 const transcribeWithProvider = async (request, runtimeOptions = {}) => {
+  const pickString = (...values) => {
+    for (const value of values) {
+      const normalized = String(value || '').trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return '';
+  };
+  const pickNumber = (...values) => {
+    for (const value of values) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    return 30000;
+  };
+
   const providerName = runtimeOptions.provider || process.env.ASR_PROVIDER || 'openai_compat';
   const provider = asrProviderMap[providerName] || asrProviderMap.openai_compat;
   return provider(request, {
-    model: runtimeOptions.model || process.env.ASR_MODEL,
-    timeoutMs: runtimeOptions.timeoutMs || process.env.ASR_TIMEOUT_MS,
-    baseUrl: runtimeOptions.baseUrl || process.env.ASR_BASE_URL,
-    apiKey: runtimeOptions.apiKey || process.env.ASR_API_KEY,
+    model: pickString(
+      runtimeOptions.model,
+      process.env.ASR_MODEL,
+      process.env.MODEL_ASR_NAME,
+      'FunAudioLLM/SenseVoiceSmall',
+    ),
+    timeoutMs: pickNumber(
+      runtimeOptions.timeoutMs,
+      process.env.ASR_TIMEOUT_MS,
+      process.env.MODEL_TIMEOUT_MS,
+      30000,
+    ),
+    baseUrl: pickString(runtimeOptions.baseUrl, process.env.ASR_BASE_URL, process.env.MODEL_BASE_URL),
+    apiKey: pickString(runtimeOptions.apiKey, process.env.ASR_API_KEY, process.env.MODEL_API_KEY),
   });
 };
 

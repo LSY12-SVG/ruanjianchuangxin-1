@@ -18,7 +18,7 @@ import {
 } from '../modules/api';
 import {PageHero} from '../components/app/PageHero';
 import {HERO_COMMUNITY} from '../assets/design';
-import {canvasText, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
+import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
 
 type CommunityView = 'feed' | 'draft' | 'detail';
 type CommunityFilter = 'all' | 'portrait' | 'cinema' | 'vintage';
@@ -307,11 +307,8 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
         image={HERO_COMMUNITY}
         title="社区"
         subtitle="真实社区链路：feed / drafts / comments"
-        overlayColors={[
-          'rgba(16, 10, 12, 0.16)',
-          'rgba(56, 22, 30, 0.68)',
-          'rgba(94, 37, 34, 0.9)',
-        ]}
+        variant="editorial"
+        overlayStrength="normal"
       />
 
       <View style={styles.topControlRow}>
@@ -319,22 +316,22 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
           <Pressable
             style={[styles.headerBtn, view === 'feed' && styles.headerBtnActive]}
             onPress={() => setView('feed')}>
-            <Icon name="newspaper-outline" size={15} color="#FDEEE7" />
+            <Icon name="newspaper" size={15} color="#2F2926" />
             <Text style={styles.headerBtnText}>动态</Text>
           </Pressable>
           <Pressable
             style={[styles.headerBtn, view === 'draft' && styles.headerBtnActive]}
             onPress={() => setView('draft')}>
-            <Icon name="create-outline" size={15} color="#FDEEE7" />
+            <Icon name="create" size={15} color="#2F2926" />
             <Text style={styles.headerBtnText}>草稿</Text>
           </Pressable>
         </View>
         <View style={styles.iconActionRow}>
           <Pressable style={styles.iconActionBtn} onPress={() => setShowSearch(prev => !prev)}>
-            <Icon name="search-outline" size={15} color="#FDEEE7" />
+            <Icon name="search" size={15} color="#2F2926" />
           </Pressable>
           <Pressable style={styles.iconActionBtnWarm} onPress={() => setView('draft')}>
-            <Icon name="add-outline" size={15} color="#2B1216" />
+            <Icon name="add" size={15} color="#FFF6F2" />
           </Pressable>
         </View>
       </View>
@@ -347,12 +344,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="搜索标题、标签、作者..."
-              placeholderTextColor="rgba(253,238,231,0.45)"
+              placeholderTextColor="rgba(134,112,100,0.7)"
             />
           ) : null}
           <View style={styles.trendingCard}>
             <View style={styles.trendingIconWrap}>
-              <Icon name="flame-outline" size={16} color="#2B1216" />
+              <Icon name="flame" size={16} color="#FFF6F2" />
             </View>
             <View style={styles.trendingCopy}>
               <Text style={styles.trendingTitle}>本周热门</Text>
@@ -360,7 +357,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             </View>
             <Text style={styles.hotBadge}>HOT</Text>
           </View>
-          <Text style={styles.sectionTitle}>社区动态</Text>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon name="planet" size={13} color="#A34A3C" />
+            </View>
+            <Text style={styles.sectionTitle}>社区动态</Text>
+          </View>
           <View style={styles.filterRow}>
             {FILTERS.map(item => (
               <Pressable
@@ -387,9 +389,9 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
                 </View>
                 <Pressable onPress={() => toggleSave(post)} style={styles.iconBtn}>
                   <Icon
-                    name={post.isSaved ? 'bookmark' : 'bookmark-outline'}
+                    name={post.isSaved ? 'bookmark' : 'bookmark'}
                     size={16}
-                    color={post.isSaved ? '#FFD07D' : '#FDEEE7'}
+                    color={post.isSaved ? '#A46A34' : '#2F2926'}
                   />
                 </Pressable>
               </View>
@@ -407,18 +409,18 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
               <View style={styles.postActions}>
                 <Pressable style={styles.inlineAction} onPress={() => toggleLike(post)}>
                   <Icon
-                    name={post.isLiked ? 'heart' : 'heart-outline'}
+                    name={post.isLiked ? 'heart' : 'heart'}
                     size={14}
-                    color={post.isLiked ? '#FF9BB0' : '#FDEEE7'}
+                    color={post.isLiked ? '#C35B63' : '#2F2926'}
                   />
                   <Text style={styles.inlineActionText}>{post.likesCount}</Text>
                 </Pressable>
                 <View style={styles.inlineAction}>
-                  <Icon name="chatbubble-outline" size={14} color="#FDEEE7" />
+                  <Icon name="chatbubble" size={14} color="#2F2926" />
                   <Text style={styles.inlineActionText}>{post.commentsCount}</Text>
                 </View>
                 <View style={styles.inlineAction}>
-                  <Icon name="bookmark-outline" size={14} color="#FDEEE7" />
+                  <Icon name="bookmark" size={14} color="#2F2926" />
                   <Text style={styles.inlineActionText}>{post.savesCount}</Text>
                 </View>
               </View>
@@ -432,6 +434,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
               style={styles.secondaryBtn}
               onPress={() => loadFeed(feedPage + 1, true)}
               disabled={loadingMore}>
+              <Icon name="chevron-down" size={15} color="#2F2926" />
               <Text style={styles.secondaryBtnText}>
                 {loadingMore ? '加载中...' : '加载更多'}
               </Text>
@@ -442,20 +445,25 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
 
       {view === 'draft' ? (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>发布草稿</Text>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon name="paper-plane" size={13} color="#A34A3C" />
+            </View>
+            <Text style={styles.sectionTitle}>发布草稿</Text>
+          </View>
           <TextInput
             style={styles.input}
             value={draftTitle}
             onChangeText={setDraftTitle}
             placeholder="标题"
-            placeholderTextColor="rgba(253,238,231,0.45)"
+            placeholderTextColor="rgba(134,112,100,0.7)"
           />
           <TextInput
             style={[styles.input, styles.multiline]}
             value={draftContent}
             onChangeText={setDraftContent}
             placeholder="写下你的创作经验..."
-            placeholderTextColor="rgba(253,238,231,0.45)"
+            placeholderTextColor="rgba(134,112,100,0.7)"
             multiline
           />
           <TextInput
@@ -463,14 +471,14 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             value={draftTagsInput}
             onChangeText={setDraftTagsInput}
             placeholder="标签，逗号分隔"
-            placeholderTextColor="rgba(253,238,231,0.45)"
+            placeholderTextColor="rgba(134,112,100,0.7)"
           />
           <TextInput
             style={styles.input}
             value={draftBeforeUrl}
             onChangeText={setDraftBeforeUrl}
             placeholder="beforeUrl（可选）"
-            placeholderTextColor="rgba(253,238,231,0.45)"
+            placeholderTextColor="rgba(134,112,100,0.7)"
             autoCapitalize="none"
           />
           <TextInput
@@ -478,11 +486,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             value={draftAfterUrl}
             onChangeText={setDraftAfterUrl}
             placeholder="afterUrl（可选）"
-            placeholderTextColor="rgba(253,238,231,0.45)"
+            placeholderTextColor="rgba(134,112,100,0.7)"
             autoCapitalize="none"
           />
           <View style={styles.actionRow}>
             <Pressable style={styles.primaryBtn} onPress={saveDraft} disabled={submittingDraft}>
+              <Icon name="save" size={15} color="#FFF6F2" />
               <Text style={styles.primaryBtnText}>
                 {submittingDraft ? '保存中...' : draftActionText}
               </Text>
@@ -491,6 +500,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
               style={styles.secondaryBtn}
               onPress={publishDraft}
               disabled={publishingDraft}>
+              <Icon name="send" size={15} color="#2F2926" />
               <Text style={styles.secondaryBtnText}>
                 {publishingDraft ? '发布中...' : '发布'}
               </Text>
@@ -498,9 +508,11 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
           </View>
           <View style={styles.actionRow}>
             <Pressable style={styles.secondaryBtn} onPress={resetDraftForm}>
+              <Icon name="refresh" size={15} color="#2F2926" />
               <Text style={styles.secondaryBtnText}>清空</Text>
             </Pressable>
             <Pressable style={styles.secondaryBtn} onPress={loadDrafts}>
+              <Icon name="sync" size={15} color="#2F2926" />
               <Text style={styles.secondaryBtnText}>{loadingDrafts ? '刷新中...' : '刷新草稿'}</Text>
             </Pressable>
           </View>
@@ -519,7 +531,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
       {view === 'detail' && selectedPost ? (
         <View style={styles.card}>
           <Pressable style={styles.backBtn} onPress={() => setView('feed')}>
-            <Icon name="arrow-back-outline" size={16} color="#FDEEE7" />
+            <Icon name="arrow-back" size={16} color="#2F2926" />
             <Text style={styles.backBtnText}>返回动态</Text>
           </Pressable>
           <Text style={styles.postTitle}>{selectedPost.title}</Text>
@@ -527,23 +539,28 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
           <View style={styles.postActions}>
             <Pressable style={styles.inlineAction} onPress={() => toggleLike(selectedPost)}>
               <Icon
-                name={selectedPost.isLiked ? 'heart' : 'heart-outline'}
+                name={selectedPost.isLiked ? 'heart' : 'heart'}
                 size={14}
-                color={selectedPost.isLiked ? '#FF9BB0' : '#FDEEE7'}
+                color={selectedPost.isLiked ? '#C35B63' : '#2F2926'}
               />
               <Text style={styles.inlineActionText}>{selectedPost.likesCount}</Text>
             </Pressable>
             <Pressable style={styles.inlineAction} onPress={() => toggleSave(selectedPost)}>
               <Icon
-                name={selectedPost.isSaved ? 'bookmark' : 'bookmark-outline'}
+                name={selectedPost.isSaved ? 'bookmark' : 'bookmark'}
                 size={14}
-                color={selectedPost.isSaved ? '#FFD07D' : '#FDEEE7'}
+                color={selectedPost.isSaved ? '#A46A34' : '#2F2926'}
               />
               <Text style={styles.inlineActionText}>{selectedPost.savesCount}</Text>
             </Pressable>
           </View>
 
-          <Text style={styles.sectionTitle}>评论</Text>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon name="chatbubbles" size={13} color="#A34A3C" />
+            </View>
+            <Text style={styles.sectionTitle}>评论</Text>
+          </View>
           {loadingComments ? <Text style={styles.metaText}>评论加载中...</Text> : null}
           {comments.map(item => (
             <View key={item.id} style={styles.commentCard}>
@@ -558,10 +575,11 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             value={commentText}
             onChangeText={setCommentText}
             placeholder="写下你的评论..."
-            placeholderTextColor="rgba(253,238,231,0.45)"
+            placeholderTextColor="rgba(134,112,100,0.7)"
             multiline
           />
           <Pressable style={styles.primaryBtn} onPress={submitComment} disabled={submittingComment}>
+            <Icon name="paper-plane" size={15} color="#FFF6F2" />
             <Text style={styles.primaryBtnText}>
               {submittingComment ? '提交中...' : '发布评论'}
             </Text>
@@ -570,7 +588,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
       ) : null}
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>模块状态</Text>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="pulse" size={13} color="#A34A3C" />
+          </View>
+          <Text style={styles.sectionTitle}>模块状态</Text>
+        </View>
         <Text style={styles.metaText}>
           strictMode: {communityCapability?.strictMode ? 'ON' : 'UNKNOWN'} | provider:{' '}
           {communityCapability?.provider || '-'} | auth:{' '}
@@ -596,12 +619,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconActionBtn: {
+    ...canvasUi.secondaryButton,
     width: 42,
     height: 42,
     borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.3)',
-    backgroundColor: 'rgba(52, 22, 26, 0.74)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -609,29 +630,26 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 13,
-    backgroundColor: '#FFB49D',
+    backgroundColor: '#A34A3C',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerBtn: {
+    ...canvasUi.chip,
     flex: 1,
     minHeight: 42,
     borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.3)',
-    backgroundColor: 'rgba(52, 22, 26, 0.74)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
   },
   headerBtnActive: {
-    backgroundColor: 'rgba(255,154,119,0.26)',
-    borderColor: 'rgba(255, 198, 161, 0.42)',
+    ...canvasUi.chipActive,
   },
   headerBtnText: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   card: {
     ...cardSurfaceWarm,
@@ -640,20 +658,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   searchInput: {
+    ...canvasUi.input,
     borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.28)',
-    backgroundColor: 'rgba(61, 25, 31, 0.84)',
     paddingHorizontal: 12,
     paddingVertical: 11,
-    color: '#FDEEE7',
+    color: '#2F2926',
     ...canvasText.body,
   },
   trendingCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.2)',
-    backgroundColor: 'rgba(66, 29, 33, 0.76)',
     paddingHorizontal: 11,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -664,7 +678,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: '#FFB49D',
+    backgroundColor: '#A34A3C',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -674,45 +688,47 @@ const styles = StyleSheet.create({
   },
   trendingTitle: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   trendingSub: {
     ...canvasText.caption,
-    color: 'rgba(253,238,231,0.7)',
+    color: 'rgba(110,90,80,0.82)',
   },
   hotBadge: {
     ...canvasText.caption,
-    color: '#2B1216',
-    backgroundColor: '#FFD396',
+    color: '#FFF6F2',
+    backgroundColor: '#F2D8AE',
     paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: 999,
   },
   sectionTitle: {
     ...canvasText.sectionTitle,
-    color: '#FDEEE7',
+    color: '#2F2926',
+  },
+  sectionHead: {
+    ...canvasUi.titleWithIcon,
+  },
+  sectionIconBadge: {
+    ...canvasUi.iconBadge,
   },
   filterRow: {flexDirection: 'row', gap: 8, flexWrap: 'wrap'},
   filterBtn: {
+    ...canvasUi.chip,
     minHeight: 32,
     borderRadius: 11,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.24)',
     paddingHorizontal: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(64, 29, 35, 0.75)',
   },
-  filterBtnActive: {backgroundColor: 'rgba(255, 154, 119, 0.3)'},
+  filterBtnActive: {...canvasUi.chipActive},
   filterBtnText: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   postCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.24)',
-    backgroundColor: 'rgba(62, 26, 32, 0.7)',
     padding: 11,
     gap: 9,
   },
@@ -721,22 +737,22 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,154,119,0.42)',
+    backgroundColor: 'rgba(163,74,60,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
     ...canvasText.bodyStrong,
-    color: '#2B1216',
+    color: '#FFF6F2',
   },
   postMeta: {flex: 1},
   postAuthor: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   postTime: {
     ...canvasText.caption,
-    color: 'rgba(253,238,231,0.58)',
+    color: 'rgba(126,104,93,0.78)',
   },
   iconBtn: {
     width: 28,
@@ -744,23 +760,23 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(90,39,46,0.7)',
+    backgroundColor: 'rgba(228,208,197,0.8)',
   },
   postTitle: {
     ...canvasText.sectionTitle,
-    color: '#FDEEE7',
+    color: '#2F2926',
     fontSize: 14,
   },
   postContent: {
     ...canvasText.body,
-    color: 'rgba(253,238,231,0.82)',
+    color: 'rgba(78,64,56,0.9)',
     lineHeight: 18,
   },
   tagRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 6},
   tag: {
     ...canvasText.caption,
-    color: '#FFD6A4',
-    backgroundColor: 'rgba(255, 172, 106, 0.16)',
+    color: '#9A5A43',
+    backgroundColor: 'rgba(163,74,60,0.12)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
@@ -769,89 +785,84 @@ const styles = StyleSheet.create({
   inlineAction: {flexDirection: 'row', alignItems: 'center', gap: 4},
   inlineActionText: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   input: {
+    ...canvasUi.input,
     borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.28)',
-    backgroundColor: 'rgba(61, 25, 31, 0.84)',
     paddingHorizontal: 12,
     paddingVertical: 11,
-    color: '#FDEEE7',
+    color: '#2F2926',
     ...canvasText.body,
   },
   multiline: {minHeight: 90, textAlignVertical: 'top'},
   actionRow: {flexDirection: 'row', gap: 10},
   primaryBtn: {
+    ...canvasUi.primaryButton,
     flex: 1,
     minHeight: 42,
-    borderRadius: 13,
-    backgroundColor: '#FFB49D',
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   primaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#2B1216',
+    color: '#FFF6F2',
   },
   secondaryBtn: {
+    ...canvasUi.secondaryButton,
     flex: 1,
     minHeight: 42,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.3)',
-    backgroundColor: 'rgba(67, 29, 36, 0.72)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
+    flexDirection: 'row',
+    gap: 6,
   },
   secondaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   draftCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.22)',
-    backgroundColor: 'rgba(57, 24, 29, 0.74)',
     padding: 10,
     gap: 5,
   },
   draftTitle: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   backBtn: {flexDirection: 'row', alignItems: 'center', gap: 6},
   backBtnText: {
     ...canvasText.bodyStrong,
-    color: '#FDEEE7',
+    color: '#2F2926',
   },
   commentCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,188,152,0.22)',
-    backgroundColor: 'rgba(58, 23, 29, 0.74)',
     padding: 10,
     gap: 5,
   },
   commentAuthor: {
     ...canvasText.bodyStrong,
-    color: '#FFD6A4',
+    color: '#9A5A43',
   },
   commentContent: {
     ...canvasText.body,
-    color: 'rgba(253,238,231,0.82)',
+    color: 'rgba(78,64,56,0.9)',
     lineHeight: 18,
   },
   metaText: {
     ...canvasText.bodyMuted,
-    color: 'rgba(253,238,231,0.62)',
+    color: 'rgba(116,94,84,0.82)',
     lineHeight: 16,
   },
   errorText: {
     ...canvasText.body,
-    color: '#FFB8C8',
+    color: '#C35B63',
     lineHeight: 18,
   },
 });
+

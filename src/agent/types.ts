@@ -16,6 +16,7 @@ export type AgentRuntimePhase =
   | 'planned'
   | 'running'
   | 'pending_confirm'
+  | 'client_required'
   | 'applied'
   | 'failed'
   | 'rolled_back';
@@ -23,6 +24,7 @@ export type AgentActionStatus =
   | 'planned'
   | 'running'
   | 'pending_confirm'
+  | 'client_required'
   | 'applied'
   | 'failed'
   | 'rolled_back';
@@ -31,6 +33,7 @@ export type AgentErrorCode =
   | 'confirmation_required'
   | 'not_registered'
   | 'forbidden_scope'
+  | 'client_required'
   | 'timeout'
   | 'tool_error'
   | 'invalid_action'
@@ -184,6 +187,7 @@ export interface AgentExecuteRequest {
   actions: AgentAction[];
   actionIds?: string[];
   idempotencyKey?: string;
+  allowConfirmActions?: boolean;
 }
 
 export interface AgentExecuteResponse {

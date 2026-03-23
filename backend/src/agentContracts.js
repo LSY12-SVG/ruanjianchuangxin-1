@@ -153,6 +153,7 @@ const validateExecuteRequest = body => {
     typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
       ? body.idempotencyKey.trim()
       : '';
+  const allowConfirmActions = body.allowConfirmActions === true;
 
   return {
     ok: true,
@@ -163,6 +164,7 @@ const validateExecuteRequest = body => {
       actions: normalizedActions,
       actionIds,
       idempotencyKey,
+      allowConfirmActions,
     },
   };
 };

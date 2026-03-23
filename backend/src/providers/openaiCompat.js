@@ -258,7 +258,9 @@ const transcribeWithOpenAICompat = async (request, options = {}) => {
   form.append('model', model);
 
   if (typeof request?.language === 'string' && request.language.trim()) {
-    form.append('language', request.language.trim());
+    const normalizedLanguage = request.language.trim().toLowerCase().replace('_', '-');
+    const shortLanguage = normalizedLanguage.split('-')[0];
+    form.append('language', shortLanguage || normalizedLanguage);
   }
 
   let response;

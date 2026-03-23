@@ -12,12 +12,14 @@ import {
   agentApi,
   formatApiErrorMessage,
   type AgentExecuteResponse,
+  type AgentPlanAction,
   type AgentPlanResponse,
   type ModuleCapabilityItem,
 } from '../modules/api';
 import {PageHero} from '../components/app/PageHero';
 import {HERO_AGENT} from '../assets/design';
-import {canvasText, cardSurfaceViolet, glassShadow} from '../theme/canvasDesign';
+import {canvasText, canvasUi, cardSurfaceViolet, glassShadow} from '../theme/canvasDesign';
+import {useAgentExecutionContextStore} from '../agent/executionContextStore';
 
 const QUICK_PROMPTS: Array<{
   icon: string;
@@ -25,17 +27,17 @@ const QUICK_PROMPTS: Array<{
   prompt: string;
 }> = [
   {
-    icon: '🎨',
+    icon: 'color-palette',
     label: '批量调色',
     prompt: '根据当前状态给我一个调色优化执行计划',
   },
   {
-    icon: '📦',
+    icon: 'cube',
     label: '3D 任务',
     prompt: '先规划 2D 转 3D 任务，再给出下一步建议',
   },
   {
-    icon: '📝',
+    icon: 'paper-plane',
     label: '社区发布',
     prompt: '帮我规划并执行一次社区草稿发布流程',
   },
@@ -45,6 +47,70 @@ interface AgentScreenProps {
   capabilities: ModuleCapabilityItem[];
 }
 
+const hasGradingArgs = (args?: Record<string, unknown>): boolean => {
+  if (!args || typeof args !== 'object') {
+    return false;
+  }
+  const image = args.image as Record<string, unknown> | undefined;
+  return Boolean(
+    typeof args.locale === 'string' &&
+      args.locale &&
+      args.currentParams &&
+      image &&
+      typeof image.mimeType === 'string' &&
+      image.mimeType &&
+      Number.isFinite(Number(image.width)) &&
+      Number.isFinite(Number(image.height)) &&
+      typeof image.base64 === 'string' &&
+      image.base64,
+  );
+};
+
+const hasConvertArgs = (args?: Record<string, unknown>): boolean => {
+  if (!args || typeof args !== 'object') {
+    return false;
+  }
+  const image = args.image as Record<string, unknown> | undefined;
+  return Boolean(
+    image &&
+      typeof image.mimeType === 'string' &&
+      image.mimeType &&
+      typeof image.fileName === 'string' &&
+      image.fileName &&
+      typeof image.base64 === 'string' &&
+      image.base64,
+  );
+};
+
+const resolveDraftIdFromExecuteResult = (
+  result: AgentExecuteResponse | null,
+): string => {
+  if (!result || !Array.isArray(result.actionResults)) {
+    return '';
+  }
+  for (const item of result.actionResults) {
+    if (
+      item.status !== 'applied' ||
+      item.action?.domain !== 'community' ||
+      item.action?.operation !== 'create_draft'
+    ) {
+      continue;
+    }
+    const output = item.output as
+      | {
+          draftId?: string | number;
+        }
+      | undefined;
+    if (output?.draftId !== undefined && output?.draftId !== null) {
+      const normalized = String(output.draftId).trim();
+      if (normalized) {
+        return normalized;
+      }
+    }
+  }
+  return '';
+};
+
 export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
   const [prompt, setPrompt] = useState('');
   const [plan, setPlan] = useState<AgentPlanResponse | null>(null);
@@ -52,6 +118,10 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [loadingExecute, setLoadingExecute] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const colorContext = useAgentExecutionContextStore(state => state.colorContext);
+  const modelingImageContext = useAgentExecutionContextStore(
+    state => state.modelingImageContext,
+  );
 
   const agentCapability = capabilities.find(item => item.module === 'agent');
 
@@ -95,10 +165,90 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
       setErrorText('请先生成计划');
       return;
     }
+    const missingContextActions: string[] = [];
+    const hydratedActions: AgentPlanAction[] = plan.actions.map(action => {
+      if (action.domain === 'grading' && action.operation === 'apply_visual_suggest') {
+        if (hasGradingArgs(action.args)) {
+          return action;
+        }
+        if (!colorContext) {
+          missingContextActions.push('grading.apply_visual_suggest');
+          return action;
+        }
+        return {
+          ...action,
+          args: {
+            locale: colorContext.locale,
+            currentParams: colorContext.currentParams,
+            image: colorContext.image,
+            imageStats: colorContext.imageStats,
+          },
+        };
+      }
+      if (action.domain === 'convert' && action.operation === 'start_task') {
+        if (hasConvertArgs(action.args)) {
+          return action;
+        }
+        if (!modelingImageContext?.image) {
+          missingContextActions.push('convert.start_task');
+          return action;
+        }
+        return {
+          ...action,
+          args: {
+            image: modelingImageContext.image,
+          },
+        };
+      }
+      return action;
+    });
+    const pendingActionIds =
+      executeResult?.status === 'pending_confirm'
+        ? executeResult.actionResults
+            .filter(item => item.status === 'pending_confirm')
+            .map(item => item.action.actionId)
+        : [];
+    const allowConfirmActions = pendingActionIds.length > 0;
+    const latestDraftId = resolveDraftIdFromExecuteResult(executeResult);
+    const executeActions: AgentPlanAction[] = hydratedActions.map(action => {
+      if (
+        allowConfirmActions &&
+        action.domain === 'community' &&
+        action.operation === 'publish_draft'
+      ) {
+        const args = action.args && typeof action.args === 'object' ? action.args : {};
+        const draftIdRaw = (args as {draftId?: string | number}).draftId;
+        const hasDraftId =
+          draftIdRaw !== undefined && draftIdRaw !== null && String(draftIdRaw).trim().length > 0;
+        if (!hasDraftId && latestDraftId) {
+          return {
+            ...action,
+            args: {
+              ...args,
+              draftId: latestDraftId,
+            },
+          };
+        }
+      }
+      return action;
+    });
+
     try {
       setLoadingExecute(true);
-      setErrorText('');
-      const result = await agentApi.executePlan(plan.planId, plan.actions);
+      if (missingContextActions.length) {
+        setErrorText(
+          `执行上下文缺失：${missingContextActions.join(
+            ', ',
+          )}。请先在创作/建模页选择图片后重试。`,
+        );
+      } else {
+        setErrorText('');
+      }
+      setPlan(prev => (prev ? {...prev, actions: executeActions} : prev));
+      const result = await agentApi.executePlan(plan.planId, executeActions, {
+        actionIds: pendingActionIds.length ? pendingActionIds : undefined,
+        allowConfirmActions,
+      });
       setExecuteResult(result);
     } catch (error) {
       setErrorText(formatApiErrorMessage(error, '计划执行失败'));
@@ -113,19 +263,21 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
         image={HERO_AGENT}
         title="AI Agent"
         subtitle="plan → review → execute"
-        overlayColors={[
-          'rgba(10, 8, 20, 0.15)',
-          'rgba(42, 16, 46, 0.7)',
-          'rgba(70, 28, 64, 0.92)',
-        ]}
+        variant="editorial"
+        overlayStrength="normal"
       />
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>任务目标</Text>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="compass" size={13} color="#A34A3C" />
+          </View>
+          <Text style={styles.sectionTitle}>任务目标</Text>
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickChipRow}>
           {QUICK_PROMPTS.map(item => (
             <Pressable key={item.label} style={styles.quickChip} onPress={() => setPrompt(item.prompt)}>
-              <Text style={styles.quickChipIcon}>{item.icon}</Text>
+              <Icon name={item.icon} size={14} color="#A34A3C" />
               <Text style={styles.quickChipText}>{item.label}</Text>
             </Pressable>
           ))}
@@ -136,22 +288,33 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
           style={styles.input}
           multiline
           placeholder="例如：先自动调色，再生成3D模型并准备社区发布草稿"
-          placeholderTextColor="rgba(210,185,220,0.58)"
+          placeholderTextColor="rgba(134,112,100,0.7)"
         />
         <View style={styles.actionRow}>
           <Pressable style={styles.primaryBtn} onPress={createPlan} disabled={loadingPlan}>
-            <Icon name="sparkles-outline" size={15} color="#1F0F2C" />
+            <Icon name="sparkles" size={15} color="#FFF6F2" />
             <Text style={styles.primaryBtnText}>{loadingPlan ? '生成中...' : '生成计划'}</Text>
           </Pressable>
           <Pressable style={styles.secondaryBtn} onPress={executePlan} disabled={!plan || loadingExecute}>
-            <Icon name="play-outline" size={15} color="#EAF6FF" />
-            <Text style={styles.secondaryBtnText}>{loadingExecute ? '执行中...' : '确认执行'}</Text>
+            <Icon name="play" size={15} color="#3B2F29" />
+            <Text style={styles.secondaryBtnText}>
+              {loadingExecute
+                ? '执行中...'
+                : executeResult?.status === 'pending_confirm'
+                  ? '确认待执行'
+                  : '确认执行'}
+            </Text>
           </Pressable>
         </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>计划摘要</Text>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="list" size={13} color="#A34A3C" />
+          </View>
+          <Text style={styles.sectionTitle}>计划摘要</Text>
+        </View>
         <Text style={styles.metaText}>{planStatusText}</Text>
         {plan ? (
           <View style={styles.stepWrap}>
@@ -174,7 +337,12 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>执行结果</Text>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="checkmark-done" size={13} color="#A34A3C" />
+          </View>
+          <Text style={styles.sectionTitle}>执行结果</Text>
+        </View>
         {executeResult ? (
           <View style={styles.progressWrap}>
             <View style={styles.progressTrack}>
@@ -222,18 +390,22 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...canvasText.sectionTitle,
-    color: '#F7E7FF',
+    color: '#2F2926',
+  },
+  sectionHead: {
+    ...canvasUi.titleWithIcon,
+  },
+  sectionIconBadge: {
+    ...canvasUi.iconBadge,
   },
   input: {
+    ...canvasUi.input,
     borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(237,157,255,0.26)',
-    backgroundColor: 'rgba(35, 18, 49, 0.86)',
     paddingHorizontal: 12,
     paddingVertical: 11,
     minHeight: 90,
     textAlignVertical: 'top',
-    color: '#F7E7FF',
+    color: '#2F2926',
     ...canvasText.body,
   },
   quickChipRow: {
@@ -241,32 +413,26 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   quickChip: {
+    ...canvasUi.chip,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(237,157,255,0.22)',
-    backgroundColor: 'rgba(46, 25, 61, 0.7)',
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  quickChipIcon: {
-    ...canvasText.body,
-  },
   quickChipText: {
     ...canvasText.bodyStrong,
-    color: 'rgba(247,231,255,0.92)',
+    color: '#2F2926',
   },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
   },
   primaryBtn: {
+    ...canvasUi.primaryButton,
     flex: 1,
     minHeight: 42,
-    borderRadius: 13,
-    backgroundColor: '#F2A7FF',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -274,15 +440,12 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#1F0F2C',
+    color: '#FFF6F2',
   },
   secondaryBtn: {
+    ...canvasUi.secondaryButton,
     flex: 1,
     minHeight: 42,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(237,157,255,0.3)',
-    backgroundColor: 'rgba(33, 18, 46, 0.76)',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -290,7 +453,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#F7E7FF',
+    color: '#2F2926',
   },
   stepWrap: {
     gap: 9,
@@ -301,28 +464,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressTrack: {
+    ...canvasUi.progressTrack,
     flex: 1,
-    height: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(247,231,255,0.14)',
-    overflow: 'hidden',
   },
   progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#F2A7FF',
+    ...canvasUi.progressFill,
   },
   progressText: {
     ...canvasText.caption,
-    color: '#F2A7FF',
+    color: '#A34A3C',
     minWidth: 32,
     textAlign: 'right',
   },
   stepCard: {
+    ...canvasUi.subtleCard,
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(237,157,255,0.22)',
-    backgroundColor: 'rgba(35, 18, 49, 0.9)',
     padding: 11,
     gap: 5,
   },
@@ -333,28 +489,29 @@ const styles = StyleSheet.create({
   },
   stepIndex: {
     ...canvasText.caption,
-    color: '#F2A7FF',
+    color: '#A34A3C',
   },
   stepDomain: {
     ...canvasText.bodyStrong,
-    color: '#F7E7FF',
+    color: '#2F2926',
   },
   stepOp: {
     ...canvasText.bodyMuted,
-    color: 'rgba(247,231,255,0.75)',
+    color: 'rgba(110,90,80,0.82)',
   },
   stepMeta: {
     ...canvasText.bodyMuted,
-    color: 'rgba(247,231,255,0.72)',
+    color: 'rgba(110,90,80,0.82)',
     lineHeight: 16,
   },
   metaText: {
     ...canvasText.body,
-    color: 'rgba(247,231,255,0.72)',
+    color: 'rgba(110,90,80,0.82)',
     lineHeight: 18,
   },
   errorText: {
     ...canvasText.body,
-    color: '#FFB8C8',
+    color: '#C35B63',
   },
 });
+

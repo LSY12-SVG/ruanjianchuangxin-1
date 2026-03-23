@@ -3,6 +3,7 @@ import {StyleSheet, Text, View} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import type {ModuleHealthItem} from '../../modules/api';
 import {canvasText} from '../../theme/canvasDesign';
+import {VISION_THEME} from '../../theme/visionTheme';
 
 interface SystemStatusBarProps {
   loading: boolean;
@@ -12,12 +13,12 @@ interface SystemStatusBarProps {
 
 const stateColor = (status: ModuleHealthItem['status']): string => {
   if (status === 'healthy') {
-    return '#73E2B6';
+    return VISION_THEME.feedback.success;
   }
   if (status === 'degraded') {
-    return '#FFD187';
+    return '#C48738';
   }
-  return '#FF9BB0';
+  return VISION_THEME.feedback.danger;
 };
 
 export const SystemStatusBar: React.FC<SystemStatusBarProps> = ({
@@ -46,7 +47,12 @@ export const SystemStatusBar: React.FC<SystemStatusBarProps> = ({
         ? 'warning-outline'
         : 'checkmark-circle-outline';
 
-  const summaryColor = error || down.length > 0 ? '#FF9BB0' : degraded.length > 0 ? '#FFD187' : '#73E2B6';
+  const summaryColor =
+    error || down.length > 0
+      ? VISION_THEME.feedback.danger
+      : degraded.length > 0
+        ? '#C48738'
+        : VISION_THEME.feedback.success;
 
   return (
     <View style={styles.wrap}>
@@ -58,7 +64,7 @@ export const SystemStatusBar: React.FC<SystemStatusBarProps> = ({
       </View>
       <View style={styles.right}>
         {modules.map(item => (
-          <View key={item.module} style={styles.moduleDotWrap}>
+          <View key={item.module} style={styles.modulePill}>
             <View style={[styles.dot, {backgroundColor: stateColor(item.status)}]} />
             <Text style={styles.moduleLabel}>{item.module}</Text>
           </View>
@@ -72,8 +78,8 @@ const styles = StyleSheet.create({
   wrap: {
     minHeight: 38,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(158, 211, 255, 0.2)',
-    backgroundColor: 'rgba(8, 14, 29, 0.8)',
+    borderBottomColor: 'rgba(160, 132, 118, 0.24)',
+    backgroundColor: 'rgba(247, 241, 236, 0.92)',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
@@ -91,12 +97,18 @@ const styles = StyleSheet.create({
   right: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
-  moduleDotWrap: {
+  modulePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(171,129,110,0.22)',
+    backgroundColor: 'rgba(255,248,243,0.75)',
   },
   dot: {
     width: 6,
@@ -106,7 +118,7 @@ const styles = StyleSheet.create({
   moduleLabel: {
     ...canvasText.caption,
     fontSize: 9,
-    color: 'rgba(234,246,255,0.62)',
+    color: 'rgba(89, 73, 65, 0.86)',
     textTransform: 'uppercase',
   },
 });

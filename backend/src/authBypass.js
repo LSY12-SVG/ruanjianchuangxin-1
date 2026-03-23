@@ -24,6 +24,7 @@ const getAuthBypassUser = () => {
     id: userId,
     username: usernameRaw || `debug_user_${userId}`,
     isBypass: true,
+    scopes: ['*'],
   };
 };
 

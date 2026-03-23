@@ -37,9 +37,24 @@ const resolveAgentGrantedScopes = req => {
   return Array.from(merged);
 };
 
-const createAgentModule = ({getAuthMiddleware}) => {
+const createAgentModule = ({
+  getAuthMiddleware,
+  getCommunityRepo,
+  getSettingsRepo,
+  getModelingService,
+  getModelingConfig,
+} = {}) => {
   const router = express.Router();
-  const agentExecutionService = createAgentExecutionService();
+  const agentExecutionService = createAgentExecutionService({
+    resolveServices: () => ({
+      communityRepo: (typeof getCommunityRepo === 'function' ? getCommunityRepo() : null) || null,
+      settingsRepo: (typeof getSettingsRepo === 'function' ? getSettingsRepo() : null) || null,
+      modelingService:
+        (typeof getModelingService === 'function' ? getModelingService() : null) || null,
+      modelingConfig:
+        (typeof getModelingConfig === 'function' ? getModelingConfig() : null) || null,
+    }),
+  });
   const agentMemoryStore = createAgentMemoryStore({
     filePath: process.env.AGENT_MEMORY_PATH || path.resolve(__dirname, '../../data/agent-memory.json'),
   });
@@ -49,6 +64,7 @@ const createAgentModule = ({getAuthMiddleware}) => {
     actionApplied: 0,
     actionFailed: 0,
     actionPending: 0,
+    actionClientRequired: 0,
     rollbackAvailable: 0,
     scopeCheckTotal: 0,
     scopeCheckPassed: 0,
@@ -109,7 +125,7 @@ const createAgentModule = ({getAuthMiddleware}) => {
     }
     const grantedScopes = resolveAgentGrantedScopes(req);
     const debugOverride = Boolean(req.user?.isBypass) || isAuthBypassEnabled();
-    const result = agentExecutionService.execute({
+    const result = await agentExecutionService.execute({
       ...payload,
       userId,
       namespace: payload.namespace || 'app.agent',
@@ -119,6 +135,9 @@ const createAgentModule = ({getAuthMiddleware}) => {
     metrics.actionApplied += result.appliedActions.length;
     metrics.actionFailed += result.failedActions.length;
     metrics.actionPending += result.pendingActions.length;
+    metrics.actionClientRequired += Array.isArray(result.clientRequiredActions)
+      ? result.clientRequiredActions.length
+      : 0;
     if (result.rollbackAvailable) {
       metrics.rollbackAvailable += 1;
     }
@@ -223,7 +242,14 @@ const createAgentModule = ({getAuthMiddleware}) => {
         requiredEnv,
         auth: {
           required: true,
-          scopes: ['app:read', 'app:navigate', 'grading:write', 'convert:write', 'community:*'],
+          scopes: [
+            'app:read',
+            'app:navigate',
+            'grading:write',
+            'convert:write',
+            'community:*',
+            'settings:write',
+          ],
         },
         endpoints: [
           'POST /v1/modules/agent/plan',

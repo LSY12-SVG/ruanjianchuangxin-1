@@ -15,8 +15,9 @@ import {CreateScreen} from '../../screens/CreateScreen';
 import {ModelScreen} from '../../screens/ModelScreen';
 import {AgentScreen} from '../../screens/AgentScreen';
 import {CommunityScreen} from '../../screens/CommunityScreen';
+import {VISION_THEME} from '../../theme/visionTheme';
 
-const PAGE_GRADIENT = ['#060C1E', '#132A5C', '#2A195B'] as [string, string, string];
+const PAGE_GRADIENT = VISION_THEME.gradients.page;
 
 const defaultModuleStates: ModuleHealthItem[] = [
   {module: 'color', status: 'down', ok: false},
@@ -33,6 +34,7 @@ export const AppShell: React.FC = () => {
   const [moduleStates, setModuleStates] = useState<ModuleHealthItem[]>(defaultModuleStates);
   const [capabilities, setCapabilities] = useState<ModuleCapabilityItem[]>([]);
   const screenAnim = useRef(new Animated.Value(1)).current;
+  const ambientShift = useRef(new Animated.Value(0)).current;
 
   const refreshGatewayState = async () => {
     setHealthLoading(true);
@@ -67,11 +69,32 @@ export const AppShell: React.FC = () => {
     screenAnim.setValue(0.75);
     Animated.timing(screenAnim, {
       toValue: 1,
-      duration: 280,
+      duration: VISION_THEME.motionPresets.pageEnter.duration,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
   }, [activeTab, screenAnim]);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(ambientShift, {
+          toValue: 1,
+          duration: VISION_THEME.motionPresets.ambient.duration,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ambientShift, {
+          toValue: 0,
+          duration: VISION_THEME.motionPresets.ambient.duration,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [ambientShift]);
 
   const page = useMemo(() => {
     if (activeTab === 'create') {
@@ -89,9 +112,40 @@ export const AppShell: React.FC = () => {
   return (
     <LinearGradient colors={PAGE_GRADIENT} style={styles.root}>
       <View pointerEvents="none" style={styles.orbLayer}>
-        <View style={[styles.orb, styles.orbPrimary]} />
-        <View style={[styles.orb, styles.orbAccent]} />
+        <Animated.View
+          style={[
+            styles.orb,
+            styles.orbPrimary,
+            {
+              transform: [
+                {
+                  translateX: ambientShift.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -16],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.orb,
+            styles.orbAccent,
+            {
+              transform: [
+                {
+                  translateY: ambientShift.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -12],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
         <View style={[styles.orb, styles.orbWarm]} />
+        <View style={styles.textureDots} />
       </View>
       <View style={{height: insets.top}} />
       <SystemStatusBar loading={healthLoading} error={healthError} modules={moduleStates} />
@@ -127,34 +181,41 @@ const styles = StyleSheet.create({
   orb: {
     position: 'absolute',
     borderRadius: 999,
-    opacity: 0.16,
+    opacity: 0.14,
   },
   orbPrimary: {
     width: 380,
     height: 380,
     right: -120,
     top: -110,
-    backgroundColor: '#35D5C5',
+    backgroundColor: '#D6A08C',
+    opacity: 0.2,
   },
   orbAccent: {
     width: 320,
     height: 320,
     left: -130,
     bottom: '22%',
-    backgroundColor: '#AA63F9',
-    opacity: 0.12,
+    backgroundColor: '#B05D50',
+    opacity: 0.1,
   },
   orbWarm: {
     width: 260,
     height: 260,
     right: 16,
     top: '40%',
-    backgroundColor: '#FF9B39',
-    opacity: 0.07,
+    backgroundColor: '#8E3C2F',
+    opacity: 0.08,
   },
   pageWrap: {
     flex: 1,
     paddingHorizontal: 12,
     paddingTop: 10,
+  },
+  textureDots: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 0,
+    opacity: 0.4,
   },
 });

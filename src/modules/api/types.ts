@@ -151,11 +151,12 @@ export interface AgentPlanResponse {
 export interface AgentExecuteResponse {
   executionId: string;
   planId: string;
-  status: 'pending_confirm' | 'failed' | 'applied';
+  status: 'pending_confirm' | 'failed' | 'applied' | 'client_required';
   actionResults: Array<{
     status: string;
     message: string;
     errorCode?: string;
+    output?: Record<string, unknown>;
     action: AgentPlanAction;
   }>;
 }

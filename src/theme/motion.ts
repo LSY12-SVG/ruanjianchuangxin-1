@@ -16,23 +16,23 @@ export interface MotionPreset {
 
 export const MOTION_PRESETS: Record<MotionPresetKey, MotionPreset> = {
   pageEnter: {
-    duration: 420,
+    duration: 280,
     fromY: 16,
     toY: 0,
   },
   cardLift: {
-    duration: 320,
-    delay: 60,
+    duration: 240,
+    delay: 36,
     fromY: 14,
     toY: 0,
   },
   statusPulse: {
-    duration: 920,
+    duration: 280,
     fromScale: 0.88,
     toScale: 1.08,
   },
   buttonPress: {
-    duration: 180,
+    duration: 150,
     fromScale: 1,
     toScale: 0.97,
   },

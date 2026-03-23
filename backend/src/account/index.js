@@ -32,6 +32,7 @@ const initializeAccountModule = async ({getCommunityPostsCount}) => {
     profileRouter: createProfileRouter({repo, authMiddleware}),
     authMiddleware,
     optionalAuthMiddleware,
+    repo,
     close: async () => {
       await db.close();
     },
