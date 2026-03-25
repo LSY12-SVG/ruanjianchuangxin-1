@@ -1,5 +1,6 @@
 import React from 'react';
 import TestRenderer, {act} from 'react-test-renderer';
+import {TextInput} from 'react-native';
 import {AgentScreen} from '../../src/screens/AgentScreen';
 import {useAgentExecutionContextStore} from '../../src/agent/executionContextStore';
 
@@ -19,8 +20,31 @@ jest.mock('../../src/theme/canvasDesign', () => ({
     sectionTitle: {},
     caption: {},
   },
+  canvasUi: {
+    titleWithIcon: {},
+    iconBadge: {},
+    input: {},
+    chip: {},
+    primaryButton: {},
+    secondaryButton: {},
+    progressTrack: {},
+    progressFill: {},
+    subtleCard: {},
+  },
   cardSurfaceViolet: {},
   glassShadow: {},
+}));
+
+jest.mock('../../src/agent/useAgentVoiceGoal', () => ({
+  useAgentVoiceGoal: () => ({
+    recording: false,
+    phase: 'idle',
+    liveTranscript: '',
+    errorText: '',
+    onPressIn: jest.fn(),
+    onPressOut: jest.fn(),
+    clearError: jest.fn(),
+  }),
 }));
 
 jest.mock('../../src/modules/api', () => ({
@@ -72,6 +96,7 @@ const textFromInstance = (instance: TestRenderer.ReactTestInstance): string =>
 
 describe('AgentScreen action args injection', () => {
   let renderer: TestRenderer.ReactTestRenderer;
+  const navigateTabMock = jest.fn();
 
   const basePlan = {
     planId: 'plan-agent-1',
@@ -105,6 +130,8 @@ describe('AgentScreen action args injection', () => {
       renderer = TestRenderer.create(
         <AgentScreen
           capabilities={[{module: 'agent', strictMode: true, provider: 'local', auth: {required: true}} as never]}
+          activeTab="agent"
+          onNavigateTab={navigateTabMock}
         />,
       );
     });
@@ -136,6 +163,7 @@ describe('AgentScreen action args injection', () => {
       colorContext: null,
       modelingImageContext: null,
     });
+    navigateTabMock.mockReset();
   });
 
   afterEach(async () => {
@@ -175,7 +203,7 @@ describe('AgentScreen action args injection', () => {
     });
     await renderScreen();
 
-    const input = renderer.root.findByType('TextInput');
+    const input = renderer.root.findByType(TextInput);
     await act(async () => {
       input.props.onChangeText('执行任务');
     });
@@ -208,11 +236,11 @@ describe('AgentScreen action args injection', () => {
         base64: 'ZmFrZS1tb2RlbA==',
       },
     });
-  });
+  }, 15000);
 
-  it('shows missing-context warning and still executes with unchanged actions', async () => {
+  it('shows missing-context warning and blocks execute request', async () => {
     await renderScreen();
-    const input = renderer.root.findByType('TextInput');
+    const input = renderer.root.findByType(TextInput);
     await act(async () => {
       input.props.onChangeText('执行任务');
     });
@@ -227,9 +255,7 @@ describe('AgentScreen action args injection', () => {
     await flushMicrotasks();
 
     const text = stringifyNodeText(renderer.toJSON());
-    expect(text).toContain('执行上下文缺失');
-    const [, actions] = agentApi.executePlan.mock.calls[0];
-    expect(actions[0].args).toBeUndefined();
-    expect(actions[1].args).toBeUndefined();
-  });
+    expect(text).toContain('执行前缺少上下文');
+    expect(agentApi.executePlan).not.toHaveBeenCalled();
+  }, 15000);
 });

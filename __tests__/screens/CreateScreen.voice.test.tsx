@@ -21,6 +21,17 @@ jest.mock('../../src/theme/canvasDesign', () => ({
     sectionTitle: {},
     caption: {},
   },
+  canvasUi: {
+    chip: {},
+    chipActive: {},
+    titleWithIcon: {},
+    iconBadge: {},
+    input: {},
+    primaryButton: {},
+    secondaryButton: {},
+    dangerButton: {},
+    subtleCard: {},
+  },
   cardSurfaceBlue: {},
   glassShadow: {},
 }));

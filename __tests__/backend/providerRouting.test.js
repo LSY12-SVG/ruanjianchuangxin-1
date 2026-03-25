@@ -76,15 +76,9 @@ describe('backend provider routing', () => {
   it('treats schema invalid as retryable and uses fallback model', async () => {
     const providerMock = jest.fn(async (_request, options) => {
       if (options.model === 'primary-model') {
-        return {
-          actions: [{action: 'set_param', target: 'brightness'}],
-          confidence: 0.6,
-          reasoning_summary: 'invalid action payload',
-          fallback_used: false,
-          needsConfirmation: true,
-          message: 'invalid',
-          source: 'cloud',
-        };
+        const error = new Error('provider schema invalid keys:actions,confidence');
+        error.code = 'SCHEMA_INVALID';
+        throw error;
       }
       return makeValidProviderPayload('schema recovered');
     });

@@ -105,7 +105,13 @@ export const AppShell: React.FC = () => {
       return <ModelScreen capabilities={capabilities} />;
     }
     if (activeTab === 'agent') {
-      return <AgentScreen capabilities={capabilities} />;
+      return (
+        <AgentScreen
+          capabilities={capabilities}
+          activeTab={activeTab}
+          onNavigateTab={setActiveTab}
+        />
+      );
     }
     return <CommunityScreen capabilities={capabilities} />;
   }, [activeTab, capabilities]);
@@ -171,6 +177,7 @@ export const AppShell: React.FC = () => {
         activeTab={activeTab}
         capabilities={capabilities}
         bottomInset={insets.bottom}
+        onNavigateTab={setActiveTab}
       />
       <BottomTabBar activeTab={activeTab} onChangeTab={setActiveTab} bottomInset={insets.bottom} />
     </LinearGradient>

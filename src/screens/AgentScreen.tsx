@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -12,7 +12,6 @@ import {
   agentApi,
   formatApiErrorMessage,
   type AgentExecuteResponse,
-  type AgentPlanAction,
   type AgentPlanResponse,
   type ModuleCapabilityItem,
 } from '../modules/api';
@@ -20,6 +19,18 @@ import {PageHero} from '../components/app/PageHero';
 import {HERO_AGENT} from '../assets/design';
 import {canvasText, canvasUi, cardSurfaceViolet, glassShadow} from '../theme/canvasDesign';
 import {useAgentExecutionContextStore} from '../agent/executionContextStore';
+import {
+  buildCurrentPageSummary,
+  buildMissingContextHintText,
+  executeAgentPlanCycle,
+  runAgentGoalCycle,
+  toActionStatusText,
+  toResultStatusText,
+  type AgentClientTab,
+  type AgentExecuteCycleResult,
+  type MissingContextGuide,
+} from '../agent/dualEntryOrchestrator';
+import {useAgentVoiceGoal} from '../agent/useAgentVoiceGoal';
 
 const QUICK_PROMPTS: Array<{
   icon: string;
@@ -45,83 +56,30 @@ const QUICK_PROMPTS: Array<{
 
 interface AgentScreenProps {
   capabilities: ModuleCapabilityItem[];
+  activeTab: AgentClientTab;
+  onNavigateTab: (tab: AgentClientTab) => void;
 }
 
-const hasGradingArgs = (args?: Record<string, unknown>): boolean => {
-  if (!args || typeof args !== 'object') {
-    return false;
-  }
-  const image = args.image as Record<string, unknown> | undefined;
-  return Boolean(
-    typeof args.locale === 'string' &&
-      args.locale &&
-      args.currentParams &&
-      image &&
-      typeof image.mimeType === 'string' &&
-      image.mimeType &&
-      Number.isFinite(Number(image.width)) &&
-      Number.isFinite(Number(image.height)) &&
-      typeof image.base64 === 'string' &&
-      image.base64,
-  );
-};
+const toJumpButtonText = (guide: MissingContextGuide): string =>
+  guide.targetTab === 'model' ? '去建模页补图' : '去调色页补图';
 
-const hasConvertArgs = (args?: Record<string, unknown>): boolean => {
-  if (!args || typeof args !== 'object') {
-    return false;
-  }
-  const image = args.image as Record<string, unknown> | undefined;
-  return Boolean(
-    image &&
-      typeof image.mimeType === 'string' &&
-      image.mimeType &&
-      typeof image.fileName === 'string' &&
-      image.fileName &&
-      typeof image.base64 === 'string' &&
-      image.base64,
-  );
-};
-
-const resolveDraftIdFromExecuteResult = (
-  result: AgentExecuteResponse | null,
-): string => {
-  if (!result || !Array.isArray(result.actionResults)) {
-    return '';
-  }
-  for (const item of result.actionResults) {
-    if (
-      item.status !== 'applied' ||
-      item.action?.domain !== 'community' ||
-      item.action?.operation !== 'create_draft'
-    ) {
-      continue;
-    }
-    const output = item.output as
-      | {
-          draftId?: string | number;
-        }
-      | undefined;
-    if (output?.draftId !== undefined && output?.draftId !== null) {
-      const normalized = String(output.draftId).trim();
-      if (normalized) {
-        return normalized;
-      }
-    }
-  }
-  return '';
-};
-
-export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
+export const AgentScreen: React.FC<AgentScreenProps> = ({
+  capabilities,
+  activeTab,
+  onNavigateTab,
+}) => {
   const [prompt, setPrompt] = useState('');
   const [plan, setPlan] = useState<AgentPlanResponse | null>(null);
   const [executeResult, setExecuteResult] = useState<AgentExecuteResponse | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [loadingExecute, setLoadingExecute] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [missingContextGuides, setMissingContextGuides] = useState<MissingContextGuide[]>([]);
   const colorContext = useAgentExecutionContextStore(state => state.colorContext);
   const modelingImageContext = useAgentExecutionContextStore(
     state => state.modelingImageContext,
   );
+  const busy = loadingPlan || loadingExecute;
 
   const agentCapability = capabilities.find(item => item.module === 'agent');
 
@@ -143,35 +101,46 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
     return Math.round((completed / executeResult.actionResults.length) * 100);
   }, [executeResult]);
 
-  const toResultStatusText = (status: string): string => {
-    switch (status) {
-      case 'applied':
-        return '已应用';
-      case 'failed':
-        return '执行失败';
-      case 'pending_confirm':
-        return '待确认';
-      case 'client_required':
-        return '需客户端处理';
-      default:
-        return status || '-';
+  const workflowProgressText = useMemo(() => {
+    const total = Number(executeResult?.workflowState?.totalSteps || 0);
+    if (!executeResult || total <= 0) {
+      return '';
     }
+    const current = Math.max(0, Number(executeResult.workflowState?.currentStep || 0));
+    return `${Math.min(Math.max(current, 0), total)}/${total}`;
+  }, [executeResult]);
+
+  const toContextLabel = (key: string | null | undefined): string => {
+    if (key === 'context.color.image') {
+      return '调色图片';
+    }
+    if (key === 'context.modeling.image') {
+      return '建模图片';
+    }
+    if (key === 'context.community.draftId') {
+      return '社区草稿';
+    }
+    return key || '-';
   };
 
-  const toActionStatusText = (status: string): string => {
-    switch (status) {
-      case 'applied':
-        return '已完成';
-      case 'failed':
-        return '失败';
-      case 'pending_confirm':
-        return '待确认';
-      case 'skipped':
-        return '已跳过';
-      default:
-        return status || '-';
+  const resultSummaryText = useMemo(() => {
+    if (!executeResult) {
+      return '';
     }
-  };
+    const clientHandledCount = executeResult.clientHandledActions?.length || 0;
+    const appliedCount = executeResult.actionResults.filter(item => item.status === 'applied').length;
+    const serviceAppliedCount = Math.max(0, appliedCount - clientHandledCount);
+    if (serviceAppliedCount > 0 && clientHandledCount > 0) {
+      return `服务端已执行 ${serviceAppliedCount} 项，客户端补执行 ${clientHandledCount} 项。`;
+    }
+    if (clientHandledCount > 0) {
+      return `客户端补执行 ${clientHandledCount} 项。`;
+    }
+    if (appliedCount > 0) {
+      return `已执行 ${appliedCount} 项动作。`;
+    }
+    return '';
+  }, [executeResult]);
 
   const toRiskText = (riskLevel: string): string => {
     switch (riskLevel) {
@@ -186,6 +155,112 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
     }
   };
 
+  const applyCycleResult = useCallback(
+    (cycle: AgentExecuteCycleResult) => {
+      setPlan(prev => (prev ? {...prev, actions: cycle.hydratedActions} : prev));
+      if (cycle.executeResult) {
+        setExecuteResult(cycle.executeResult);
+      }
+      if (cycle.missingContextGuides.length > 0) {
+        setMissingContextGuides(cycle.missingContextGuides);
+        setErrorText(buildMissingContextHintText(cycle.missingContextGuides));
+        return;
+      }
+      setMissingContextGuides([]);
+      if (!cycle.executeResult) {
+        return;
+      }
+      if (cycle.executeResult.status === 'failed') {
+        const firstFailure =
+          cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
+          '执行失败';
+        setErrorText(firstFailure);
+        return;
+      }
+      setErrorText('');
+    },
+    [],
+  );
+
+  const runGoal = useCallback(
+    async (goal: string, inputSource: 'text' | 'voice') => {
+      const finalGoal = goal.trim();
+      if (!finalGoal) {
+        setErrorText('请输入任务目标');
+        return;
+      }
+      try {
+        setLoadingPlan(true);
+        setLoadingExecute(true);
+        setErrorText('');
+        setMissingContextGuides([]);
+        setExecuteResult(null);
+        const {plan: nextPlan, cycle} = await runAgentGoalCycle({
+          goal: finalGoal,
+          context: {
+            currentTab: activeTab,
+            colorContext,
+            modelingImageContext,
+            latestExecuteResult: executeResult,
+          },
+          clientHandlers: {
+            navigateToTab: tab => {
+              setTimeout(() => onNavigateTab(tab), 0);
+            },
+            summarizeCurrentPage: () =>
+              buildCurrentPageSummary({
+                currentTab: activeTab,
+                colorContext,
+                modelingImageContext,
+                latestPlan: nextPlan,
+                latestExecuteResult: executeResult,
+              }),
+          },
+          options: {
+            inputSource,
+          },
+        });
+        setPlan({...nextPlan, actions: cycle.hydratedActions});
+        applyCycleResult(cycle);
+      } catch (error) {
+        setErrorText(formatApiErrorMessage(error, '执行失败'));
+      } finally {
+        setLoadingPlan(false);
+        setLoadingExecute(false);
+      }
+    },
+    [
+      activeTab,
+      applyCycleResult,
+      colorContext,
+      executeResult,
+      modelingImageContext,
+      onNavigateTab,
+    ],
+  );
+
+  const {
+    recording,
+    phase: voicePhase,
+    liveTranscript,
+    errorText: voiceErrorText,
+    onPressIn: onVoicePressIn,
+    onPressOut: onVoicePressOut,
+    clearError: clearVoiceError,
+  } = useAgentVoiceGoal({
+    busy,
+    onTranscript: transcript => {
+      setPrompt(transcript);
+      runGoal(transcript, 'voice').catch(() => undefined);
+    },
+  });
+
+  useEffect(() => {
+    if (voiceErrorText) {
+      setErrorText(voiceErrorText);
+    }
+  }, [voiceErrorText]);
+
   const createPlan = async () => {
     if (!prompt.trim()) {
       setErrorText('请输入任务目标');
@@ -195,7 +270,8 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
       setLoadingPlan(true);
       setErrorText('');
       setExecuteResult(null);
-      const nextPlan = await agentApi.createPlan(prompt.trim());
+      setMissingContextGuides([]);
+      const nextPlan = await agentApi.createPlan(prompt.trim(), activeTab, 'text');
       setPlan(nextPlan);
     } catch (error) {
       setErrorText(formatApiErrorMessage(error, '计划生成失败'));
@@ -209,96 +285,66 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
       setErrorText('请先生成计划');
       return;
     }
-    const missingContextActions: string[] = [];
-    const hydratedActions: AgentPlanAction[] = plan.actions.map(action => {
-      if (action.domain === 'grading' && action.operation === 'apply_visual_suggest') {
-        if (hasGradingArgs(action.args)) {
-          return action;
-        }
-        if (!colorContext) {
-          missingContextActions.push('grading.apply_visual_suggest');
-          return action;
-        }
-        return {
-          ...action,
-          args: {
-            locale: colorContext.locale,
-            currentParams: colorContext.currentParams,
-            image: colorContext.image,
-            imageStats: colorContext.imageStats,
-          },
-        };
-      }
-      if (action.domain === 'convert' && action.operation === 'start_task') {
-        if (hasConvertArgs(action.args)) {
-          return action;
-        }
-        if (!modelingImageContext?.image) {
-          missingContextActions.push('convert.start_task');
-          return action;
-        }
-        return {
-          ...action,
-          args: {
-            image: modelingImageContext.image,
-          },
-        };
-      }
-      return action;
-    });
     const pendingActionIds =
       executeResult?.status === 'pending_confirm'
         ? executeResult.actionResults
             .filter(item => item.status === 'pending_confirm')
             .map(item => item.action.actionId)
         : [];
-    const allowConfirmActions = pendingActionIds.length > 0;
-    const latestDraftId = resolveDraftIdFromExecuteResult(executeResult);
-    const executeActions: AgentPlanAction[] = hydratedActions.map(action => {
-      if (
-        allowConfirmActions &&
-        action.domain === 'community' &&
-        action.operation === 'publish_draft'
-      ) {
-        const args = action.args && typeof action.args === 'object' ? action.args : {};
-        const draftIdRaw = (args as {draftId?: string | number}).draftId;
-        const hasDraftId =
-          draftIdRaw !== undefined && draftIdRaw !== null && String(draftIdRaw).trim().length > 0;
-        if (!hasDraftId && latestDraftId) {
-          return {
-            ...action,
-            args: {
-              ...args,
-              draftId: latestDraftId,
-            },
-          };
-        }
-      }
-      return action;
-    });
-
     try {
       setLoadingExecute(true);
-      if (missingContextActions.length) {
-        setErrorText(
-          `执行上下文缺失：${missingContextActions.join(
-            ', ',
-          )}。请先在创作/建模页选择图片后重试。`,
-        );
-      } else {
-        setErrorText('');
-      }
-      setPlan(prev => (prev ? {...prev, actions: executeActions} : prev));
-      const result = await agentApi.executePlan(plan.planId, executeActions, {
-        actionIds: pendingActionIds.length ? pendingActionIds : undefined,
-        allowConfirmActions,
+      clearVoiceError();
+      setErrorText('');
+      const cycle = await executeAgentPlanCycle({
+        plan,
+        context: {
+          currentTab: activeTab,
+          colorContext,
+          modelingImageContext,
+          latestExecuteResult: executeResult,
+        },
+        clientHandlers: {
+          navigateToTab: tab => {
+            setTimeout(() => onNavigateTab(tab), 0);
+          },
+          summarizeCurrentPage: () =>
+            buildCurrentPageSummary({
+              currentTab: activeTab,
+              colorContext,
+              modelingImageContext,
+              latestPlan: plan,
+              latestExecuteResult: executeResult,
+            }),
+        },
+        options: {
+          actionIds: pendingActionIds.length ? pendingActionIds : undefined,
+          allowConfirmActions: pendingActionIds.length > 0,
+        },
       });
-      setExecuteResult(result);
+      applyCycleResult(cycle);
     } catch (error) {
       setErrorText(formatApiErrorMessage(error, '计划执行失败'));
     } finally {
       setLoadingExecute(false);
     }
+  };
+
+  const triggerQuickExecute = () => {
+    clearVoiceError();
+    runGoal(prompt, 'text').catch(() => undefined);
+  };
+
+  const toVoicePhaseText = (phase: string): string => {
+    if (phase === 'listening') {
+      return '正在收音';
+    }
+    if (phase === 'transcribing') {
+      return '转写中';
+    }
+    if (phase === 'error') {
+      return '识别异常';
+    }
+    return '空闲';
   };
 
   return (
@@ -350,6 +396,24 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
             </Text>
           </Pressable>
         </View>
+        <View style={styles.actionRow}>
+          <Pressable style={styles.secondaryBtn} onPress={triggerQuickExecute} disabled={busy}>
+            <Icon name="flash" size={15} color="#2F2926" />
+            <Text style={styles.secondaryBtnText}>{busy ? '执行中...' : '一句话执行'}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.secondaryBtn, recording && styles.voiceBtnActive]}
+            onPressIn={onVoicePressIn}
+            onPressOut={onVoicePressOut}
+            disabled={busy}>
+            <Icon name={recording ? 'mic' : 'mic-outline'} size={15} color="#2F2926" />
+            <Text style={styles.secondaryBtnText}>{recording ? '松开结束' : '按住说话'}</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.metaText}>
+          语音阶段: {toVoicePhaseText(voicePhase)}
+          {liveTranscript ? ` | ${liveTranscript}` : ''}
+        </Text>
       </View>
 
       <View style={styles.card}>
@@ -399,6 +463,26 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
         {executeResult ? (
           <View style={styles.stepWrap}>
             <Text style={styles.metaText}>状态: {toResultStatusText(executeResult.status)}</Text>
+            {resultSummaryText ? <Text style={styles.metaText}>{resultSummaryText}</Text> : null}
+            {workflowProgressText ? (
+              <Text style={styles.metaText}>链路进度: {workflowProgressText}</Text>
+            ) : null}
+            {executeResult.workflowState?.nextRequiredContext ? (
+              <Text style={styles.metaText}>
+                下一步需要: {toContextLabel(executeResult.workflowState.nextRequiredContext)}
+              </Text>
+            ) : null}
+            {executeResult.clientHandledActions?.length ? (
+              <Text style={styles.metaText}>
+                客户端补执行: {executeResult.clientHandledActions.length} 项
+              </Text>
+            ) : null}
+            {executeResult.pageSummary ? (
+              <View style={styles.stepCard}>
+                <Text style={styles.stepDomain}>当前页摘要</Text>
+                <Text style={styles.stepMeta}>{executeResult.pageSummary}</Text>
+              </View>
+            ) : null}
             {executeResult.actionResults.map(result => (
               <View key={result.action.actionId} style={styles.stepCard}>
                 <Text style={styles.stepDomain}>
@@ -415,6 +499,14 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
           <Text style={styles.metaText}>等待执行</Text>
         )}
         {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
+        {missingContextGuides[0] ? (
+          <Pressable
+            style={styles.secondaryBtn}
+            onPress={() => onNavigateTab(missingContextGuides[0].targetTab)}>
+            <Icon name="arrow-forward-circle" size={15} color="#2F2926" />
+            <Text style={styles.secondaryBtnText}>{toJumpButtonText(missingContextGuides[0])}</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.metaText}>
           严格模式: {agentCapability?.strictMode ? '开启' : '未知'} | 认证:{' '}
           {agentCapability?.auth?.required ? 'JWT' : '无'}
@@ -495,6 +587,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 6,
+  },
+  voiceBtnActive: {
+    opacity: 0.84,
   },
   secondaryBtnText: {
     ...canvasText.bodyStrong,

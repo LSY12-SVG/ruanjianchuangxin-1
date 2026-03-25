@@ -13,10 +13,20 @@ const KNOWN_ERROR_CODES = new Set([
   'client_required',
 ]);
 
-const CLIENT_REQUIRED_ACTIONS = new Set([
-  'navigation::navigate_tab',
-  'app::summarize_current_page',
-]);
+const CLIENT_REQUIRED_ADAPTERS = {
+  'navigation::navigate_tab': async ({action}) => ({
+    status: 'client_required',
+    message: `client_action_required:${action.domain}.${action.operation}`,
+    errorCode: 'client_required',
+    retryable: true,
+  }),
+  'app::summarize_current_page': async ({action}) => ({
+    status: 'client_required',
+    message: `client_action_required:${action.domain}.${action.operation}`,
+    errorCode: 'client_required',
+    retryable: true,
+  }),
+};
 
 class AgentExecutionError extends Error {
   constructor({code = 'tool_error', message = 'execution_failed', retryable = false, details = undefined} = {}) {
@@ -226,12 +236,38 @@ const parseSettingsPatch = args => {
 
 const toActionKey = action => `${action.domain}::${action.operation}`;
 
-const defaultClientRequiredAdapter = async ({action}) => ({
-  status: 'client_required',
-  message: `client_action_required:${action.domain}.${action.operation}`,
-  errorCode: 'client_required',
-  retryable: true,
-});
+const buildWorkflowState = ({actions, actionResults, status}) => {
+  const totalSteps = Array.isArray(actions) ? actions.length : 0;
+  if (!totalSteps) {
+    return {
+      currentStep: 0,
+      totalSteps: 0,
+      nextRequiredContext: null,
+    };
+  }
+  const indexByActionId = new Map(
+    actions.map((item, index) => [String(item.actionId || item.id || index), index]),
+  );
+  const firstOpenResult = actionResults.find(
+    item => item.status !== 'applied' && item.status !== 'skipped',
+  );
+  let currentStep = totalSteps;
+  if (firstOpenResult) {
+    const index = indexByActionId.get(String(firstOpenResult.action?.actionId || firstOpenResult.action?.id || ''));
+    if (Number.isFinite(index)) {
+      currentStep = Number(index) + 1;
+    }
+  } else if (status === 'applied') {
+    currentStep = totalSteps;
+  }
+
+  const nextRequiredContext = firstOpenResult?.action?.preconditions?.[0] || null;
+  return {
+    currentStep,
+    totalSteps,
+    nextRequiredContext,
+  };
+};
 
 const buildDefaultActionAdapters = ({
   resolveServices,
@@ -467,9 +503,10 @@ const createAgentExecutionService = ({
       }
 
       const actionKey = toActionKey(action);
-      if (CLIENT_REQUIRED_ACTIONS.has(actionKey)) {
+      const clientRequiredAdapter = CLIENT_REQUIRED_ADAPTERS[actionKey];
+      if (typeof clientRequiredAdapter === 'function') {
         const startedAt = Date.now();
-        const result = await defaultClientRequiredAdapter({action});
+        const result = await clientRequiredAdapter({action});
         actionResults.push({
           action,
           attempts: 1,
@@ -564,6 +601,19 @@ const createAgentExecutionService = ({
     const clientRequiredActions = actionResults
       .filter(item => item.status === 'client_required')
       .map(item => item.action);
+    const status =
+      pendingActions.length > 0
+        ? 'pending_confirm'
+        : failedActions.length > 0
+          ? 'failed'
+          : clientRequiredActions.length > 0
+            ? 'client_required'
+            : 'applied';
+    const workflowState = buildWorkflowState({
+      actions: filtered,
+      actionResults,
+      status,
+    });
 
     const payload = {
       executionId: `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
@@ -575,14 +625,8 @@ const createAgentExecutionService = ({
       pendingActions,
       clientRequiredActions,
       rollbackAvailable: appliedActions.length > 0,
-      status:
-        pendingActions.length > 0
-          ? 'pending_confirm'
-          : failedActions.length > 0
-            ? 'failed'
-            : clientRequiredActions.length > 0
-              ? 'client_required'
-              : 'applied',
+      workflowState,
+      status,
     };
     if (dedupeKey) {
       idempotencyMap.set(dedupeKey, {

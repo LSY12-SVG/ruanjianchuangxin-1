@@ -8,6 +8,7 @@ const VALID_DOMAINS = new Set([
 ]);
 const VALID_RISK = new Set(['low', 'medium', 'high']);
 const VALID_TABS = new Set(['home', 'agent', 'community', 'profile']);
+const VALID_STAGES = new Set(['grading', 'convert', 'community', 'app']);
 
 const isObject = value => typeof value === 'object' && value !== null;
 
@@ -53,6 +54,18 @@ const normalizeAgentAction = (value, index = 0, planId = 'agent_plan') => {
         : typeof value.skill_name === 'string'
           ? value.skill_name
           : undefined,
+    stage:
+      typeof value.stage === 'string' && VALID_STAGES.has(value.stage)
+        ? value.stage
+        : undefined,
+    dependsOn: Array.isArray(value.dependsOn)
+      ? value.dependsOn.filter(item => typeof item === 'string' && item.trim())
+      : Array.isArray(value.depends_on)
+        ? value.depends_on.filter(item => typeof item === 'string' && item.trim())
+        : [],
+    preconditions: Array.isArray(value.preconditions)
+      ? value.preconditions.filter(item => typeof item === 'string' && item.trim())
+      : [],
     timeoutMs: Number.isFinite(Number(value.timeoutMs || value.timeout_ms))
       ? Number(value.timeoutMs || value.timeout_ms)
       : undefined,
@@ -70,6 +83,13 @@ const validateAgentPlanRequest = body => {
 
   if (typeof body.currentTab !== 'string' || !VALID_TABS.has(body.currentTab)) {
     return {ok: false, message: 'currentTab is invalid'};
+  }
+  if (
+    body.inputSource !== undefined &&
+    body.inputSource !== 'text' &&
+    body.inputSource !== 'voice'
+  ) {
+    return {ok: false, message: 'inputSource is invalid'};
   }
 
   if (

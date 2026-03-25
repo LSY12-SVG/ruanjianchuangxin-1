@@ -12,14 +12,51 @@ const BASE_CAPABILITIES: Array<{domain: string; operation: string}> = [
   {domain: 'app', operation: 'summarize_current_page'},
 ];
 
+export type AgentPlanCurrentTab =
+  | 'create'
+  | 'model'
+  | 'agent'
+  | 'community'
+  | 'home'
+  | 'profile';
+
+const toLegacyCurrentTab = (tab: AgentPlanCurrentTab): 'home' | 'agent' | 'community' | 'profile' => {
+  if (tab === 'community') {
+    return 'community';
+  }
+  if (tab === 'agent') {
+    return 'agent';
+  }
+  if (tab === 'profile') {
+    return 'profile';
+  }
+  return 'home';
+};
+
+const buildPageSnapshot = (tab: AgentPlanCurrentTab): Record<string, unknown> => {
+  if (tab === 'model') {
+    return {currentTab: 'home', currentRoute: 'modeling'};
+  }
+  if (tab === 'create') {
+    return {currentTab: 'home', currentRoute: 'grading'};
+  }
+  return {currentTab: toLegacyCurrentTab(tab)};
+};
+
 export const agentApi = {
-  async createPlan(prompt: string): Promise<AgentPlanResponse> {
+  async createPlan(
+    prompt: string,
+    currentTab: AgentPlanCurrentTab = 'agent',
+    inputSource: 'text' | 'voice' = 'text',
+  ): Promise<AgentPlanResponse> {
     return requestApi<AgentPlanResponse>('/v1/modules/agent/plan', {
       method: 'POST',
       body: {
         intent: {goal: prompt},
-        currentTab: 'agent',
+        currentTab: toLegacyCurrentTab(currentTab),
+        inputSource,
         capabilities: BASE_CAPABILITIES,
+        pageSnapshot: buildPageSnapshot(currentTab),
       },
     });
   },

@@ -61,6 +61,8 @@ const createAgentModule = ({
   const metrics = {
     planTotal: 0,
     planFallbackLocal: 0,
+    executeTotal: 0,
+    workflowCompleted: 0,
     actionApplied: 0,
     actionFailed: 0,
     actionPending: 0,
@@ -71,7 +73,19 @@ const createAgentModule = ({
     blockedByPolicyCount: 0,
   };
 
-  const requireAgentAuth = (req, res, next) => {
+  const ensureBypassUser = async bypassUser => {
+    const settingsRepo = (typeof getSettingsRepo === 'function' ? getSettingsRepo() : null) || null;
+    if (!settingsRepo || typeof settingsRepo.ensureAuthUser !== 'function') {
+      return;
+    }
+    await settingsRepo.ensureAuthUser({
+      id: bypassUser.id,
+      username: bypassUser.username,
+      isBypass: true,
+    });
+  };
+
+  const requireAgentAuth = async (req, res, next) => {
     const authMiddleware = typeof getAuthMiddleware === 'function' ? getAuthMiddleware() : null;
     if (authMiddleware) {
       return authMiddleware(req, res, next);
@@ -81,6 +95,17 @@ const createAgentModule = ({
       return undefined;
     }
     const bypassUser = getAuthBypassUser();
+    try {
+      await ensureBypassUser(bypassUser);
+    } catch (error) {
+      sendError(
+        res,
+        500,
+        'AUTH_BYPASS_USER_INIT_FAILED',
+        error?.message || 'auth_bypass_user_init_failed',
+      );
+      return undefined;
+    }
     req.user = {
       ...bypassUser,
       id: String(bypassUser.id),
@@ -107,6 +132,22 @@ const createAgentModule = ({
     if (normalized.plannerSource === 'local') {
       metrics.planFallbackLocal += 1;
     }
+    const inputSource = req.body?.inputSource === 'voice' ? 'voice' : 'text';
+    const stageSet = new Set(
+      (Array.isArray(normalized.actions) ? normalized.actions : [])
+        .map(item => String(item.stage || '').trim())
+        .filter(Boolean),
+    );
+    console.log(
+      '[agent-plan]',
+      JSON.stringify({
+        planId: normalized.planId,
+        inputSource,
+        plannerSource: normalized.plannerSource,
+        actionCount: normalized.actions.length,
+        stages: Array.from(stageSet),
+      }),
+    );
     res.json(normalized);
   });
 
@@ -132,6 +173,10 @@ const createAgentModule = ({
       grantedScopes,
       debugOverride,
     });
+    metrics.executeTotal += 1;
+    if (result.status === 'applied') {
+      metrics.workflowCompleted += 1;
+    }
     metrics.actionApplied += result.appliedActions.length;
     metrics.actionFailed += result.failedActions.length;
     metrics.actionPending += result.pendingActions.length;
@@ -151,6 +196,28 @@ const createAgentModule = ({
       item => item.errorCode === 'forbidden_scope' || item.errorCode === 'confirmation_required',
     ).length;
     metrics.blockedByPolicyCount += blockedByPolicyCount;
+    const firstFailure = result.actionResults.find(item => item.status === 'failed');
+    console.log(
+      '[agent-execute]',
+      JSON.stringify({
+        planId: result.planId,
+        executionId: result.executionId,
+        status: result.status,
+        actionCount: result.actionResults.length,
+        appliedCount: result.appliedActions.length,
+        pendingCount: result.pendingActions.length,
+        failedCount: result.failedActions.length,
+        nextRequiredContext: result.workflowState?.nextRequiredContext || '',
+        firstFailure: firstFailure
+          ? {
+              domain: firstFailure.action?.domain || '',
+              operation: firstFailure.action?.operation || '',
+              errorCode: firstFailure.errorCode || '',
+              message: firstFailure.message || '',
+            }
+          : null,
+      }),
+    );
     res.json(result);
   });
 

@@ -135,6 +135,9 @@ export interface AgentPlanAction {
   domain: string;
   operation: string;
   args?: Record<string, unknown>;
+  stage?: 'grading' | 'convert' | 'community' | 'app';
+  dependsOn?: string[];
+  preconditions?: string[];
   riskLevel: 'low' | 'medium' | 'high';
   requiresConfirmation: boolean;
   requiredScopes: string[];
@@ -152,6 +155,20 @@ export interface AgentExecuteResponse {
   executionId: string;
   planId: string;
   status: 'pending_confirm' | 'failed' | 'applied' | 'client_required';
+  workflowState?: {
+    currentStep: number;
+    totalSteps: number;
+    nextRequiredContext: string | null;
+  };
+  clientRequiredActions?: AgentPlanAction[];
+  clientHandledActions?: Array<{
+    actionId: string;
+    domain: string;
+    operation: string;
+    message: string;
+    output?: Record<string, unknown>;
+  }>;
+  pageSummary?: string;
   actionResults: Array<{
     status: string;
     message: string;

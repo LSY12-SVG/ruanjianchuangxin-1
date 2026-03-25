@@ -2,6 +2,7 @@ import {colorApi} from '../color';
 import {communityApi} from '../community';
 import {fetchModulesHealth} from '../gateway';
 import {requestApi} from '../http';
+import {agentApi} from '../agent';
 import type {ColorRequestContext} from '../types';
 
 jest.mock('../http', () => ({
@@ -113,6 +114,50 @@ describe('module api clients', () => {
         expect.objectContaining({module: 'color', status: 'healthy', ok: true}),
         expect.objectContaining({module: 'modeling', status: 'down', ok: false}),
       ]),
+    );
+  });
+
+  it('sends real currentTab when creating plan', async () => {
+    mockedRequestApi.mockResolvedValueOnce({
+      planId: 'p1',
+      actions: [],
+      reasoningSummary: 'ok',
+      estimatedSteps: 0,
+      plannerSource: 'cloud',
+    });
+
+    await agentApi.createPlan('帮我建模', 'model');
+
+    expect(mockedRequestApi).toHaveBeenCalledWith(
+      '/v1/modules/agent/plan',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.objectContaining({
+          currentTab: 'home',
+          pageSnapshot: expect.objectContaining({currentRoute: 'modeling'}),
+        }),
+      }),
+    );
+  });
+
+  it('passes inputSource=voice when voice command creates plan', async () => {
+    mockedRequestApi.mockResolvedValueOnce({
+      planId: 'p2',
+      actions: [],
+      reasoningSummary: 'ok',
+      estimatedSteps: 0,
+      plannerSource: 'cloud',
+    });
+
+    await agentApi.createPlan('帮我总结当前页面', 'agent', 'voice');
+
+    expect(mockedRequestApi).toHaveBeenCalledWith(
+      '/v1/modules/agent/plan',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          inputSource: 'voice',
+        }),
+      }),
     );
   });
 });

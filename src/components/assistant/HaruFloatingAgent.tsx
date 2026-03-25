@@ -25,13 +25,22 @@ import type {
 import {useAgentExecutionContextStore} from '../../agent/executionContextStore';
 import {useAppStore} from '../../store/appStore';
 import {
-  agentApi,
   formatApiErrorMessage,
   type AgentExecuteResponse,
   type AgentPlanAction,
   type AgentPlanResponse,
   type ModuleCapabilityItem,
 } from '../../modules/api';
+import {
+  buildCurrentPageSummary,
+  buildMissingContextHintText,
+  executeAgentPlanCycle,
+  runAgentGoalCycle,
+  toResultStatusText,
+  type AgentClientTab,
+  type MissingContextGuide,
+} from '../../agent/dualEntryOrchestrator';
+import {useAgentVoiceGoal} from '../../agent/useAgentVoiceGoal';
 
 const COLLAPSED_SIZE = 88;
 const PANEL_BOTTOM_OFFSET = 92;
@@ -42,6 +51,7 @@ interface HaruFloatingAgentProps {
   activeTab: FloatingAssistantTab;
   capabilities: ModuleCapabilityItem[];
   bottomInset: number;
+  onNavigateTab: (tab: AgentClientTab) => void;
 }
 
 interface AssistantChatMessage {
@@ -60,66 +70,6 @@ const PANEL_CONFIG: AssistantPanelVisualConfig = {
   },
 };
 
-const hasGradingArgs = (args?: Record<string, unknown>): boolean => {
-  if (!args || typeof args !== 'object') {
-    return false;
-  }
-  const image = args.image as Record<string, unknown> | undefined;
-  return Boolean(
-    typeof args.locale === 'string' &&
-      args.locale &&
-      args.currentParams &&
-      image &&
-      typeof image.mimeType === 'string' &&
-      image.mimeType &&
-      Number.isFinite(Number(image.width)) &&
-      Number.isFinite(Number(image.height)) &&
-      typeof image.base64 === 'string' &&
-      image.base64,
-  );
-};
-
-const hasConvertArgs = (args?: Record<string, unknown>): boolean => {
-  if (!args || typeof args !== 'object') {
-    return false;
-  }
-  const image = args.image as Record<string, unknown> | undefined;
-  return Boolean(
-    image &&
-      typeof image.mimeType === 'string' &&
-      image.mimeType &&
-      typeof image.fileName === 'string' &&
-      image.fileName &&
-      typeof image.base64 === 'string' &&
-      image.base64,
-  );
-};
-
-const resolveDraftIdFromExecuteResult = (
-  result: AgentExecuteResponse | null,
-): string => {
-  if (!result || !Array.isArray(result.actionResults)) {
-    return '';
-  }
-  for (const item of result.actionResults) {
-    if (
-      item.status !== 'applied' ||
-      item.action?.domain !== 'community' ||
-      item.action?.operation !== 'create_draft'
-    ) {
-      continue;
-    }
-    const output = item.output as {draftId?: string | number} | undefined;
-    if (output?.draftId !== undefined && output?.draftId !== null) {
-      const normalized = String(output.draftId).trim();
-      if (normalized) {
-        return normalized;
-      }
-    }
-  }
-  return '';
-};
-
 const mapTabToScenePage = (tab: FloatingAssistantTab): AssistantScenePage => {
   if (tab === 'create') {
     return 'editor';
@@ -130,10 +80,14 @@ const mapTabToScenePage = (tab: FloatingAssistantTab): AssistantScenePage => {
   return 'works';
 };
 
+const toContextJumpLabel = (guide: MissingContextGuide): string =>
+  guide.targetTab === 'model' ? '去建模页补图' : '去调色页补图';
+
 export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   activeTab,
   capabilities,
   bottomInset,
+  onNavigateTab,
 }) => {
   const {width: windowWidth, height: windowHeight} = useWindowDimensions();
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -165,6 +119,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   const [avatarViewport, setAvatarViewport] = useState({width: 0, height: 0});
   const [statusText, setStatusText] = useState('');
   const [errorText, setErrorText] = useState('');
+  const [missingContextGuides, setMissingContextGuides] = useState<MissingContextGuide[]>([]);
   const [latestPlan, setLatestPlan] = useState<AgentPlanResponse | null>(null);
   const [latestExecuteResult, setLatestExecuteResult] = useState<AgentExecuteResponse | null>(null);
   const [latestHydratedActions, setLatestHydratedActions] = useState<AgentPlanAction[]>([]);
@@ -186,10 +141,20 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     [latestExecuteResult],
   );
 
-  const agentAvailable = useMemo(
-    () => capabilities.some(item => item.module === 'agent' && item.enabled),
-    [capabilities],
-  );
+  const {agentAvailable, agentAvailabilityKnown} = useMemo(() => {
+    const agentCapability = capabilities.find(item => item.module === 'agent');
+    if (!agentCapability) {
+      return {
+        // Capabilities may still be loading; avoid false-negative blocking.
+        agentAvailable: capabilities.length === 0,
+        agentAvailabilityKnown: capabilities.length > 0,
+      };
+    }
+    return {
+      agentAvailable: agentCapability.enabled !== false,
+      agentAvailabilityKnown: true,
+    };
+  }, [capabilities]);
 
   const pushChatMessage = useCallback((role: AssistantChatMessage['role'], text: string) => {
     const finalText = text.trim();
@@ -223,58 +188,11 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     }
   }, []);
 
-  const hydrateActions = useCallback(
-    (actions: AgentPlanAction[], executeResult: AgentExecuteResponse | null): AgentPlanAction[] => {
-      const latestDraftId = resolveDraftIdFromExecuteResult(executeResult);
-      return actions.map(action => {
-        if (action.domain === 'grading' && action.operation === 'apply_visual_suggest') {
-          if (hasGradingArgs(action.args) || !colorContext) {
-            return action;
-          }
-          return {
-            ...action,
-            args: {
-              locale: colorContext.locale,
-              currentParams: colorContext.currentParams,
-              image: colorContext.image,
-              imageStats: colorContext.imageStats,
-            },
-          };
-        }
-        if (action.domain === 'convert' && action.operation === 'start_task') {
-          if (hasConvertArgs(action.args) || !modelingImageContext?.image) {
-            return action;
-          }
-          return {
-            ...action,
-            args: {
-              image: modelingImageContext.image,
-            },
-          };
-        }
-        if (action.domain === 'community' && action.operation === 'publish_draft') {
-          const args = action.args && typeof action.args === 'object' ? action.args : {};
-          const draftIdRaw = (args as {draftId?: string | number}).draftId;
-          const hasDraftId =
-            draftIdRaw !== undefined && draftIdRaw !== null && String(draftIdRaw).trim().length > 0;
-          if (!hasDraftId && latestDraftId) {
-            return {
-              ...action,
-              args: {
-                ...args,
-                draftId: latestDraftId,
-              },
-            };
-          }
-        }
-        return action;
-      });
-    },
-    [colorContext, modelingImageContext?.image],
-  );
-
   const runGoal = useCallback(
-    async (goal: string, options?: {allowConfirm?: boolean; actionIds?: string[]}) => {
+    async (
+      goal: string,
+      options?: {allowConfirm?: boolean; actionIds?: string[]; inputSource?: 'text' | 'voice'},
+    ) => {
       const finalGoal = goal.trim();
       if (!finalGoal) {
         return;
@@ -282,58 +200,156 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       setLoading(true);
       setErrorText('');
       setStatusText('');
+      setMissingContextGuides([]);
       setUiState(prev => reduceAssistantUiState(prev, 'run_start'));
       try {
-        const plan = await agentApi.createPlan(finalGoal);
-        const hydrated = hydrateActions(plan.actions, latestExecuteResult);
+        const {plan, cycle} = await runAgentGoalCycle({
+          goal: finalGoal,
+          context: {
+            currentTab: activeTab,
+            colorContext,
+            modelingImageContext,
+            latestExecuteResult,
+          },
+          clientHandlers: {
+            navigateToTab: onNavigateTab,
+            summarizeCurrentPage: () =>
+              buildCurrentPageSummary({
+                currentTab: activeTab,
+                colorContext,
+                modelingImageContext,
+                latestPlan,
+                latestExecuteResult,
+              }),
+          },
+          options: {
+            allowConfirmActions: options?.allowConfirm === true,
+            actionIds: options?.actionIds,
+            inputSource: options?.inputSource === 'voice' ? 'voice' : 'text',
+          },
+        });
         setLatestPlan(plan);
-      setLatestHydratedActions(hydrated);
-      const executeResult = await agentApi.executePlan(plan.planId, hydrated, {
-        allowConfirmActions: options?.allowConfirm === true,
-        actionIds: options?.actionIds,
-      });
-      setLatestExecuteResult(executeResult);
-      setUiState(prev => reduceAssistantUiState(prev, 'run_done'));
-      let assistantReply = '';
-      if (executeResult.status === 'pending_confirm') {
-        setStatusText('已自动执行可用动作，存在待确认步骤。');
-        assistantReply = '我已自动执行可用动作，还剩待确认步骤，请在下方确认或取消。';
-        openFullPanel();
-      } else if (executeResult.status === 'applied') {
-        setStatusText('执行完成。');
-        assistantReply = '执行完成。';
-      } else {
-        const firstMessage =
-          executeResult.actionResults.find(item => item.status === 'failed')?.message || '执行失败';
-        setErrorText(firstMessage);
+        setLatestHydratedActions(cycle.hydratedActions);
+        if (cycle.executeResult) {
+          setLatestExecuteResult(cycle.executeResult);
+        }
+
+        if (cycle.missingContextGuides.length > 0) {
+          setMissingContextGuides(cycle.missingContextGuides);
+          const hintText = buildMissingContextHintText(cycle.missingContextGuides);
+          if (cycle.executeResult) {
+            setStatusText('已执行可用步骤，仍缺少上下文。');
+          }
+          setErrorText(hintText);
+          setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
+          pushChatMessage('assistant', hintText);
+          return;
+        }
+
+        if (!cycle.executeResult) {
+          setErrorText('执行结果为空');
+          setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
+          pushChatMessage('assistant', '执行结果为空');
+          return;
+        }
+
+        setUiState(prev => reduceAssistantUiState(prev, 'run_done'));
+        let assistantReply = '';
+        if (cycle.executeResult.status === 'pending_confirm') {
+          setStatusText('已自动执行可用动作，存在待确认步骤。');
+          assistantReply = '我已自动执行可用动作，还剩待确认步骤，请在下方确认或取消。';
+          openFullPanel();
+        } else if (cycle.executeResult.status === 'applied') {
+          const handledCount = cycle.executeResult.clientHandledActions?.length || 0;
+          setStatusText(
+            handledCount > 0 ? `执行完成（客户端补执行 ${handledCount} 项）。` : '执行完成。',
+          );
+          assistantReply = cycle.executeResult.pageSummary
+            ? `执行完成。当前页摘要：${cycle.executeResult.pageSummary}`
+            : '执行完成。';
+        } else if (cycle.executeResult.status === 'client_required') {
+          setStatusText('已执行服务器动作，存在待客户端处理动作。');
+          assistantReply = '已完成服务器侧执行，客户端动作已尝试处理。';
+        } else {
+          const firstMessage =
+            cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
+            '执行失败';
+          setErrorText(firstMessage);
+          setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
+          assistantReply = firstMessage;
+        }
+        pushChatMessage('assistant', assistantReply);
+      } catch (error) {
+        const message = formatApiErrorMessage(error, '执行失败');
+        setErrorText(message);
         setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
-        assistantReply = firstMessage;
+        pushChatMessage('assistant', message);
+      } finally {
+        setLoading(false);
       }
-      pushChatMessage('assistant', assistantReply);
-    } catch (error) {
-      const message = formatApiErrorMessage(error, '执行失败');
-      setErrorText(message);
-      setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
-      pushChatMessage('assistant', message);
-    } finally {
-      setLoading(false);
-    }
-  },
-    [hydrateActions, latestExecuteResult, openFullPanel, pushChatMessage],
+    },
+    [
+      activeTab,
+      colorContext,
+      latestExecuteResult,
+      latestPlan,
+      modelingImageContext,
+      onNavigateTab,
+      openFullPanel,
+      pushChatMessage,
+    ],
   );
+
+  const {
+    recording: voiceRecording,
+    phase: voicePhase,
+    liveTranscript: voiceLiveTranscript,
+    errorText: voiceErrorText,
+    onPressIn: onVoicePressIn,
+    onPressOut: onVoicePressOut,
+    clearError: clearVoiceError,
+  } = useAgentVoiceGoal({
+    busy: loading,
+    onTranscript: transcript => {
+      if (agentAvailabilityKnown && !agentAvailable) {
+        pushChatMessage('assistant', '当前未启用 Agent 能力，暂时无法执行该请求。');
+        return;
+      }
+      pushChatMessage('user', transcript);
+      runGoal(transcript, {inputSource: 'voice'}).catch(() => undefined);
+    },
+  });
+
+  useEffect(() => {
+    if (!voiceErrorText) {
+      return;
+    }
+    setErrorText(voiceErrorText);
+    pushChatMessage('assistant', voiceErrorText);
+    clearVoiceError();
+  }, [clearVoiceError, pushChatMessage, voiceErrorText]);
 
   const sendCustomGoal = useCallback(() => {
     const finalGoal = customGoal.trim();
-    if (!finalGoal || loading || !agentAvailable) {
-      if (!agentAvailable) {
+    if (!finalGoal || loading || (agentAvailabilityKnown && !agentAvailable)) {
+      if (agentAvailabilityKnown && !agentAvailable) {
         pushChatMessage('assistant', '当前未启用 Agent 能力，暂时无法执行该请求。');
       }
       return;
     }
     pushChatMessage('user', finalGoal);
     setCustomGoal('');
-    runGoal(finalGoal);
-  }, [agentAvailable, customGoal, loading, pushChatMessage, runGoal]);
+    clearVoiceError();
+    runGoal(finalGoal, {inputSource: 'text'});
+  }, [
+    agentAvailabilityKnown,
+    agentAvailable,
+    clearVoiceError,
+    customGoal,
+    loading,
+    pushChatMessage,
+    runGoal,
+  ]);
 
   const confirmPending = useCallback(async () => {
     if (!latestPlan || pendingActionIds.length === 0 || latestHydratedActions.length === 0) {
@@ -341,15 +357,57 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     }
     setLoading(true);
     setErrorText('');
+    setMissingContextGuides([]);
     try {
-      const result = await agentApi.executePlan(latestPlan.planId, latestHydratedActions, {
-        allowConfirmActions: true,
-        actionIds: pendingActionIds,
+      const cycle = await executeAgentPlanCycle({
+        plan: {
+          ...latestPlan,
+          actions: latestHydratedActions,
+        },
+        context: {
+          currentTab: activeTab,
+          colorContext,
+          modelingImageContext,
+          latestExecuteResult,
+        },
+        clientHandlers: {
+          navigateToTab: onNavigateTab,
+          summarizeCurrentPage: () =>
+            buildCurrentPageSummary({
+              currentTab: activeTab,
+              colorContext,
+              modelingImageContext,
+              latestPlan,
+              latestExecuteResult,
+            }),
+        },
+        options: {
+          allowConfirmActions: true,
+          actionIds: pendingActionIds,
+        },
       });
-      setLatestExecuteResult(result);
-      if (result.status === 'applied') {
+      if (cycle.missingContextGuides.length > 0) {
+        setMissingContextGuides(cycle.missingContextGuides);
+        const hintText = buildMissingContextHintText(cycle.missingContextGuides);
+        setErrorText(hintText);
+        pushChatMessage('assistant', hintText);
+        return;
+      }
+      if (!cycle.executeResult) {
+        setErrorText('确认执行结果为空');
+        pushChatMessage('assistant', '确认执行结果为空');
+        return;
+      }
+      setLatestHydratedActions(cycle.hydratedActions);
+      setLatestExecuteResult(cycle.executeResult);
+      if (cycle.executeResult.status === 'applied') {
         setStatusText('待确认动作已执行。');
-        pushChatMessage('assistant', '待确认动作已执行。');
+        pushChatMessage(
+          'assistant',
+          cycle.executeResult.pageSummary
+            ? `待确认动作已执行。当前页摘要：${cycle.executeResult.pageSummary}`
+            : '待确认动作已执行。',
+        );
       } else {
         setStatusText('确认完成，仍有未完成动作。');
         pushChatMessage('assistant', '已完成确认，仍有未完成动作。');
@@ -361,7 +419,17 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [latestHydratedActions, latestPlan, pendingActionIds, pushChatMessage]);
+  }, [
+    activeTab,
+    colorContext,
+    latestExecuteResult,
+    latestHydratedActions,
+    latestPlan,
+    modelingImageContext,
+    onNavigateTab,
+    pendingActionIds,
+    pushChatMessage,
+  ]);
 
   const dismissPending = useCallback(() => {
     setStatusText('已取消待确认动作。');
@@ -582,7 +650,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
                   }
                 }
                 if (payload.type === 'diag' && typeof payload.message === 'string') {
-                  console.log(`[Live2DDiag] ${payload.message}`);
+                  return;
                 }
               } catch {
                 // ignore invalid payload
@@ -611,6 +679,44 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       ) : null}
     </View>
   );
+
+  const toRequiredContextText = useCallback((value: string | null | undefined) => {
+    if (value === 'context.color.image') {
+      return '调色图片';
+    }
+    if (value === 'context.modeling.image') {
+      return '建模图片';
+    }
+    if (value === 'context.community.draftId') {
+      return '社区草稿';
+    }
+    return value || '';
+  }, []);
+
+  const workflowProgressText = useMemo(() => {
+    const total = Number(latestExecuteResult?.workflowState?.totalSteps || 0);
+    if (!latestExecuteResult || total <= 0) {
+      return '';
+    }
+    const current = Number(latestExecuteResult.workflowState?.currentStep || 0);
+    return `链路进度 ${Math.min(Math.max(current, 0), total)}/${total}`;
+  }, [latestExecuteResult]);
+
+  const combinedResultText = useMemo(() => {
+    if (!latestExecuteResult) {
+      return '';
+    }
+    const clientHandledCount = latestExecuteResult.clientHandledActions?.length || 0;
+    const appliedCount = latestExecuteResult.actionResults.filter(item => item.status === 'applied').length;
+    const serverAppliedCount = Math.max(0, appliedCount - clientHandledCount);
+    if (serverAppliedCount > 0 && clientHandledCount > 0) {
+      return `服务端已执行 ${serverAppliedCount} 项，客户端补执行 ${clientHandledCount} 项`;
+    }
+    if (clientHandledCount > 0) {
+      return `客户端补执行 ${clientHandledCount} 项`;
+    }
+    return '';
+  }, [latestExecuteResult]);
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -738,24 +844,63 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
                   placeholder="输入你的需求，按发送开始执行"
                   placeholderTextColor="rgba(252,236,227,0.46)"
                   style={styles.customGoalInput}
-                  editable={!loading && agentAvailable}
+                  editable={!loading && (!agentAvailabilityKnown || agentAvailable)}
                   onSubmitEditing={sendCustomGoal}
                 />
                 <Pressable
-                  style={[styles.customGoalBtn, (!agentAvailable || loading) && styles.customGoalBtnDisabled]}
-                  disabled={loading || !agentAvailable}
+                  style={[
+                    styles.customGoalBtn,
+                    ((agentAvailabilityKnown && !agentAvailable) || loading) &&
+                      styles.customGoalBtnDisabled,
+                  ]}
+                  disabled={loading || (agentAvailabilityKnown && !agentAvailable)}
                   onPress={sendCustomGoal}>
                   <Icon name="send" size={13} color="#FFEEDF" />
                   <Text style={styles.customGoalBtnText}>发送</Text>
                 </Pressable>
+                <Pressable
+                  style={[
+                    styles.customGoalBtn,
+                    voiceRecording && styles.customGoalBtnVoiceActive,
+                    ((agentAvailabilityKnown && !agentAvailable) || loading) &&
+                      styles.customGoalBtnDisabled,
+                  ]}
+                  disabled={loading || (agentAvailabilityKnown && !agentAvailable)}
+                  onPressIn={onVoicePressIn}
+                  onPressOut={onVoicePressOut}>
+                  <Icon name={voiceRecording ? 'mic' : 'mic-outline'} size={13} color="#FFEEDF" />
+                  <Text style={styles.customGoalBtnText}>{voiceRecording ? '松开' : '语音'}</Text>
+                </Pressable>
               </View>
+              <Text style={styles.voiceMetaText}>
+                语音阶段: {voicePhase}
+                {voiceLiveTranscript ? ` | ${voiceLiveTranscript}` : ''}
+              </Text>
             </View>
           </View>
 
-          {(statusText || errorText || pendingActionIds.length > 0) && (
+          {(statusText || errorText || pendingActionIds.length > 0 || missingContextGuides.length > 0) && (
             <View style={styles.feedbackBar}>
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
               {!errorText && statusText ? <Text style={styles.statusText}>{statusText}</Text> : null}
+              {latestExecuteResult && !errorText ? (
+                <Text style={styles.statusText}>执行状态: {toResultStatusText(latestExecuteResult.status)}</Text>
+              ) : null}
+              {combinedResultText ? <Text style={styles.statusText}>{combinedResultText}</Text> : null}
+              {workflowProgressText ? <Text style={styles.statusText}>{workflowProgressText}</Text> : null}
+              {latestExecuteResult?.workflowState?.nextRequiredContext ? (
+                <Text style={styles.statusText}>
+                  下一步需要: {toRequiredContextText(latestExecuteResult.workflowState.nextRequiredContext)}
+                </Text>
+              ) : null}
+              {missingContextGuides[0] ? (
+                <Pressable
+                  style={styles.pendingBtn}
+                  onPress={() => onNavigateTab(missingContextGuides[0].targetTab)}>
+                  <Icon name="arrow-forward-circle" size={14} color="#FFEEDF" />
+                  <Text style={styles.pendingBtnText}>{toContextJumpLabel(missingContextGuides[0])}</Text>
+                </Pressable>
+              ) : null}
               {pendingActionIds.length > 0 ? (
                 <View style={styles.pendingActions}>
                   <Pressable style={styles.pendingBtn} onPress={confirmPending} disabled={loading}>
@@ -1026,10 +1171,18 @@ const styles = StyleSheet.create({
   customGoalBtnDisabled: {
     opacity: 0.55,
   },
+  customGoalBtnVoiceActive: {
+    backgroundColor: '#8A3529',
+  },
   customGoalBtnText: {
     color: '#FFEEDF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  voiceMetaText: {
+    color: 'rgba(255,233,219,0.78)',
+    fontSize: 10,
+    marginTop: 2,
   },
   feedbackBar: {
     marginTop: 10,

@@ -18,6 +18,17 @@ jest.mock('../../src/theme/canvasDesign', () => ({
     sectionTitle: {},
     caption: {},
   },
+  canvasUi: {
+    chip: {},
+    chipActive: {},
+    titleWithIcon: {},
+    iconBadge: {},
+    subtleCard: {},
+    primaryButton: {},
+    secondaryButton: {},
+    progressTrack: {},
+    progressFill: {},
+  },
   cardSurfaceBlue: {},
   glassShadow: {},
 }));
@@ -236,7 +247,7 @@ describe('ModelScreen behaviors', () => {
       type: 'image/jpeg',
     };
     await act(async () => {
-      findPressableByLabel('选择图片').props.onPress();
+      findPressableByLabel('选图').props.onPress();
     });
     await flushMicrotasks();
     await rerenderScreen();
