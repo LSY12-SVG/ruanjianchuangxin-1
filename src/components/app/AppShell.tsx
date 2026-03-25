@@ -16,6 +16,7 @@ import {ModelScreen} from '../../screens/ModelScreen';
 import {AgentScreen} from '../../screens/AgentScreen';
 import {CommunityScreen} from '../../screens/CommunityScreen';
 import {VISION_THEME} from '../../theme/visionTheme';
+import {HaruFloatingAgent} from '../assistant/HaruFloatingAgent';
 
 const PAGE_GRADIENT = VISION_THEME.gradients.page;
 
@@ -166,6 +167,11 @@ export const AppShell: React.FC = () => {
         ]}>
         {page}
       </Animated.View>
+      <HaruFloatingAgent
+        activeTab={activeTab}
+        capabilities={capabilities}
+        bottomInset={insets.bottom}
+      />
       <BottomTabBar activeTab={activeTab} onChangeTab={setActiveTab} bottomInset={insets.bottom} />
     </LinearGradient>
   );

@@ -129,7 +129,8 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
     if (!plan) {
       return '等待生成计划';
     }
-    return `${plan.estimatedSteps} steps · ${plan.plannerSource}`;
+    const plannerSourceText = plan.plannerSource === 'cloud' ? '云端规划' : '本地规划';
+    return `${plan.estimatedSteps} 步 · ${plannerSourceText}`;
   }, [plan]);
 
   const executeProgress = useMemo(() => {
@@ -141,6 +142,49 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
     ).length;
     return Math.round((completed / executeResult.actionResults.length) * 100);
   }, [executeResult]);
+
+  const toResultStatusText = (status: string): string => {
+    switch (status) {
+      case 'applied':
+        return '已应用';
+      case 'failed':
+        return '执行失败';
+      case 'pending_confirm':
+        return '待确认';
+      case 'client_required':
+        return '需客户端处理';
+      default:
+        return status || '-';
+    }
+  };
+
+  const toActionStatusText = (status: string): string => {
+    switch (status) {
+      case 'applied':
+        return '已完成';
+      case 'failed':
+        return '失败';
+      case 'pending_confirm':
+        return '待确认';
+      case 'skipped':
+        return '已跳过';
+      default:
+        return status || '-';
+    }
+  };
+
+  const toRiskText = (riskLevel: string): string => {
+    switch (riskLevel) {
+      case 'low':
+        return '低';
+      case 'medium':
+        return '中';
+      case 'high':
+        return '高';
+      default:
+        return riskLevel || '-';
+    }
+  };
 
   const createPlan = async () => {
     if (!prompt.trim()) {
@@ -262,7 +306,7 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
       <PageHero
         image={HERO_AGENT}
         title="AI Agent"
-        subtitle="plan → review → execute"
+        subtitle="计划 → 复核 → 执行"
         variant="editorial"
         overlayStrength="normal"
       />
@@ -322,11 +366,12 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
               <View key={action.actionId} style={styles.stepCard}>
                 <View style={styles.stepHead}>
                   <Text style={styles.stepIndex}>#{index + 1}</Text>
-                  <Text style={styles.stepDomain}>{action.domain}</Text>
-                  <Text style={styles.stepOp}>{action.operation}</Text>
+                  <Text style={styles.stepDomain}>领域: {action.domain}</Text>
+                  <Text style={styles.stepOp}>操作: {action.operation}</Text>
                 </View>
                 <Text style={styles.stepMeta}>
-                  risk: {action.riskLevel} | confirm: {action.requiresConfirmation ? 'yes' : 'no'}
+                  风险: {toRiskText(action.riskLevel)} | 需确认:{' '}
+                  {action.requiresConfirmation ? '是' : '否'}
                 </Text>
               </View>
             ))}
@@ -353,14 +398,14 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
         ) : null}
         {executeResult ? (
           <View style={styles.stepWrap}>
-            <Text style={styles.metaText}>status: {executeResult.status}</Text>
+            <Text style={styles.metaText}>状态: {toResultStatusText(executeResult.status)}</Text>
             {executeResult.actionResults.map(result => (
               <View key={result.action.actionId} style={styles.stepCard}>
                 <Text style={styles.stepDomain}>
-                  {result.action.domain} · {result.action.operation}
+                  领域: {result.action.domain} · 操作: {result.action.operation}
                 </Text>
                 <Text style={styles.stepMeta}>
-                  {result.status} {result.errorCode ? `(${result.errorCode})` : ''}
+                  {toActionStatusText(result.status)} {result.errorCode ? `（${result.errorCode}）` : ''}
                 </Text>
                 <Text style={styles.stepMeta}>{result.message}</Text>
               </View>
@@ -371,8 +416,8 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({capabilities}) => {
         )}
         {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
         <Text style={styles.metaText}>
-          strictMode: {agentCapability?.strictMode ? 'ON' : 'UNKNOWN'} | auth:{' '}
-          {agentCapability?.auth?.required ? 'JWT' : 'none'}
+          严格模式: {agentCapability?.strictMode ? '开启' : '未知'} | 认证:{' '}
+          {agentCapability?.auth?.required ? 'JWT' : '无'}
         </Text>
       </View>
     </ScrollView>

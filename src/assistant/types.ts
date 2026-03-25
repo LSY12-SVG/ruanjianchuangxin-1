@@ -78,3 +78,22 @@ export interface AvatarRendererCommand {
   type: 'state';
   state: AssistantAvatarState;
 }
+
+export interface AssistantExpandedLayoutConfig {
+  avatarAnchor?: 'left' | 'top';
+  avatarRatio?: number;
+}
+
+export interface AssistantPanelVisualConfig {
+  avatarPersistentInExpanded?: boolean;
+  expandedLayout?: AssistantExpandedLayoutConfig;
+}
+
+export interface AssistantQuickActionMeta {
+  intentKey?: string;
+  goalTemplate?: string;
+  requiredCapabilities?: string[];
+  fallbackIntentKey?: string;
+  riskHint?: 'low' | 'medium' | 'high';
+  icon?: string;
+}

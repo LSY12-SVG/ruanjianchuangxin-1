@@ -25,7 +25,7 @@ export const assistantTriggerRules: AssistantTriggerRule[] = [
     id: 'capture_enter_hint',
     page: 'capture',
     trigger: 'page_enter',
-    text: '拍的时候不用想太多，我会提醒你。',
+    text: '先专注拍摄，拍完后我再帮你做优化建议。',
     style: 'gentle',
     priority: 90,
     cooldownMs: 30 * 1000,
