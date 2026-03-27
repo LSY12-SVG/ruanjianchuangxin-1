@@ -13,7 +13,7 @@ const initializeAccountModule = async ({getCommunityPostsCount}) => {
     console.warn('[account] using default JWT_SECRET for local development');
   }
 
-  const db = createAccountDb(config.sqlitePath);
+  const db = await createAccountDb(config);
   await runAccountMigrations(db);
 
   const repo = createAccountRepository({

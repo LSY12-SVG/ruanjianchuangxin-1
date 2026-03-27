@@ -17,21 +17,35 @@ const toSettingsShape = row => ({
 const DEBUG_PASSWORD_HASH = '$2a$10$n8cEs4p8qlQ4eeA8vwfN8u95fY7f9.q8n9wYk7YwYyBr7H2x1A9y2';
 
 const createAccountRepository = ({db, getCommunityPostsCount}) => {
+  const isMysql = db?.dialect === 'mysql';
+
   const ensureUserRows = async userId => {
     await db.query(
-      `
-      INSERT INTO profile_settings(user_id)
-      VALUES (?)
-      ON CONFLICT(user_id) DO NOTHING
-    `,
+      isMysql
+        ? `
+          INSERT INTO profile_settings(user_id)
+          VALUES (?)
+          ON DUPLICATE KEY UPDATE user_id = user_id
+        `
+        : `
+          INSERT INTO profile_settings(user_id)
+          VALUES (?)
+          ON CONFLICT(user_id) DO NOTHING
+        `,
       [Number(userId)],
     );
     await db.query(
-      `
-      INSERT INTO user_stats(user_id)
-      VALUES (?)
-      ON CONFLICT(user_id) DO NOTHING
-    `,
+      isMysql
+        ? `
+          INSERT INTO user_stats(user_id)
+          VALUES (?)
+          ON DUPLICATE KEY UPDATE user_id = user_id
+        `
+        : `
+          INSERT INTO user_stats(user_id)
+          VALUES (?)
+          ON CONFLICT(user_id) DO NOTHING
+        `,
       [Number(userId)],
     );
   };
@@ -81,11 +95,17 @@ const createAccountRepository = ({db, getCommunityPostsCount}) => {
     if (isBypass) {
       const debugUsername = normalizeDebugUsername(userId, username);
       await db.query(
-        `
-        INSERT INTO users(id, username, password_hash, display_name)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(id) DO NOTHING
-      `,
+        isMysql
+          ? `
+            INSERT INTO users(id, username, password_hash, display_name)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE id = id
+          `
+          : `
+            INSERT INTO users(id, username, password_hash, display_name)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+          `,
         [userId, debugUsername, DEBUG_PASSWORD_HASH, debugUsername],
       );
       await ensureUserRows(userId);

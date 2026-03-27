@@ -22,7 +22,21 @@ dependencyResolutionManagement {
     }
 }
 
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+def repoRoot = file("..")
+def autolinkCommand = System.properties["os.name"].toLowerCase().contains("windows")
+    ? ["cmd", "/c", "npx", "@react-native-community/cli", "config"]
+    : ["npx", "@react-native-community/cli", "config"]
+def autolinkLockFiles = files(
+    "../package.json",
+    "../package-lock.json",
+    "../node_modules/.package-lock.json",
+    "../react-native.config.js",
+    "../yarn.lock"
+)
+
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+    ex.autolinkLibrariesFromCommand(autolinkCommand, repoRoot, autolinkLockFiles)
+}
 rootProject.name = 'VisionGenieApp'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')

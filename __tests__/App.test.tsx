@@ -4,6 +4,10 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
+jest.mock('../src/components/auth/AuthGate', () => ({
+  AuthGate: () => 'AuthGateMock',
+}));
+
 import App from '../App';
 
 test('renders correctly', async () => {

@@ -1,5 +1,18 @@
+const path = require('path');
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
-const {wrapWithReanimatedMetroConfig} = require('react-native-reanimated/metro-config');
+const { wrapWithReanimatedMetroConfig } = require('react-native-reanimated/metro-config');
+
+const escapePathForRegex = segment =>
+  segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const blockListedBuildPaths = [
+  /android[\\/]\.cxx[\\/].*/,
+  /android[\\/]build[\\/].*/,
+  /node_modules[\\/].+[\\/]android[\\/]\.cxx[\\/].*/,
+  /node_modules[\\/].+[\\/]android[\\/]build[\\/].*/,
+].map(pattern =>
+  new RegExp(escapePathForRegex(__dirname) + '[\\\\/]' + pattern.source),
+);
 
 /**
  * Metro configuration
@@ -10,6 +23,9 @@ const {wrapWithReanimatedMetroConfig} = require('react-native-reanimated/metro-c
 const config = {
   server: {
     port: 8081,
+  },
+  resolver: {
+    blockList: blockListedBuildPaths,
   },
 };
 
