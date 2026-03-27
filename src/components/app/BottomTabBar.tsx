@@ -4,7 +4,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import {canvasText, glassShadow} from '../../theme/canvasDesign';
 import {VISION_THEME} from '../../theme/visionTheme';
 
-export type AppTabKey = 'create' | 'model' | 'agent' | 'community';
+export type AppTabKey = 'create' | 'model' | 'agent' | 'community' | 'profile';
 
 const TAB_CONFIG: Array<{
   key: AppTabKey;
@@ -15,6 +15,7 @@ const TAB_CONFIG: Array<{
   {key: 'model', label: '模型', icon: 'cube'},
   {key: 'agent', label: 'Agent', icon: 'sparkles'},
   {key: 'community', label: '社区', icon: 'people'},
+  {key: 'profile', label: '我的', icon: 'person-circle'},
 ];
 
 interface BottomTabBarProps {
@@ -72,6 +73,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
                 transform: [{scale: scales[tab.key]}],
               }}>
               <Pressable
+                testID={`tab-${tab.key}`}
                 style={[
                   styles.item,
                   active && (activeStyle === 'outline' ? styles.itemActiveOutline : styles.itemActive),

@@ -1,6 +1,6 @@
 import type {ModuleCapabilityItem} from '../modules/api';
 
-export type FloatingAssistantTab = 'create' | 'model' | 'agent' | 'community';
+export type FloatingAssistantTab = 'create' | 'model' | 'agent' | 'community' | 'profile';
 
 export interface AssistantQuickActionDescriptor {
   id: string;
@@ -105,6 +105,7 @@ const PRIORITY_BY_TAB: Record<FloatingAssistantTab, string[]> = {
   model: ['model_task', 'community_draft', 'optimize_image', 'summarize_page', 'settings_patch'],
   agent: ['optimize_image', 'model_task', 'community_publish', 'summarize_page', 'settings_patch'],
   community: ['community_publish', 'community_draft', 'optimize_image', 'summarize_page', 'settings_patch'],
+  profile: ['community_draft', 'community_publish', 'settings_patch', 'summarize_page', 'optimize_image'],
 };
 
 const hasModule = (capabilities: ModuleCapabilityItem[], moduleName: string): boolean =>

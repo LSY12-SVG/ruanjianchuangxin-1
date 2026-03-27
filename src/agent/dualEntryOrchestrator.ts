@@ -1,7 +1,7 @@
 import {agentApi, type AgentExecuteResponse, type AgentPlanAction, type AgentPlanResponse, type ColorRequestContext} from '../modules/api';
 import type {AgentModelingImageContext} from './executionContextStore';
 
-export type AgentClientTab = 'create' | 'model' | 'agent' | 'community';
+export type AgentClientTab = 'create' | 'model' | 'agent' | 'community' | 'profile';
 
 export interface AgentExecutionContextInput {
   currentTab: AgentClientTab;
@@ -198,6 +198,9 @@ const toTabLabel = (tab: AgentClientTab): string => {
   if (tab === 'community') {
     return '社区页';
   }
+  if (tab === 'profile') {
+    return '我的页';
+  }
   return '助手页';
 };
 
@@ -255,7 +258,10 @@ const resolveNavigationTarget = (args?: Record<string, unknown>): AgentClientTab
   if (tabRaw === 'community') {
     return 'community';
   }
-  if (tabRaw === 'agent' || tabRaw === 'assistant' || tabRaw === 'profile') {
+  if (tabRaw === 'profile') {
+    return 'profile';
+  }
+  if (tabRaw === 'agent' || tabRaw === 'assistant') {
     return 'agent';
   }
   if (tabRaw === 'model') {
@@ -272,6 +278,9 @@ const resolveNavigationTarget = (args?: Record<string, unknown>): AgentClientTab
   }
   if (routeRaw.includes('community')) {
     return 'community';
+  }
+  if (routeRaw.includes('profile') || routeRaw.includes('setting')) {
+    return 'profile';
   }
   return 'agent';
 };

@@ -15,6 +15,7 @@ import {CreateScreen} from '../../screens/CreateScreen';
 import {ModelScreen} from '../../screens/ModelScreen';
 import {AgentScreen} from '../../screens/AgentScreen';
 import {CommunityScreen} from '../../screens/CommunityScreen';
+import {MyScreen} from '../../screens/MyScreen';
 import {VISION_THEME} from '../../theme/visionTheme';
 import {HaruFloatingAgent} from '../assistant/HaruFloatingAgent';
 
@@ -113,7 +114,10 @@ export const AppShell: React.FC = () => {
         />
       );
     }
-    return <CommunityScreen capabilities={capabilities} />;
+    if (activeTab === 'community') {
+      return <CommunityScreen capabilities={capabilities} />;
+    }
+    return <MyScreen />;
   }, [activeTab, capabilities]);
 
   return (

@@ -16,11 +16,11 @@ import {
   type CommunityPost,
   type ModuleCapabilityItem,
 } from '../modules/api';
-import {PageHero} from '../components/app/PageHero';
 import {HERO_COMMUNITY} from '../assets/design';
+import {PageHero} from '../components/app/PageHero';
 import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
 
-type CommunityView = 'feed' | 'draft' | 'detail';
+type CommunityView = 'feed' | 'detail';
 type CommunityFilter = 'all' | 'portrait' | 'cinema' | 'vintage';
 
 const FILTERS: Array<{key: CommunityFilter; label: string}> = [
@@ -30,20 +30,12 @@ const FILTERS: Array<{key: CommunityFilter; label: string}> = [
   {key: 'vintage', label: '复古'},
 ];
 
-const parseTags = (raw: string): string[] =>
-  raw
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-
 interface CommunityScreenProps {
   capabilities: ModuleCapabilityItem[];
 }
 
 export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) => {
   const communityCapability = capabilities.find(item => item.module === 'community');
-
   const [view, setView] = useState<CommunityView>('feed');
   const [filter, setFilter] = useState<CommunityFilter>('all');
   const [feed, setFeed] = useState<CommunityPost[]>([]);
@@ -55,52 +47,14 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
-  const [loadingDrafts, setLoadingDrafts] = useState(false);
-  const [submittingDraft, setSubmittingDraft] = useState(false);
-  const [publishingDraft, setPublishingDraft] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [errorText, setErrorText] = useState('');
-  const [myDrafts, setMyDrafts] = useState<CommunityPost[]>([]);
-  const [editingDraftId, setEditingDraftId] = useState('');
-  const [draftTitle, setDraftTitle] = useState('');
-  const [draftContent, setDraftContent] = useState('');
-  const [draftTagsInput, setDraftTagsInput] = useState('');
-  const [draftBeforeUrl, setDraftBeforeUrl] = useState('');
-  const [draftAfterUrl, setDraftAfterUrl] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const applyPostPatch = useCallback(
-    (postId: string, patch: Partial<CommunityPost>) => {
-      setFeed(prev =>
-        prev.map(item => (item.id === postId ? {...item, ...patch} : item)),
-      );
-      setMyDrafts(prev =>
-        prev.map(item => (item.id === postId ? {...item, ...patch} : item)),
-      );
-      setSelectedPost(prev =>
-        prev && prev.id === postId ? {...prev, ...patch} : prev,
-      );
-    },
-    [],
-  );
-
-  const resetDraftForm = useCallback(() => {
-    setEditingDraftId('');
-    setDraftTitle('');
-    setDraftContent('');
-    setDraftTagsInput('');
-    setDraftBeforeUrl('');
-    setDraftAfterUrl('');
-  }, []);
-
-  const fillDraftForm = useCallback((post: CommunityPost) => {
-    setEditingDraftId(post.id);
-    setDraftTitle(post.title);
-    setDraftContent(post.content);
-    setDraftTagsInput((post.tags || []).join(','));
-    setDraftBeforeUrl(post.beforeUrl || '');
-    setDraftAfterUrl(post.afterUrl || '');
+  const applyPostPatch = useCallback((postId: string, patch: Partial<CommunityPost>) => {
+    setFeed(prev => prev.map(item => (item.id === postId ? {...item, ...patch} : item)));
+    setSelectedPost(prev => (prev && prev.id === postId ? {...prev, ...patch} : prev));
   }, []);
 
   const loadFeed = useCallback(
@@ -126,19 +80,6 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
     [filter],
   );
 
-  const loadDrafts = useCallback(async () => {
-    setLoadingDrafts(true);
-    try {
-      const result = await communityApi.getMyPosts('draft', 1, 20);
-      setMyDrafts(result.items);
-      setErrorText('');
-    } catch (error) {
-      setErrorText(formatApiErrorMessage(error, '草稿加载失败'));
-    } finally {
-      setLoadingDrafts(false);
-    }
-  }, []);
-
   const loadComments = useCallback(async (postId: string) => {
     setLoadingComments(true);
     try {
@@ -155,12 +96,6 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
   useEffect(() => {
     loadFeed(1, false).catch(() => undefined);
   }, [loadFeed]);
-
-  useEffect(() => {
-    if (view === 'draft') {
-      loadDrafts().catch(() => undefined);
-    }
-  }, [loadDrafts, view]);
 
   const openDetail = async (post: CommunityPost) => {
     setSelectedPost(post);
@@ -200,64 +135,6 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
     }
   };
 
-  const saveDraft = async () => {
-    if (!draftTitle.trim()) {
-      setErrorText('标题不能为空');
-      return;
-    }
-    try {
-      setSubmittingDraft(true);
-      const payload = {
-        title: draftTitle.trim(),
-        content: draftContent.trim(),
-        tags: parseTags(draftTagsInput),
-        beforeUrl: draftBeforeUrl.trim(),
-        afterUrl: draftAfterUrl.trim(),
-      };
-      const saved = editingDraftId
-        ? await communityApi.updateDraft(editingDraftId, payload)
-        : await communityApi.createDraft(payload);
-      applyPostPatch(saved.id, saved);
-      if (!editingDraftId) {
-        setMyDrafts(prev => [saved, ...prev.filter(item => item.id !== saved.id)]);
-      } else {
-        setMyDrafts(prev =>
-          prev.map(item => (item.id === saved.id ? saved : item)),
-        );
-      }
-      setEditingDraftId(saved.id);
-      setErrorText('');
-      Alert.alert('草稿已保存', `草稿 ID: ${saved.id}`);
-    } catch (error) {
-      const message = formatApiErrorMessage(error, '草稿保存失败');
-      setErrorText(message);
-      Alert.alert('草稿保存失败', message);
-    } finally {
-      setSubmittingDraft(false);
-    }
-  };
-
-  const publishDraft = async () => {
-    if (!editingDraftId) {
-      setErrorText('请先保存草稿');
-      return;
-    }
-    try {
-      setPublishingDraft(true);
-      await communityApi.publishDraft(editingDraftId);
-      resetDraftForm();
-      await Promise.all([loadDrafts(), loadFeed(1, false)]);
-      setView('feed');
-      setErrorText('');
-    } catch (error) {
-      const message = formatApiErrorMessage(error, '发布失败');
-      setErrorText(message);
-      Alert.alert('发布失败', message);
-    } finally {
-      setPublishingDraft(false);
-    }
-  };
-
   const submitComment = async () => {
     if (!selectedPost || !commentText.trim()) {
       return;
@@ -280,11 +157,6 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
     }
   };
 
-  const draftActionText = useMemo(
-    () => (editingDraftId ? '更新草稿' : '保存草稿'),
-    [editingDraftId],
-  );
-
   const displayedFeed = useMemo(() => {
     const keyword = searchQuery.trim();
     if (!keyword) {
@@ -306,226 +178,132 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
       <PageHero
         image={HERO_COMMUNITY}
         title="社区"
-        subtitle="真实社区链路：feed / drafts / comments"
+        subtitle="浏览动态、参与评论，与更多创作者交流"
         variant="editorial"
         overlayStrength="normal"
       />
 
-      <View style={styles.topControlRow}>
-        <View style={styles.headerActionRow}>
-          <Pressable
-            style={[styles.headerBtn, view === 'feed' && styles.headerBtnActive]}
-            onPress={() => setView('feed')}>
-            <Icon name="newspaper" size={15} color="#2F2926" />
-            <Text style={styles.headerBtnText}>动态</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.headerBtn, view === 'draft' && styles.headerBtnActive]}
-            onPress={() => setView('draft')}>
-            <Icon name="create" size={15} color="#2F2926" />
-            <Text style={styles.headerBtnText}>草稿</Text>
-          </Pressable>
-        </View>
-        <View style={styles.iconActionRow}>
-          <Pressable style={styles.iconActionBtn} onPress={() => setShowSearch(prev => !prev)}>
-            <Icon name="search" size={15} color="#2F2926" />
-          </Pressable>
-          <Pressable style={styles.iconActionBtnWarm} onPress={() => setView('draft')}>
-            <Icon name="add" size={15} color="#FFF6F2" />
-          </Pressable>
-        </View>
-      </View>
-
       {view === 'feed' ? (
-        <View style={styles.card}>
-          {showSearch ? (
-            <TextInput
-              style={styles.searchInput}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="搜索标题、标签、作者..."
-              placeholderTextColor="rgba(134,112,100,0.7)"
-            />
-          ) : null}
-          <View style={styles.trendingCard}>
-            <View style={styles.trendingIconWrap}>
-              <Icon name="flame" size={16} color="#FFF6F2" />
+        <>
+          <View style={styles.topControlRow}>
+            <View style={styles.sectionHead}>
+              <View style={styles.sectionIconBadge}>
+                <Icon name="planet-outline" size={13} color="#A34A3C" />
+              </View>
+              <Text style={styles.sectionTitle}>社区动态</Text>
             </View>
-            <View style={styles.trendingCopy}>
-              <Text style={styles.trendingTitle}>本周热门</Text>
-              <Text style={styles.trendingSub}>Agent 批量处理与 3D 展示讨论最高</Text>
+            <View style={styles.iconActionRow}>
+              <Pressable style={styles.iconActionBtn} onPress={() => setShowSearch(prev => !prev)}>
+                <Icon name="search" size={15} color="#2F2926" />
+              </Pressable>
+              <Pressable style={styles.iconActionBtn} onPress={() => loadFeed(1, false)}>
+                <Icon name="sync-outline" size={15} color="#2F2926" />
+              </Pressable>
             </View>
-            <Text style={styles.hotBadge}>HOT</Text>
           </View>
-          <View style={styles.sectionHead}>
-            <View style={styles.sectionIconBadge}>
-              <Icon name="planet" size={13} color="#A34A3C" />
+
+          <View style={styles.card}>
+            {showSearch ? (
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="搜索标题、标签、作者..."
+                placeholderTextColor="rgba(134,112,100,0.7)"
+              />
+            ) : null}
+
+            <View style={styles.trendingCard}>
+              <View style={styles.trendingIconWrap}>
+                <Icon name="flame" size={16} color="#FFF6F2" />
+              </View>
+              <View style={styles.trendingCopy}>
+                <Text style={styles.trendingTitle}>社区入口已整理</Text>
+                <Text style={styles.trendingSub}>动态浏览留在社区，发帖与草稿管理已移到“我的”。</Text>
+              </View>
+              <Text style={styles.hotBadge}>NEW</Text>
             </View>
-            <Text style={styles.sectionTitle}>社区动态</Text>
-          </View>
-          <View style={styles.filterRow}>
-            {FILTERS.map(item => (
-              <Pressable
-                key={item.key}
-                style={[
-                  styles.filterBtn,
-                  filter === item.key && styles.filterBtnActive,
-                ]}
-                onPress={() => setFilter(item.key)}>
-                <Text style={styles.filterBtnText}>{item.label}</Text>
+
+            <View style={styles.filterRow}>
+              {FILTERS.map(item => (
+                <Pressable
+                  key={item.key}
+                  style={[styles.filterBtn, filter === item.key && styles.filterBtnActive]}
+                  onPress={() => setFilter(item.key)}>
+                  <Text style={styles.filterBtnText}>{item.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {loadingFeed ? <Text style={styles.metaText}>加载中...</Text> : null}
+
+            {displayedFeed.map(post => (
+              <Pressable key={post.id} style={styles.postCard} onPress={() => openDetail(post)}>
+                <View style={styles.postHead}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{post.author.name?.slice(0, 1) || '?'}</Text>
+                  </View>
+                  <View style={styles.postMetaWrap}>
+                    <Text style={styles.postAuthor}>{post.author.name || '匿名用户'}</Text>
+                    <Text style={styles.postTime}>{post.updatedAt}</Text>
+                  </View>
+                  <Pressable onPress={() => toggleSave(post)} style={styles.iconBtn}>
+                    <Icon
+                      name={post.isSaved ? 'bookmark' : 'bookmark-outline'}
+                      size={16}
+                      color={post.isSaved ? '#A46A34' : '#2F2926'}
+                    />
+                  </Pressable>
+                </View>
+                <Text style={styles.postTitle}>{post.title}</Text>
+                <Text numberOfLines={2} style={styles.postContent}>
+                  {post.content}
+                </Text>
+                <View style={styles.tagRow}>
+                  {(post.tags || []).map(tag => (
+                    <Text key={`${post.id}-${tag}`} style={styles.tag}>
+                      #{tag}
+                    </Text>
+                  ))}
+                </View>
+                <View style={styles.postActions}>
+                  <Pressable style={styles.inlineAction} onPress={() => toggleLike(post)}>
+                    <Icon
+                      name={post.isLiked ? 'heart' : 'heart-outline'}
+                      size={14}
+                      color={post.isLiked ? '#C35B63' : '#2F2926'}
+                    />
+                    <Text style={styles.inlineActionText}>{post.likesCount}</Text>
+                  </Pressable>
+                  <View style={styles.inlineAction}>
+                    <Icon name="chatbubble-outline" size={14} color="#2F2926" />
+                    <Text style={styles.inlineActionText}>{post.commentsCount}</Text>
+                  </View>
+                  <View style={styles.inlineAction}>
+                    <Icon name="bookmark-outline" size={14} color="#2F2926" />
+                    <Text style={styles.inlineActionText}>{post.savesCount}</Text>
+                  </View>
+                </View>
               </Pressable>
             ))}
-          </View>
-          {loadingFeed ? <Text style={styles.metaText}>加载中...</Text> : null}
-          {displayedFeed.map(post => (
-            <Pressable key={post.id} style={styles.postCard} onPress={() => openDetail(post)}>
-              <View style={styles.postHead}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{post.author.name?.slice(0, 1) || '?'}</Text>
-                </View>
-                <View style={styles.postMeta}>
-                  <Text style={styles.postAuthor}>{post.author.name || '匿名用户'}</Text>
-                  <Text style={styles.postTime}>{post.updatedAt}</Text>
-                </View>
-                <Pressable onPress={() => toggleSave(post)} style={styles.iconBtn}>
-                  <Icon
-                    name={post.isSaved ? 'bookmark' : 'bookmark'}
-                    size={16}
-                    color={post.isSaved ? '#A46A34' : '#2F2926'}
-                  />
-                </Pressable>
-              </View>
-              <Text style={styles.postTitle}>{post.title}</Text>
-              <Text numberOfLines={2} style={styles.postContent}>
-                {post.content}
-              </Text>
-              <View style={styles.tagRow}>
-                {(post.tags || []).map(tag => (
-                  <Text key={`${post.id}-${tag}`} style={styles.tag}>
-                    #{tag}
-                  </Text>
-                ))}
-              </View>
-              <View style={styles.postActions}>
-                <Pressable style={styles.inlineAction} onPress={() => toggleLike(post)}>
-                  <Icon
-                    name={post.isLiked ? 'heart' : 'heart'}
-                    size={14}
-                    color={post.isLiked ? '#C35B63' : '#2F2926'}
-                  />
-                  <Text style={styles.inlineActionText}>{post.likesCount}</Text>
-                </Pressable>
-                <View style={styles.inlineAction}>
-                  <Icon name="chatbubble" size={14} color="#2F2926" />
-                  <Text style={styles.inlineActionText}>{post.commentsCount}</Text>
-                </View>
-                <View style={styles.inlineAction}>
-                  <Icon name="bookmark" size={14} color="#2F2926" />
-                  <Text style={styles.inlineActionText}>{post.savesCount}</Text>
-                </View>
-              </View>
-            </Pressable>
-          ))}
-          {!displayedFeed.length && !loadingFeed ? (
-            <Text style={styles.metaText}>没有匹配内容</Text>
-          ) : null}
-          {feedHasMore ? (
-            <Pressable
-              style={styles.secondaryBtn}
-              onPress={() => loadFeed(feedPage + 1, true)}
-              disabled={loadingMore}>
-              <Icon name="chevron-down" size={15} color="#2F2926" />
-              <Text style={styles.secondaryBtnText}>
-                {loadingMore ? '加载中...' : '加载更多'}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
 
-      {view === 'draft' ? (
-        <View style={styles.card}>
-          <View style={styles.sectionHead}>
-            <View style={styles.sectionIconBadge}>
-              <Icon name="paper-plane" size={13} color="#A34A3C" />
-            </View>
-            <Text style={styles.sectionTitle}>发布草稿</Text>
-          </View>
-          <TextInput
-            style={styles.input}
-            value={draftTitle}
-            onChangeText={setDraftTitle}
-            placeholder="标题"
-            placeholderTextColor="rgba(134,112,100,0.7)"
-          />
-          <TextInput
-            style={[styles.input, styles.multiline]}
-            value={draftContent}
-            onChangeText={setDraftContent}
-            placeholder="写下你的创作经验..."
-            placeholderTextColor="rgba(134,112,100,0.7)"
-            multiline
-          />
-          <TextInput
-            style={styles.input}
-            value={draftTagsInput}
-            onChangeText={setDraftTagsInput}
-            placeholder="标签，逗号分隔"
-            placeholderTextColor="rgba(134,112,100,0.7)"
-          />
-          <TextInput
-            style={styles.input}
-            value={draftBeforeUrl}
-            onChangeText={setDraftBeforeUrl}
-            placeholder="beforeUrl（可选）"
-            placeholderTextColor="rgba(134,112,100,0.7)"
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            value={draftAfterUrl}
-            onChangeText={setDraftAfterUrl}
-            placeholder="afterUrl（可选）"
-            placeholderTextColor="rgba(134,112,100,0.7)"
-            autoCapitalize="none"
-          />
-          <View style={styles.actionRow}>
-            <Pressable style={styles.primaryBtn} onPress={saveDraft} disabled={submittingDraft}>
-              <Icon name="save" size={15} color="#FFF6F2" />
-              <Text style={styles.primaryBtnText}>
-                {submittingDraft ? '保存中...' : draftActionText}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={styles.secondaryBtn}
-              onPress={publishDraft}
-              disabled={publishingDraft}>
-              <Icon name="send" size={15} color="#2F2926" />
-              <Text style={styles.secondaryBtnText}>
-                {publishingDraft ? '发布中...' : '发布'}
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.actionRow}>
-            <Pressable style={styles.secondaryBtn} onPress={resetDraftForm}>
-              <Icon name="refresh" size={15} color="#2F2926" />
-              <Text style={styles.secondaryBtnText}>清空</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={loadDrafts}>
-              <Icon name="sync" size={15} color="#2F2926" />
-              <Text style={styles.secondaryBtnText}>{loadingDrafts ? '刷新中...' : '刷新草稿'}</Text>
-            </Pressable>
-          </View>
+            {!displayedFeed.length && !loadingFeed ? (
+              <Text style={styles.metaText}>没有匹配内容</Text>
+            ) : null}
 
-          {myDrafts.map(draft => (
-            <Pressable key={draft.id} style={styles.draftCard} onPress={() => fillDraftForm(draft)}>
-              <Text style={styles.draftTitle}>{draft.title}</Text>
-              <Text numberOfLines={2} style={styles.metaText}>
-                {draft.content}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+            {feedHasMore ? (
+              <Pressable
+                style={styles.secondaryBtn}
+                onPress={() => loadFeed(feedPage + 1, true)}
+                disabled={loadingMore}>
+                <Icon name="chevron-down" size={15} color="#2F2926" />
+                <Text style={styles.secondaryBtnText}>
+                  {loadingMore ? '加载中...' : '加载更多'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </>
       ) : null}
 
       {view === 'detail' && selectedPost ? (
@@ -534,12 +312,14 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             <Icon name="arrow-back" size={16} color="#2F2926" />
             <Text style={styles.backBtnText}>返回动态</Text>
           </Pressable>
+
           <Text style={styles.postTitle}>{selectedPost.title}</Text>
           <Text style={styles.postContent}>{selectedPost.content}</Text>
+
           <View style={styles.postActions}>
             <Pressable style={styles.inlineAction} onPress={() => toggleLike(selectedPost)}>
               <Icon
-                name={selectedPost.isLiked ? 'heart' : 'heart'}
+                name={selectedPost.isLiked ? 'heart' : 'heart-outline'}
                 size={14}
                 color={selectedPost.isLiked ? '#C35B63' : '#2F2926'}
               />
@@ -547,7 +327,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             </Pressable>
             <Pressable style={styles.inlineAction} onPress={() => toggleSave(selectedPost)}>
               <Icon
-                name={selectedPost.isSaved ? 'bookmark' : 'bookmark'}
+                name={selectedPost.isSaved ? 'bookmark' : 'bookmark-outline'}
                 size={14}
                 color={selectedPost.isSaved ? '#A46A34' : '#2F2926'}
               />
@@ -557,7 +337,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
 
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
-              <Icon name="chatbubbles" size={13} color="#A34A3C" />
+              <Icon name="chatbubbles-outline" size={13} color="#A34A3C" />
             </View>
             <Text style={styles.sectionTitle}>评论</Text>
           </View>
@@ -579,7 +359,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             multiline
           />
           <Pressable style={styles.primaryBtn} onPress={submitComment} disabled={submittingComment}>
-            <Icon name="paper-plane" size={15} color="#FFF6F2" />
+            <Icon name="paper-plane-outline" size={15} color="#FFF6F2" />
             <Text style={styles.primaryBtnText}>
               {submittingComment ? '提交中...' : '发布评论'}
             </Text>
@@ -590,7 +370,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
       <View style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
-            <Icon name="pulse" size={13} color="#A34A3C" />
+            <Icon name="pulse-outline" size={13} color="#A34A3C" />
           </View>
           <Text style={styles.sectionTitle}>模块状态</Text>
         </View>
@@ -611,9 +391,9 @@ const styles = StyleSheet.create({
   topControlRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 10,
   },
-  headerActionRow: {flexDirection: 'row', gap: 10, flex: 1},
   iconActionRow: {
     flexDirection: 'row',
     gap: 8,
@@ -625,31 +405,6 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconActionBtnWarm: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    backgroundColor: '#A34A3C',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerBtn: {
-    ...canvasUi.chip,
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  headerBtnActive: {
-    ...canvasUi.chipActive,
-  },
-  headerBtnText: {
-    ...canvasText.bodyStrong,
-    color: '#2F2926',
   },
   card: {
     ...cardSurfaceWarm,
@@ -712,7 +467,11 @@ const styles = StyleSheet.create({
   sectionIconBadge: {
     ...canvasUi.iconBadge,
   },
-  filterRow: {flexDirection: 'row', gap: 8, flexWrap: 'wrap'},
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   filterBtn: {
     ...canvasUi.chip,
     minHeight: 32,
@@ -721,7 +480,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterBtnActive: {...canvasUi.chipActive},
+  filterBtnActive: {
+    ...canvasUi.chipActive,
+  },
   filterBtnText: {
     ...canvasText.bodyStrong,
     color: '#2F2926',
@@ -732,7 +493,11 @@ const styles = StyleSheet.create({
     padding: 11,
     gap: 9,
   },
-  postHead: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  postHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   avatar: {
     width: 28,
     height: 28,
@@ -745,7 +510,9 @@ const styles = StyleSheet.create({
     ...canvasText.bodyStrong,
     color: '#FFF6F2',
   },
-  postMeta: {flex: 1},
+  postMetaWrap: {
+    flex: 1,
+  },
   postAuthor: {
     ...canvasText.bodyStrong,
     color: '#2F2926',
@@ -772,7 +539,11 @@ const styles = StyleSheet.create({
     color: 'rgba(78,64,56,0.9)',
     lineHeight: 18,
   },
-  tagRow: {flexDirection: 'row', flexWrap: 'wrap', gap: 6},
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   tag: {
     ...canvasText.caption,
     color: '#9A5A43',
@@ -781,8 +552,16 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 999,
   },
-  postActions: {flexDirection: 'row', alignItems: 'center', gap: 12},
-  inlineAction: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  postActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  inlineAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   inlineActionText: {
     ...canvasText.bodyStrong,
     color: '#2F2926',
@@ -795,11 +574,12 @@ const styles = StyleSheet.create({
     color: '#2F2926',
     ...canvasText.body,
   },
-  multiline: {minHeight: 90, textAlignVertical: 'top'},
-  actionRow: {flexDirection: 'row', gap: 10},
+  multiline: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
   primaryBtn: {
     ...canvasUi.primaryButton,
-    flex: 1,
     minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
@@ -812,7 +592,6 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     ...canvasUi.secondaryButton,
-    flex: 1,
     minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
@@ -824,17 +603,11 @@ const styles = StyleSheet.create({
     ...canvasText.bodyStrong,
     color: '#2F2926',
   },
-  draftCard: {
-    ...canvasUi.subtleCard,
-    borderRadius: 12,
-    padding: 10,
-    gap: 5,
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  draftTitle: {
-    ...canvasText.bodyStrong,
-    color: '#2F2926',
-  },
-  backBtn: {flexDirection: 'row', alignItems: 'center', gap: 6},
   backBtnText: {
     ...canvasText.bodyStrong,
     color: '#2F2926',
@@ -865,4 +638,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-
