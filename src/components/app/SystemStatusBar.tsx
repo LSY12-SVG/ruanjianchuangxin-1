@@ -3,7 +3,8 @@ import {StyleSheet, Text, View} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import type {ModuleHealthItem} from '../../modules/api';
 import {canvasText} from '../../theme/canvasDesign';
-import {VISION_THEME} from '../../theme/visionTheme';
+import {radius} from '../../theme/radius';
+import {semanticColors} from '../../theme/tokens';
 
 interface SystemStatusBarProps {
   loading: boolean;
@@ -13,12 +14,12 @@ interface SystemStatusBarProps {
 
 const stateColor = (status: ModuleHealthItem['status']): string => {
   if (status === 'healthy') {
-    return VISION_THEME.feedback.success;
+    return semanticColors.feedback.success;
   }
   if (status === 'degraded') {
-    return '#C48738';
+    return semanticColors.feedback.warning;
   }
-  return VISION_THEME.feedback.danger;
+  return semanticColors.feedback.danger;
 };
 
 export const SystemStatusBar: React.FC<SystemStatusBarProps> = ({
@@ -49,10 +50,10 @@ export const SystemStatusBar: React.FC<SystemStatusBarProps> = ({
 
   const summaryColor =
     error || down.length > 0
-      ? VISION_THEME.feedback.danger
+      ? semanticColors.feedback.danger
       : degraded.length > 0
-        ? '#C48738'
-        : VISION_THEME.feedback.success;
+        ? semanticColors.feedback.warning
+        : semanticColors.feedback.success;
 
   return (
     <View style={styles.wrap}>
@@ -76,10 +77,10 @@ export const SystemStatusBar: React.FC<SystemStatusBarProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
-    minHeight: 38,
+    minHeight: 44,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(160, 132, 118, 0.24)',
-    backgroundColor: 'rgba(247, 241, 236, 0.92)',
+    borderBottomColor: 'rgba(226,232,240,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
@@ -103,12 +104,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    borderRadius: radius.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.22)',
-    backgroundColor: 'rgba(255,248,243,0.75)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.95)',
   },
   dot: {
     width: 6,
@@ -118,7 +119,7 @@ const styles = StyleSheet.create({
   moduleLabel: {
     ...canvasText.caption,
     fontSize: 9,
-    color: 'rgba(89, 73, 65, 0.86)',
+    color: semanticColors.text.secondary,
     textTransform: 'uppercase',
   },
 });

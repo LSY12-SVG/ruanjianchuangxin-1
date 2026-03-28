@@ -42,10 +42,11 @@ import {
 } from '../../agent/dualEntryOrchestrator';
 import {useAgentVoiceGoal} from '../../agent/useAgentVoiceGoal';
 
-const COLLAPSED_SIZE = 88;
+const COLLAPSED_SIZE = 64;
 const PANEL_BOTTOM_OFFSET = 92;
 const BUBBLE_AUTO_HIDE_MS = 2600;
 const PANEL_ANIMATION_MS = 240;
+const COLLAPSED_IDLE_MS = 3000;
 
 interface HaruFloatingAgentProps {
   activeTab: FloatingAssistantTab;
@@ -91,11 +92,13 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
 }) => {
   const {width: windowWidth, height: windowHeight} = useWindowDimensions();
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapsedIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRuleIdRef = useRef('');
   const previousTabRef = useRef<FloatingAssistantTab | null>(null);
   const messageIdRef = useRef(0);
   const panStartRef = useRef({x: 0, y: 0});
   const panelAnim = useRef(new Animated.Value(0)).current;
+  const collapsedIdleAnim = useRef(new Animated.Value(0)).current;
   const position = useRef(
     new Animated.ValueXY({
       x: Math.max(8, windowWidth - COLLAPSED_SIZE - 8),
@@ -113,6 +116,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   const [bubbleText, setBubbleText] = useState('');
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const [customGoal, setCustomGoal] = useState('');
+  const [collapsedIdle, setCollapsedIdle] = useState(false);
   const [loading, setLoading] = useState(false);
   const [live2dReady, setLive2dReady] = useState(false);
   const [live2dFailed, setLive2dFailed] = useState(false);
@@ -187,6 +191,25 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       bubbleTimerRef.current = null;
     }
   }, []);
+
+  const clearCollapsedIdleTimer = useCallback(() => {
+    if (collapsedIdleTimerRef.current) {
+      clearTimeout(collapsedIdleTimerRef.current);
+      collapsedIdleTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCollapsedIdle = useCallback(() => {
+    clearCollapsedIdleTimer();
+    collapsedIdleTimerRef.current = setTimeout(() => {
+      setCollapsedIdle(true);
+    }, COLLAPSED_IDLE_MS);
+  }, [clearCollapsedIdleTimer]);
+
+  const markCollapsedActive = useCallback(() => {
+    setCollapsedIdle(false);
+    scheduleCollapsedIdle();
+  }, [scheduleCollapsedIdle]);
 
   const runGoal = useCallback(
     async (
@@ -466,6 +489,27 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   }, [panelAnim, panelMode]);
 
   useEffect(() => {
+    Animated.timing(collapsedIdleAnim, {
+      toValue: collapsedIdle ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [collapsedIdle, collapsedIdleAnim]);
+
+  useEffect(() => {
+    if (panelMode === 'hidden') {
+      scheduleCollapsedIdle();
+    } else {
+      clearCollapsedIdleTimer();
+      setCollapsedIdle(false);
+    }
+
+    return () => {
+      clearCollapsedIdleTimer();
+    };
+  }, [clearCollapsedIdleTimer, panelMode, scheduleCollapsedIdle]);
+
+  useEffect(() => {
     if (panelMode !== 'hidden') {
       setLive2dFailed(false);
       setLive2dReady(false);
@@ -521,7 +565,8 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
         onMoveShouldSetPanResponder: (_, gestureState) =>
           panelMode === 'hidden' &&
           (Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4),
-        onPanResponderGrant: () => {
+          onPanResponderGrant: () => {
+          markCollapsedActive();
           position.stopAnimation(current => {
             panStartRef.current = {x: current.x, y: current.y};
           });
@@ -550,7 +595,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
           setUiState(prev => reduceAssistantUiState(prev, 'user_drag_end'));
         },
       }),
-    [bottomInset, panelMode, position, windowHeight, windowWidth],
+    [bottomInset, markCollapsedActive, panelMode, position, windowHeight, windowWidth],
   );
 
   const panelSizeStyle = useMemo(() => {
@@ -585,9 +630,8 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   }, [avatarViewport.height, avatarViewport.width]);
 
   const collapsedAvatarNode = (
-    <View style={styles.avatarShellCompact}>
-      <Icon name="sparkles" size={26} color="#FFE7D5" />
-      <Text style={styles.avatarCompactText}>Hiyori</Text>
+    <View style={[styles.avatarShellCompact, collapsedIdle && styles.avatarShellCompactIdle]}>
+      <Icon name="sparkles" size={24} color={collapsedIdle ? '#E2E8F0' : '#FFFFFF'} />
       {loading ? (
         <View style={styles.avatarBadge}>
           <Text style={styles.avatarBadgeText}>思考中</Text>
@@ -742,17 +786,25 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
           style={[
             styles.collapsedWrap,
             {
+              opacity: collapsedIdleAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [1, 0.5],
+              }),
               transform: [{translateX: position.x}, {translateY: position.y}],
             },
           ]}
           {...panResponder.panHandlers}>
-          <Pressable
-            style={styles.collapsedPressable}
-            onPress={openHalfPanel}
-            onLongPress={() => {
-              hideBubble();
-              const currentRuleId = currentRuleIdRef.current;
-              if (currentRuleId) {
+            <Pressable
+              style={[styles.collapsedPressable, collapsedIdle && styles.collapsedPressableIdle]}
+              onPress={() => {
+                markCollapsedActive();
+                openHalfPanel();
+              }}
+              onLongPress={() => {
+                markCollapsedActive();
+                hideBubble();
+                const currentRuleId = currentRuleIdRef.current;
+                if (currentRuleId) {
                 setAssistantFrequency(prev => markRuleIgnored(prev, currentRuleId));
               }
             }}>
@@ -931,28 +983,31 @@ const styles = StyleSheet.create({
   collapsedPressable: {
     width: COLLAPSED_SIZE,
     height: COLLAPSED_SIZE,
-    borderRadius: 28,
+    borderRadius: 32,
     borderWidth: 1,
-    borderColor: 'rgba(255,211,187,0.42)',
-    backgroundColor: 'rgba(39,26,22,0.9)',
+    borderColor: 'rgba(165,180,252,0.2)',
+    backgroundColor: 'rgba(15,23,42,0.84)',
     overflow: 'hidden',
-    shadowColor: '#100A08',
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: {width: 0, height: 6},
+    shadowColor: '#6366F1',
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    shadowOffset: {width: 0, height: 10},
+  },
+  collapsedPressableIdle: {
+    backgroundColor: 'rgba(100,116,139,0.54)',
+    borderColor: 'rgba(203,213,225,0.42)',
+    shadowColor: '#94A3B8',
+    shadowOpacity: 0.12,
   },
   avatarShellCompact: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(25,17,14,0.84)',
+    backgroundColor: 'rgba(15,23,42,0.84)',
   },
-  avatarCompactText: {
-    color: '#FCE2CF',
-    fontSize: 11,
-    fontWeight: '700',
+  avatarShellCompactIdle: {
+    backgroundColor: 'rgba(100,116,139,0.54)',
   },
   avatarPanelShell: {
     width: '100%',
@@ -1013,15 +1068,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,206,183,0.52)',
-    backgroundColor: 'rgba(46,29,24,0.94)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     zIndex: 21,
   },
   bubbleAnchor: {
     right: 14,
   },
   bubbleText: {
-    color: '#FEEDE2',
+    color: '#0F172A',
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
@@ -1030,12 +1085,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(212,156,132,0.45)',
-    backgroundColor: 'rgba(25,16,14,0.94)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     padding: 12,
     zIndex: 22,
-    shadowColor: '#0D0908',
-    shadowOpacity: 0.42,
+    shadowColor: '#94A3B8',
+    shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: {width: 0, height: 8},
   },
@@ -1049,7 +1104,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   panelTitle: {
-    color: '#FCE7D8',
+    color: '#0F172A',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1064,8 +1119,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(243,197,174,0.32)',
-    backgroundColor: 'rgba(72,46,39,0.55)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.96)',
   },
   panelBody: {
     gap: 10,
@@ -1081,8 +1136,8 @@ const styles = StyleSheet.create({
     width: 112,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,210,184,0.34)',
-    backgroundColor: 'rgba(53,34,28,0.7)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.96)',
     padding: 8,
     marginRight: 10,
   },
@@ -1093,13 +1148,13 @@ const styles = StyleSheet.create({
     minHeight: 150,
   },
   avatarName: {
-    color: '#FEE6D4',
+    color: '#0F172A',
     fontSize: 12,
     fontWeight: '700',
     marginTop: 6,
   },
   avatarHint: {
-    color: 'rgba(254,230,212,0.72)',
+    color: 'rgba(100,116,139,0.9)',
     fontSize: 10,
     marginTop: 2,
   },
@@ -1123,23 +1178,23 @@ const styles = StyleSheet.create({
   },
   chatBubbleAssistant: {
     alignSelf: 'flex-start',
-    borderColor: 'rgba(248,193,166,0.3)',
-    backgroundColor: 'rgba(84,52,43,0.42)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.98)',
   },
   chatBubbleUser: {
     alignSelf: 'flex-end',
-    borderColor: 'rgba(241,214,198,0.3)',
-    backgroundColor: 'rgba(150,89,73,0.56)',
+    borderColor: 'rgba(165,180,252,0.18)',
+    backgroundColor: 'rgba(79,70,229,0.92)',
   },
   chatBubbleText: {
     fontSize: 12,
     lineHeight: 17,
   },
   chatBubbleTextAssistant: {
-    color: '#FEEADC',
+    color: '#0F172A',
   },
   chatBubbleTextUser: {
-    color: '#FFF3EA',
+    color: '#FFFFFF',
   },
   customGoalWrap: {
     marginTop: 2,
@@ -1152,11 +1207,11 @@ const styles = StyleSheet.create({
     minHeight: 38,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(252,215,192,0.28)',
-    color: '#FEEDE2',
+    borderColor: 'rgba(226,232,240,0.92)',
+    color: '#0F172A',
     fontSize: 12,
     paddingHorizontal: 10,
-    backgroundColor: 'rgba(71,45,38,0.45)',
+    backgroundColor: 'rgba(241,245,249,0.95)',
   },
   customGoalBtn: {
     height: 38,
@@ -1166,21 +1221,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 5,
-    backgroundColor: '#A34A3C',
+    backgroundColor: '#4F46E5',
   },
   customGoalBtnDisabled: {
     opacity: 0.55,
   },
   customGoalBtnVoiceActive: {
-    backgroundColor: '#8A3529',
+    backgroundColor: '#4338CA',
   },
   customGoalBtnText: {
-    color: '#FFEEDF',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
   },
   voiceMetaText: {
-    color: 'rgba(255,233,219,0.78)',
+    color: 'rgba(100,116,139,0.9)',
     fontSize: 10,
     marginTop: 2,
   },
@@ -1188,18 +1243,18 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,204,180,0.28)',
-    backgroundColor: 'rgba(57,37,31,0.6)',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.96)',
     padding: 9,
     gap: 8,
   },
   statusText: {
-    color: '#FDE9DB',
+    color: '#334155',
     fontSize: 11,
     fontWeight: '600',
   },
   errorText: {
-    color: '#FFD0D0',
+    color: '#F43F5E',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -1212,19 +1267,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     borderRadius: 10,
-    backgroundColor: '#9B4A3C',
+    backgroundColor: '#4F46E5',
     paddingVertical: 7,
     paddingHorizontal: 10,
   },
   pendingBtnGhost: {
-    backgroundColor: 'rgba(128,67,67,0.42)',
+    backgroundColor: 'rgba(226,232,240,0.98)',
   },
   pendingBtnText: {
-    color: '#FFEEDF',
+    color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
   },
   pendingBtnTextGhost: {
-    color: '#FFD4D4',
+    color: '#334155',
   },
 });

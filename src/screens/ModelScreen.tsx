@@ -24,8 +24,12 @@ import {
   type ModuleCapabilityItem,
 } from '../modules/api';
 import {PageHero} from '../components/app/PageHero';
+import {GlassCard} from '../components/ui/GlassCard';
+import {PrimaryButton} from '../components/ui/PrimaryButton';
+import {SegmentedControl} from '../components/ui/SegmentedControl';
 import {HERO_MODEL} from '../assets/design';
 import {canvasText, canvasUi, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
+import {semanticColors} from '../theme/tokens';
 
 type Mode = 'job' | 'capture';
 
@@ -379,19 +383,25 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         overlayStrength="strong"
       />
 
-      <View style={styles.modeRow}>
-        <Pressable style={[styles.modeBtn, mode === 'job' && styles.modeBtnActive]} onPress={() => setMode('job')}>
-          <Icon name="cloud-upload" size={15} color="#3B2F29" />
-          <Text style={styles.modeBtnText}>2D→3D</Text>
-        </Pressable>
-        <Pressable style={[styles.modeBtn, mode === 'capture' && styles.modeBtnActive]} onPress={() => setMode('capture')}>
-          <Icon name="camera" size={15} color="#3B2F29" />
-          <Text style={styles.modeBtnText}>实景捕捉</Text>
-        </Pressable>
-      </View>
+      <SegmentedControl
+        value={mode}
+        onChange={setMode}
+        options={[
+          {
+            value: 'job',
+            label: '2D→3D',
+            icon: <Icon name="cube-outline" size={16} color={semanticColors.text.secondary} />,
+          },
+          {
+            value: 'capture',
+            label: '实景捕捉',
+            icon: <Icon name="camera-outline" size={16} color={semanticColors.text.secondary} />,
+          },
+        ]}
+      />
 
       {mode === 'job' ? (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <Pressable style={styles.newTaskCard} onPress={() => jobPicker.pickFromGallery()}>
             <View style={styles.newTaskIcon}>
               <Icon name="add" size={18} color="#FFF6F2" />
@@ -408,14 +418,18 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
             <Text style={styles.sectionTitle}>2D 转 3D 任务</Text>
           </View>
           <View style={styles.actionRow}>
-            <Pressable style={styles.secondaryBtn} onPress={() => jobPicker.pickFromGallery()}>
-              <Icon name="image" size={15} color="#3B2F29" />
-              <Text style={styles.secondaryBtnText}>选图</Text>
-            </Pressable>
-            <Pressable style={styles.primaryBtn} onPress={createJob} disabled={loading}>
-              <Icon name="send" size={15} color="#FFF6F2" />
-              <Text style={styles.primaryBtnText}>{loading ? '处理中...' : '创建任务'}</Text>
-            </Pressable>
+            <PrimaryButton
+              label="选图"
+              onPress={() => jobPicker.pickFromGallery()}
+              variant="secondary"
+              icon={<Icon name="image-outline" size={15} color={semanticColors.text.primary} />}
+            />
+            <PrimaryButton
+              label={loading ? '处理中...' : '创建任务'}
+              onPress={createJob}
+              disabled={loading}
+              icon={<Icon name="send-outline" size={15} color="#FFFFFF" />}
+            />
           </View>
           {uploadPreviewUri ? (
             <View style={styles.uploadPreviewCard} testID="job-upload-preview">
@@ -450,9 +464,9 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
               ) : null}
             </View>
           ) : null}
-        </View>
+        </GlassCard>
       ) : (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
               <Icon name="aperture" size={13} color="#A34A3C" />
@@ -460,31 +474,37 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
             <Text style={styles.sectionTitle}>Capture Session</Text>
           </View>
           <View style={styles.actionRow}>
-            <Pressable style={styles.secondaryBtn} onPress={startCaptureSession}>
-              <Icon name="albums" size={15} color="#3B2F29" />
-              <Text style={styles.secondaryBtnText}>创建会话</Text>
-            </Pressable>
-            <Pressable style={styles.primaryBtn} onPress={addCaptureFrame} disabled={!session?.id || loading}>
-              <Icon name="cloud-upload" size={15} color="#FFF6F2" />
-              <Text style={styles.primaryBtnText}>上传一帧</Text>
-            </Pressable>
+            <PrimaryButton
+              label="创建会话"
+              onPress={startCaptureSession}
+              variant="secondary"
+              icon={<Icon name="albums-outline" size={15} color={semanticColors.text.primary} />}
+            />
+            <PrimaryButton
+              label="上传一帧"
+              onPress={addCaptureFrame}
+              disabled={!session?.id || loading}
+              icon={<Icon name="cloud-upload-outline" size={15} color="#FFFFFF" />}
+            />
           </View>
           {session ? (
             <View style={styles.statusCard}>
               <Text style={styles.statusLine}>会话ID: {session.id}</Text>
               <Text style={styles.statusLine}>状态: {session.status}</Text>
               <Text style={styles.statusLine}>已采集: {session.acceptedFrameCount}</Text>
-              <Pressable style={styles.primaryBtn} onPress={generateCaptureModel} disabled={loading}>
-                <Icon name="sparkles" size={15} color="#FFF6F2" />
-                <Text style={styles.primaryBtnText}>生成3D模型</Text>
-              </Pressable>
+              <PrimaryButton
+                label="生成3D模型"
+                onPress={generateCaptureModel}
+                disabled={loading}
+                icon={<Icon name="sparkles-outline" size={15} color="#FFFFFF" />}
+              />
               {captureTaskId ? <Text style={styles.statusLine}>生成任务: {captureTaskId}</Text> : null}
             </View>
           ) : null}
-        </View>
+        </GlassCard>
       )}
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="eye" size={13} color="#A34A3C" />
@@ -497,11 +517,13 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
         </Text>
         <Text style={styles.statusLine}>当前上传图: {uploadPreviewUri || '-'}</Text>
         <Text style={styles.statusLine}>当前模型URL: {viewerUrl || '-'}</Text>
-        <Pressable style={styles.primaryBtn} onPress={openDownload}>
-          <Icon name="download" size={15} color="#FFF6F2" />
-          <Text style={styles.primaryBtnText}>下载资产</Text>
-        </Pressable>
         <View style={styles.inlineViewerFrame}>
+          <View style={styles.viewerToolbar}>
+            <Pressable style={styles.viewerAction} onPress={openDownload}>
+              <Icon name="download-outline" size={15} color={semanticColors.text.primary} />
+              <Text style={styles.viewerActionText}>下载资产</Text>
+            </Pressable>
+          </View>
           {viewerUrl ? (
             <WebView
               testID="inline-model-viewer"
@@ -518,12 +540,13 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
             />
           ) : (
             <View style={styles.inlineViewerEmpty}>
+              <Icon name="cube-outline" size={42} color={semanticColors.text.tertiary} />
               <Text style={styles.statusLine}>{modelEmptyText}</Text>
             </View>
           )}
         </View>
         {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
-      </View>
+      </GlassCard>
     </ScrollView>
   );
 };
@@ -552,7 +575,6 @@ const styles = StyleSheet.create({
   card: {
     ...cardSurfaceBlue,
     ...glassShadow,
-    padding: 14,
     gap: 12,
   },
   sectionTitle: {
@@ -654,7 +676,7 @@ const styles = StyleSheet.create({
   },
   uploadPreviewCard: {
     ...canvasUi.subtleCard,
-    borderRadius: 14,
+    borderRadius: 20,
     padding: 10,
     gap: 8,
   },
@@ -678,18 +700,41 @@ const styles = StyleSheet.create({
   },
   inlineViewerFrame: {
     minHeight: 320,
-    borderRadius: 14,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.3)',
-    backgroundColor: '#F3E7DF',
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(241,245,249,0.95)',
   },
-  webview: {flex: 1, minHeight: 320, backgroundColor: '#F3E7DF'},
+  webview: {flex: 1, minHeight: 320, backgroundColor: 'rgba(241,245,249,0.95)'},
   inlineViewerEmpty: {
     minHeight: 320,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
+    gap: 10,
+    backgroundColor: 'rgba(241,245,249,0.88)',
+  },
+  viewerToolbar: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 4,
+  },
+  viewerAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.92)',
+  },
+  viewerActionText: {
+    ...canvasText.bodyStrong,
+    color: semanticColors.text.primary,
   },
 });
 

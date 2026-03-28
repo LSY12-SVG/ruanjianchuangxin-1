@@ -12,6 +12,10 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import {HERO_COMMUNITY} from '../assets/design';
 import {PageHero} from '../components/app/PageHero';
+import {BentoCard} from '../components/ui/BentoCard';
+import {GlassCard} from '../components/ui/GlassCard';
+import {ListRow} from '../components/ui/ListRow';
+import {PrimaryButton} from '../components/ui/PrimaryButton';
 import {useImagePicker, type ImagePickerResult} from '../hooks/useImagePicker';
 import {useMyProfileQuery} from '../hooks/queries/useMyProfileQuery';
 import {
@@ -23,6 +27,7 @@ import {
 import {hasAuthToken} from '../profile/api';
 import {listCommunityHistory} from '../services/communityHistory';
 import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
+import {semanticColors} from '../theme/tokens';
 
 type MyActivityMode = 'history' | 'saved' | 'liked' | 'published';
 type ImageSlotKey = 'before' | 'after';
@@ -448,7 +453,7 @@ export const MyScreen: React.FC = () => {
         overlayStrength="normal"
       />
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="person-circle-outline" size={13} color="#A34A3C" />
@@ -498,28 +503,16 @@ export const MyScreen: React.FC = () => {
             ) : null}
 
             <View style={styles.statGrid}>
-              <View style={styles.statChip}>
-                <Text style={styles.statValue}>{stats?.communityPostsCount ?? 0}</Text>
-                <Text style={styles.statLabel}>已发布</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={styles.statValue}>{likedPosts.length}</Text>
-                <Text style={styles.statLabel}>最近点赞</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={styles.statValue}>{savedPosts.length}</Text>
-                <Text style={styles.statLabel}>最近收藏</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={styles.statValue}>{historyPosts.length}</Text>
-                <Text style={styles.statLabel}>历史记录</Text>
-              </View>
+              <BentoCard style={styles.bentoHalf} title="已发布" value={stats?.communityPostsCount ?? 0} />
+              <BentoCard style={styles.bentoHalf} title="最近点赞" value={likedPosts.length} />
+              <BentoCard style={styles.bentoHalf} title="最近收藏" value={savedPosts.length} />
+              <BentoCard style={styles.bentoHalf} title="历史记录" value={historyPosts.length} />
             </View>
           </View>
         )}
-      </View>
+      </GlassCard>
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="grid-outline" size={13} color="#A34A3C" />
@@ -528,24 +521,22 @@ export const MyScreen: React.FC = () => {
         </View>
         <View style={styles.quickActionRow}>
           {QUICK_ACTIONS.map(item => (
-            <Pressable
+            <BentoCard
               key={item.key}
-              style={[styles.quickActionCard, activeMode === item.key && styles.quickActionCardActive]}
-              onPress={() => setActiveMode(item.key)}>
-              <View style={styles.quickActionIconWrap}>
-                <Icon
-                  name={item.icon}
-                  size={18}
-                  color={activeMode === item.key ? '#A34A3C' : '#6B5B52'}
-                />
-              </View>
-              <Text style={styles.quickActionLabel}>{item.label}</Text>
-            </Pressable>
+              style={styles.bentoHalf}
+              title={item.label}
+              caption={activeMode === item.key ? '当前查看中' : '点击切换'}
+              icon={<Icon name={item.icon} size={18} color={activeMode === item.key ? semanticColors.accent.primary : semanticColors.text.secondary} />}
+            >
+              <Pressable style={[styles.quickActionCard, activeMode === item.key && styles.quickActionCardActive]} onPress={() => setActiveMode(item.key)}>
+                <Text style={styles.quickActionLabel}>{item.label}</Text>
+              </Pressable>
+            </BentoCard>
           ))}
         </View>
-      </View>
+      </GlassCard>
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.topControlRow}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
@@ -586,53 +577,46 @@ export const MyScreen: React.FC = () => {
         ) : null}
 
         {activityItems.map(item => (
-          <View key={`${activeMode}-${item.id}`} style={styles.activityCard}>
-            <View style={styles.postCardHead}>
-              <View style={styles.postTextWrap}>
-                <Text style={styles.postTitle}>{item.title}</Text>
-                <Text style={styles.postMeta}>
-                  {activeMode === 'history'
-                    ? `最近浏览 ${'viewedAt' in item ? item.viewedAt : item.updatedAt}`
-                    : activeMode === 'liked'
-                      ? `来自 ${item.author.name || '社区作者'}`
-                      : activeMode === 'saved'
-                        ? `收藏自 ${item.author.name || '社区作者'}`
-                        : `发布时间 ${item.updatedAt}`}
-                </Text>
+          <View key={`${activeMode}-${item.id}`} style={styles.activityListWrap}>
+            <ListRow
+              title={item.title}
+              subtitle={
+                activeMode === 'history'
+                  ? `最近浏览 ${'viewedAt' in item ? item.viewedAt : item.updatedAt}`
+                  : activeMode === 'liked'
+                    ? `来自 ${item.author.name || '社区作者'}`
+                    : activeMode === 'saved'
+                      ? `收藏自 ${item.author.name || '社区作者'}`
+                      : `发布时间 ${item.updatedAt}`
+              }
+              trailingText={
+                activeMode === 'history'
+                  ? '记录'
+                  : activeMode === 'liked'
+                    ? '点赞'
+                    : activeMode === 'saved'
+                      ? '收藏'
+                      : '发布'
+              }
+            />
+            <View style={styles.activityCard}>
+              <Text numberOfLines={2} style={styles.postContent}>
+                {item.content}
+              </Text>
+              {renderPostImages(item)}
+              <View style={styles.tagRow}>
+                {(item.tags || []).map(tag => (
+                  <Text key={`${item.id}-${tag}`} style={styles.tag}>
+                    #{tag}
+                  </Text>
+                ))}
               </View>
-              <View style={styles.activityBadge}>
-                <Text style={styles.activityBadgeText}>
-                  {activeMode === 'history'
-                    ? '记录'
-                    : activeMode === 'liked'
-                      ? '点赞'
-                      : activeMode === 'saved'
-                        ? '收藏'
-                        : '发布'}
-                </Text>
-              </View>
-            </View>
-            <Text numberOfLines={2} style={styles.postContent}>
-              {item.content}
-            </Text>
-            {renderPostImages(item)}
-            <View style={styles.tagRow}>
-              {(item.tags || []).map(tag => (
-                <Text key={`${item.id}-${tag}`} style={styles.tag}>
-                  #{tag}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.postMetricRow}>
-              <Text style={styles.postMetricText}>点赞 {item.likesCount}</Text>
-              <Text style={styles.postMetricText}>评论 {item.commentsCount}</Text>
-              <Text style={styles.postMetricText}>收藏 {item.savesCount}</Text>
             </View>
           </View>
         ))}
-      </View>
+      </GlassCard>
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="create-outline" size={13} color="#A34A3C" />
@@ -672,26 +656,21 @@ export const MyScreen: React.FC = () => {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable
+          <PrimaryButton
             testID="my-save-draft-button"
-            style={styles.primaryBtn}
+            label={submittingDraft ? '保存中...' : saveDraftText}
             onPress={saveDraft}
-            disabled={submittingDraft || uploadingSlot !== ''}>
-            <Icon name="save-outline" size={15} color="#FFF6F2" />
-            <Text style={styles.primaryBtnText}>
-              {submittingDraft ? '保存中...' : saveDraftText}
-            </Text>
-          </Pressable>
-          <Pressable
+            disabled={submittingDraft || uploadingSlot !== ''}
+            icon={<Icon name="save-outline" size={15} color="#FFFFFF" />}
+          />
+          <PrimaryButton
             testID="my-publish-draft-button"
-            style={styles.secondaryBtn}
+            label={publishingDraft ? '发布中...' : '发布到社区'}
             onPress={publishDraft}
-            disabled={publishingDraft || uploadingSlot !== ''}>
-            <Icon name="paper-plane-outline" size={15} color="#2F2926" />
-            <Text style={styles.secondaryBtnText}>
-              {publishingDraft ? '发布中...' : '发布到社区'}
-            </Text>
-          </Pressable>
+            disabled={publishingDraft || uploadingSlot !== ''}
+            variant="secondary"
+            icon={<Icon name="paper-plane-outline" size={15} color={semanticColors.text.primary} />}
+          />
         </View>
 
         <View style={styles.actionRow}>
@@ -704,9 +683,9 @@ export const MyScreen: React.FC = () => {
             <Text style={styles.secondaryBtnText}>{loadingPosts ? '刷新中...' : '刷新列表'}</Text>
           </Pressable>
         </View>
-      </View>
+      </GlassCard>
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.topControlRow}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
@@ -725,40 +704,34 @@ export const MyScreen: React.FC = () => {
         ) : null}
 
         {drafts.map(post => (
-          <View key={post.id} style={styles.activityCard}>
-            <View style={styles.postCardHead}>
-              <View style={styles.postTextWrap}>
-                <Text style={styles.postTitle}>{post.title}</Text>
-                <Text style={styles.postMeta}>草稿 · 更新时间 {post.updatedAt}</Text>
+          <View key={post.id} style={styles.activityListWrap}>
+            <ListRow
+              title={post.title}
+              subtitle={`草稿 · 更新时间 ${post.updatedAt}`}
+              trailingText="编辑"
+              onPress={() => fillDraftForm(post)}
+            />
+            <View style={styles.activityCard}>
+              <Text numberOfLines={2} style={styles.postContent}>
+                {post.content}
+              </Text>
+              {renderPostImages(post)}
+              <View style={styles.tagRow}>
+                {(post.tags || []).map(tag => (
+                  <Text key={`${post.id}-${tag}`} style={styles.tag}>
+                    #{tag}
+                  </Text>
+                ))}
               </View>
-              <Pressable style={styles.inlineRefreshBtn} onPress={() => fillDraftForm(post)}>
-                <Icon name="create-outline" size={15} color="#2F2926" />
-              </Pressable>
-            </View>
-            <Text numberOfLines={2} style={styles.postContent}>
-              {post.content}
-            </Text>
-            {renderPostImages(post)}
-            <View style={styles.tagRow}>
-              {(post.tags || []).map(tag => (
-                <Text key={`${post.id}-${tag}`} style={styles.tag}>
-                  #{tag}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.postMetricRow}>
-              <Text style={styles.postMetricText}>点赞 {post.likesCount}</Text>
-              <Text style={styles.postMetricText}>评论 {post.commentsCount}</Text>
-              <Text style={styles.postMetricText}>收藏 {post.savesCount}</Text>
             </View>
           </View>
         ))}
-      </View>
+      </GlassCard>
 
       {errorText ? (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <Text style={styles.errorText}>错误: {errorText}</Text>
-        </View>
+        </GlassCard>
       ) : null}
     </ScrollView>
   );
@@ -770,7 +743,6 @@ const styles = StyleSheet.create({
   card: {
     ...cardSurfaceWarm,
     ...glassShadow,
-    padding: 14,
     gap: 12,
   },
   sectionHead: {
@@ -861,14 +833,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  statChip: {
-    ...canvasUi.subtleCard,
+  bentoHalf: {
     width: '48%',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    gap: 4,
   },
   statValue: {
     ...canvasText.sectionTitle,
@@ -885,18 +851,12 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   quickActionCard: {
-    ...canvasUi.subtleCard,
-    width: '47.5%',
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    minHeight: 12,
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
   quickActionCardActive: {
-    borderWidth: 1,
-    borderColor: 'rgba(163,74,60,0.18)',
-    backgroundColor: 'rgba(255,245,240,0.92)',
+    opacity: 1,
   },
   quickActionIconWrap: {
     width: 38,
@@ -1009,8 +969,11 @@ const styles = StyleSheet.create({
   },
   activityCard: {
     ...canvasUi.subtleCard,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 12,
+    gap: 8,
+  },
+  activityListWrap: {
     gap: 8,
   },
   postCardHead: {

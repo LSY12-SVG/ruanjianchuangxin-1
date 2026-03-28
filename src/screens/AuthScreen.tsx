@@ -3,20 +3,23 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {HERO_CREATE} from '../assets/design';
-import {PageHero} from '../components/app/PageHero';
-import {canvasText, canvasUi, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
-import {VISION_THEME} from '../theme/visionTheme';
+import {PageHeader} from '../components/ui/PageHeader';
+import {GlassCard} from '../components/ui/GlassCard';
+import {PrimaryButton} from '../components/ui/PrimaryButton';
+import {SegmentedControl} from '../components/ui/SegmentedControl';
+import {SoftInput} from '../components/ui/SoftInput';
+import {canvasText} from '../theme/canvasDesign';
+import {radius} from '../theme/radius';
+import {spacing} from '../theme/spacing';
+import {gradients, semanticColors} from '../theme/tokens';
 import type {AuthFormMode} from '../types/auth';
 
 interface LoginSubmitPayload {
@@ -36,8 +39,6 @@ interface AuthScreenProps {
   onSubmitRegister: (payload: RegisterSubmitPayload) => void | Promise<void>;
   onSwitchMode: (mode: AuthFormMode) => void;
 }
-
-const AUTH_SUBTITLE = '登录后开始创作、建模、Agent 协作与社区体验';
 
 const normalizeUsername = (value: string): string => value.trim();
 
@@ -73,8 +74,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     : mode === 'login'
       ? '登录并进入首页'
       : '注册并进入首页';
-  const switchHint = mode === 'login' ? '还没有账号？' : '已经有账号了？';
-  const switchLabel = mode === 'login' ? '去注册' : '去登录';
+
   const helperText = useMemo(
     () =>
       mode === 'login'
@@ -106,27 +106,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         setLocalError('两次输入的密码不一致，请重新确认。');
         return;
       }
-      onSubmitRegister({
-        username: nextUsername,
-        password,
-        confirmPassword,
-      });
+      onSubmitRegister({username: nextUsername, password, confirmPassword});
       return;
     }
 
-    onSubmitLogin({
-      username: nextUsername,
-      password,
-    });
+    onSubmitLogin({username: nextUsername, password});
   };
 
+  const switchHint = mode === 'login' ? '还没有账号？' : '已经有账号了？';
+  const switchLabel = mode === 'login' ? '去注册' : '去登录';
+
   return (
-    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.root} testID="auth-screen-root">
-      <View pointerEvents="none" style={styles.orbLayer}>
-        <View style={[styles.orb, styles.orbPrimary]} />
-        <View style={[styles.orb, styles.orbAccent]} />
-        <View style={[styles.orb, styles.orbWarm]} />
-        <View style={styles.textureDots} />
+    <LinearGradient colors={gradients.page} style={styles.root} testID="auth-screen-root">
+      <View pointerEvents="none" style={styles.backdrop}>
+        <View style={[styles.blurOrb, styles.blurOrbTop]} />
+        <View style={[styles.blurOrb, styles.blurOrbBottom]} />
       </View>
       <KeyboardAvoidingView
         style={styles.keyboardWrap}
@@ -136,212 +130,195 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           contentContainerStyle={[
             styles.content,
             {
-              paddingTop: Math.max(insets.top, 20),
+              paddingTop: Math.max(insets.top, 24),
               paddingBottom: Math.max(insets.bottom, 28),
             },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          <View style={styles.headerBlock}>
-            <View style={styles.headerCopy}>
-              <View style={styles.brandRow}>
-                <View style={styles.brandBadge}>
-                  <Icon name="sparkles-outline" size={14} color="#A34A3C" />
-                </View>
-                <Text style={styles.brandText}>VisionGenie Account</Text>
-              </View>
-              <View style={styles.titleRow}>
-                <Text style={styles.pageTitle}>{mode === 'login' ? '登录' : '注册'}</Text>
-                <View style={styles.titleAccentDot} />
-              </View>
-              <Text style={styles.pageSubtitle}>
-                {mode === 'login'
-                  ? '登录后继续创作、建模与 Agent 协作。'
-                  : '创建新账号后即可直接进入 VisionGenie 首页。'}
-              </Text>
-            </View>
-          </View>
+          <PageHeader
+            eyebrow="VisionGenie Account"
+            title={mode === 'login' ? '登录' : '注册'}
+            subtitle={
+              mode === 'login'
+                ? '登录后继续创作、建模与 Agent 协作。'
+                : '创建新账号后即可直接进入 VisionGenie 首页。'
+            }
+            badge={
+              <LinearGradient colors={gradients.primary} style={styles.heroBadge}>
+                <Icon
+                  name={mode === 'login' ? 'sparkles-outline' : 'person-add-outline'}
+                  size={18}
+                  color="#FFFFFF"
+                />
+              </LinearGradient>
+            }
+          />
 
-          <View style={styles.card}>
-            <View style={styles.modeRail}>
-              <Pressable
-                testID="auth-mode-login"
-                onPress={() => onSwitchMode('login')}
-                style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
-                disabled={submitting}>
-                <Icon name="log-in-outline" size={16} color="#3B2F29" />
-                <Text style={styles.modeBtnText}>登录</Text>
-              </Pressable>
-              <Pressable
-                testID="auth-mode-register"
-                onPress={() => onSwitchMode('register')}
-                style={[styles.modeBtn, mode === 'register' && styles.modeBtnActive]}
-                disabled={submitting}>
-                <Icon name="person-add-outline" size={16} color="#3B2F29" />
-                <Text style={styles.modeBtnText}>注册</Text>
-              </Pressable>
-            </View>
+          <GlassCard strong>
+            <SegmentedControl
+              value={mode}
+              onChange={onSwitchMode}
+              options={[
+                {
+                  value: 'login',
+                  label: '登录',
+                  icon: (
+                    <Icon
+                      name="log-in-outline"
+                      size={16}
+                      color={mode === 'login' ? semanticColors.text.primary : semanticColors.text.secondary}
+                    />
+                  ),
+                },
+                {
+                  value: 'register',
+                  label: '注册',
+                  icon: (
+                    <Icon
+                      name="person-add-outline"
+                      size={16}
+                      color={
+                        mode === 'register' ? semanticColors.text.primary : semanticColors.text.secondary
+                      }
+                    />
+                  ),
+                },
+              ]}
+            />
 
-            <View style={styles.formSummary}>
-              <View style={styles.sectionHead}>
-                <View style={styles.sectionIconBadge}>
+            <View style={styles.introBlock}>
+              <View style={styles.introHead}>
+                <View style={styles.introBadge}>
                   <Icon
                     name={mode === 'login' ? 'shield-checkmark-outline' : 'sparkles-outline'}
-                    size={14}
-                    color="#A34A3C"
+                    size={16}
+                    color={semanticColors.accent.primary}
                   />
                 </View>
-                <Text style={styles.sectionTitle}>
-                  {mode === 'login' ? '登录账号继续使用 App' : '填写账号信息完成创建'}
-                </Text>
+                <View style={styles.introCopy}>
+                  <Text style={styles.introTitle}>
+                    {mode === 'login' ? '登录账号继续使用 App' : '填写账号信息完成创建'}
+                  </Text>
+                  <Text style={styles.introSubtitle}>登录后开始创作、建模、Agent 协作与社区体验</Text>
+                </View>
               </View>
-              <Text style={styles.summaryLead}>{AUTH_SUBTITLE}</Text>
             </View>
 
-            <View style={styles.fieldPanel}>
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>{mode === 'login' ? '用户名或账号' : '用户名'}</Text>
-                <View style={styles.inputLine}>
-                  <Icon name="person-outline" size={18} color="rgba(92,74,65,0.72)" />
-                  <TextInput
-                    testID="auth-username-input"
-                    style={styles.lineInput}
-                    placeholder={mode === 'login' ? '输入用户名 / 账号' : '输入用户名'}
-                    placeholderTextColor="rgba(150,124,110,0.68)"
-                    value={username}
-                    onChangeText={text => {
-                      clearLocalError();
-                      setUsername(text);
-                    }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!submitting}
-                    returnKeyType="next"
-                  />
-                </View>
-              </View>
+            <View style={styles.formStack}>
+              <SoftInput
+                testID="auth-username-input"
+                label={mode === 'login' ? '用户名或账号' : '用户名'}
+                placeholder={mode === 'login' ? '输入用户名 / 账号' : '输入用户名'}
+                value={username}
+                onChangeText={text => {
+                  clearLocalError();
+                  setUsername(text);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!submitting}
+                returnKeyType="next"
+                leftIcon={
+                  <Icon name="person-outline" size={18} color={semanticColors.text.secondary} />
+                }
+              />
 
-              <View style={styles.fieldRow}>
-                <Text style={styles.fieldLabel}>密码</Text>
-                <View style={styles.inputLine}>
-                  <Icon name="lock-closed-outline" size={18} color="rgba(92,74,65,0.72)" />
-                  <TextInput
-                    testID="auth-password-input"
-                    style={styles.lineInput}
-                    placeholder="输入密码"
-                    placeholderTextColor="rgba(150,124,110,0.68)"
-                    value={password}
-                    onChangeText={text => {
-                      clearLocalError();
-                      setPassword(text);
-                    }}
-                    secureTextEntry={!showPassword}
-                    editable={!submitting}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType={mode === 'register' ? 'next' : 'done'}
-                  />
-                  <Pressable
+              <SoftInput
+                testID="auth-password-input"
+                label="密码"
+                placeholder="输入密码"
+                value={password}
+                onChangeText={text => {
+                  clearLocalError();
+                  setPassword(text);
+                }}
+                secureTextEntry={!showPassword}
+                editable={!submitting}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType={mode === 'register' ? 'next' : 'done'}
+                leftIcon={<Icon name="lock-closed-outline" size={18} color={semanticColors.text.secondary} />}
+                rightAction={
+                  <Icon
                     testID="auth-toggle-password"
-                    style={styles.eyeBtn}
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={18}
+                    color={semanticColors.text.secondary}
                     onPress={() => setShowPassword(prev => !prev)}
-                    disabled={submitting}>
-                    <Icon
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={18}
-                      color="rgba(92,74,65,0.78)"
-                    />
-                  </Pressable>
-                </View>
-              </View>
+                  />
+                }
+              />
 
               {mode === 'register' ? (
-                <View style={[styles.fieldRow, styles.fieldRowLast]}>
-                  <Text style={styles.fieldLabel}>确认密码</Text>
-                  <View style={styles.inputLine}>
-                    <Icon name="checkmark-circle-outline" size={18} color="rgba(92,74,65,0.72)" />
-                    <TextInput
-                      testID="auth-confirm-password-input"
-                      style={styles.lineInput}
-                      placeholder="再次输入密码"
-                      placeholderTextColor="rgba(150,124,110,0.68)"
-                      value={confirmPassword}
-                      onChangeText={text => {
-                        clearLocalError();
-                        setConfirmPassword(text);
-                      }}
-                      secureTextEntry={!showConfirmPassword}
-                      editable={!submitting}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      returnKeyType="done"
-                    />
-                    <Pressable
+                <SoftInput
+                  testID="auth-confirm-password-input"
+                  label="确认密码"
+                  placeholder="再次输入密码"
+                  value={confirmPassword}
+                  onChangeText={text => {
+                    clearLocalError();
+                    setConfirmPassword(text);
+                  }}
+                  secureTextEntry={!showConfirmPassword}
+                  editable={!submitting}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  leftIcon={
+                    <Icon name="checkmark-circle-outline" size={18} color={semanticColors.text.secondary} />
+                  }
+                  rightAction={
+                    <Icon
                       testID="auth-toggle-confirm-password"
-                      style={styles.eyeBtn}
+                      name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={semanticColors.text.secondary}
                       onPress={() => setShowConfirmPassword(prev => !prev)}
-                      disabled={submitting}>
-                      <Icon
-                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={18}
-                        color="rgba(92,74,65,0.78)"
-                      />
-                    </Pressable>
-                  </View>
-                </View>
+                    />
+                  }
+                />
               ) : (
-                <View style={[styles.assistCard, styles.fieldRowLast]}>
-                  <View style={styles.assistCardHead}>
-                    <Icon name="information-circle-outline" size={16} color="#A34A3C" />
-                    <Text style={styles.assistTitle}>登录提示</Text>
+                <GlassCard style={styles.tipCard} contentStyle={styles.tipCardContent}>
+                  <View style={styles.tipRow}>
+                    <Icon name="information-circle-outline" size={18} color={semanticColors.accent.primary} />
+                    <Text style={styles.tipTitle}>登录提示</Text>
                   </View>
-                  <Text style={styles.assistText}>
-                    当前版本统一使用用户名登录，登录成功后会直接进入首页。
-                  </Text>
-                </View>
+                  <Text style={styles.tipText}>当前版本统一使用用户名登录，登录成功后会直接进入首页。</Text>
+                </GlassCard>
               )}
             </View>
 
             {resolvedError ? (
-              <View style={styles.errorCard}>
-                <Icon name="alert-circle-outline" size={16} color={VISION_THEME.feedback.danger} />
+              <View style={styles.errorRow}>
+                <Icon name="alert-circle-outline" size={16} color={semanticColors.feedback.danger} />
                 <Text style={styles.errorText}>{resolvedError}</Text>
               </View>
             ) : null}
 
-            <Pressable
+            <PrimaryButton
               testID="auth-submit-button"
-              style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+              label={submitText}
               onPress={handleSubmit}
-              disabled={submitting}>
-              {submitting ? (
-                <ActivityIndicator size="small" color="#FFF6F2" />
-              ) : (
-                <Icon
-                  name={mode === 'login' ? 'arrow-forward-outline' : 'person-add-outline'}
-                  size={16}
-                  color="#FFF6F2"
-                />
-              )}
-              <Text style={styles.primaryBtnText}>{submitText}</Text>
-            </Pressable>
+              loading={submitting}
+              disabled={submitting}
+              icon={<Icon name="arrow-forward-outline" size={17} color="#FFFFFF" />}
+            />
 
-            <View style={styles.bottomNote}>
-              <Text style={styles.bottomNoteText}>{helperText}</Text>
-            </View>
+            <Text style={styles.helperText}>{helperText}</Text>
 
             <View style={styles.switchRow}>
               <Text style={styles.switchHint}>{switchHint}</Text>
-              <Pressable
+              <Text
                 testID="auth-switch-mode-link"
-                onPress={() => onSwitchMode(mode === 'login' ? 'register' : 'login')}
-                disabled={submitting}>
-                <Text style={styles.switchLink}>{switchLabel}</Text>
-              </Pressable>
+                style={styles.switchLink}
+                onPress={() => onSwitchMode(mode === 'login' ? 'register' : 'login')}>
+                {switchLabel}
+              </Text>
             </View>
 
             <Text style={styles.metaText}>继续即表示你同意《用户服务协议》与《隐私政策》</Text>
-          </View>
+          </GlassCard>
         </ScrollView>
       </KeyboardAvoidingView>
     </LinearGradient>
@@ -352,40 +329,27 @@ export const AuthBootstrapScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <LinearGradient colors={VISION_THEME.gradients.page} style={styles.root} testID="auth-bootstrap-screen">
-      <View pointerEvents="none" style={styles.orbLayer}>
-        <View style={[styles.orb, styles.orbPrimary]} />
-        <View style={[styles.orb, styles.orbAccent]} />
-        <View style={[styles.orb, styles.orbWarm]} />
-        <View style={styles.textureDots} />
+    <LinearGradient colors={gradients.page} style={styles.root} testID="auth-bootstrap-screen">
+      <View pointerEvents="none" style={styles.backdrop}>
+        <View style={[styles.blurOrb, styles.blurOrbTop]} />
+        <View style={[styles.blurOrb, styles.blurOrbBottom]} />
       </View>
       <View
         style={[
           styles.bootstrapWrap,
           {
-            paddingTop: Math.max(insets.top, 18),
-            paddingBottom: Math.max(insets.bottom, 24),
+            paddingTop: Math.max(insets.top, 24),
+            paddingBottom: Math.max(insets.bottom, 28),
           },
         ]}>
-        <PageHero
-          image={HERO_CREATE}
-          title="正在恢复登录状态"
-          subtitle="马上进入 VisionGenie 首页"
-          variant="warm"
-          overlayStrength="normal"
-          height={148}
-        />
-
-        <View style={[styles.card, styles.bootstrapCard]}>
-          <View style={styles.sectionHead}>
-            <View style={styles.sectionIconBadge}>
-              <Icon name="sync-outline" size={14} color="#A34A3C" />
-            </View>
-            <Text style={styles.sectionTitle}>鉴权恢复中</Text>
+        <PageHeader eyebrow="Sync" title="正在恢复登录状态" subtitle="马上进入 VisionGenie 首页" />
+        <GlassCard strong>
+          <View style={styles.bootstrapCard}>
+            <ActivityIndicator size="small" color={semanticColors.accent.primary} />
+            <Text style={styles.bootstrapTitle}>鉴权恢复中</Text>
+            <Text style={styles.bootstrapText}>正在检查本地登录状态，请稍候...</Text>
           </View>
-          <ActivityIndicator size="small" color={VISION_THEME.accent.main} />
-          <Text style={styles.summaryText}>正在检查本地登录状态，请稍候...</Text>
-        </View>
+        </GlassCard>
       </View>
     </LinearGradient>
   );
@@ -402,296 +366,147 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    gap: 20,
-    paddingHorizontal: 18,
+    gap: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  blurOrb: {
+    position: 'absolute',
+    borderRadius: radius.pill,
+  },
+  blurOrbTop: {
+    width: 300,
+    height: 300,
+    right: -80,
+    top: -60,
+    backgroundColor: 'rgba(99,102,241,0.12)',
+  },
+  blurOrbBottom: {
+    width: 260,
+    height: 260,
+    left: -90,
+    bottom: '12%',
+    backgroundColor: 'rgba(56,189,248,0.12)',
+  },
+  heroBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  introBlock: {
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(248,250,252,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.92)',
+    padding: spacing.md,
+  },
+  introHead: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  introBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(79,70,229,0.08)',
+  },
+  introCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  introTitle: {
+    ...canvasText.sectionTitle,
+    color: semanticColors.text.primary,
+  },
+  introSubtitle: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+  },
+  formStack: {
+    gap: spacing.md,
+  },
+  tipCard: {
+    backgroundColor: 'rgba(248,250,252,0.92)',
+  },
+  tipCardContent: {
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  tipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  tipTitle: {
+    ...canvasText.bodyStrong,
+    color: semanticColors.text.primary,
+  },
+  tipText: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(255,241,242,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(251,207,232,0.8)',
+  },
+  errorText: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.feedback.danger,
+    flex: 1,
+  },
+  helperText: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+    textAlign: 'center',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  switchHint: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+  },
+  switchLink: {
+    ...canvasText.bodyStrong,
+    color: semanticColors.accent.primary,
+  },
+  metaText: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+    textAlign: 'center',
   },
   bootstrapWrap: {
     flex: 1,
     justifyContent: 'center',
-    gap: 16,
-    paddingHorizontal: 16,
-  },
-  headerBlock: {
-    gap: 10,
-    paddingHorizontal: 4,
-  },
-  headerCopy: {
-    gap: 10,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  brandBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(163,74,60,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(163,74,60,0.14)',
-  },
-  brandText: {
-    ...canvasText.caption,
-    color: 'rgba(122,94,82,0.84)',
-    letterSpacing: 0.8,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  pageTitle: {
-    ...canvasText.heroTitle,
-    fontSize: 34,
-    color: '#2C2623',
-  },
-  titleAccentDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 10,
-    backgroundColor: '#C86D5A',
-    shadowColor: '#D46C5D',
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    shadowOffset: {width: 0, height: 2},
-  },
-  pageSubtitle: {
-    ...canvasText.body,
-    color: 'rgba(92,74,65,0.82)',
-    lineHeight: 20,
-    maxWidth: 320,
-  },
-  card: {
-    ...cardSurfaceBlue,
-    ...glassShadow,
-    borderRadius: 28,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    gap: 16,
+    gap: spacing.lg,
+    paddingHorizontal: spacing.lg,
   },
   bootstrapCard: {
+    gap: spacing.sm,
     alignItems: 'flex-start',
   },
-  modeRail: {
-    flexDirection: 'row',
-    gap: 8,
-    padding: 4,
-    borderRadius: 18,
-    backgroundColor: 'rgba(244,235,228,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.16)',
-  },
-  modeBtn: {
-    ...canvasUi.chip,
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-  },
-  modeBtnActive: {
-    ...canvasUi.chipActive,
-    backgroundColor: 'rgba(255,248,244,0.96)',
-    borderColor: 'rgba(171,129,110,0.18)',
-  },
-  modeBtnText: {
-    ...canvasText.bodyStrong,
-    color: '#3B2F29',
-  },
-  formSummary: {
-    gap: 8,
-  },
-  sectionHead: {
-    ...canvasUi.titleWithIcon,
-  },
-  sectionIconBadge: {
-    ...canvasUi.iconBadge,
-  },
-  sectionTitle: {
+  bootstrapTitle: {
     ...canvasText.sectionTitle,
-    color: '#3B2F29',
-    flex: 1,
-    flexShrink: 1,
-    lineHeight: 22,
+    color: semanticColors.text.primary,
   },
-  summaryLead: {
+  bootstrapText: {
     ...canvasText.body,
-    color: 'rgba(92,74,65,0.76)',
-    lineHeight: 18,
-  },
-  fieldPanel: {
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,250,246,0.74)',
-    borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.2)',
-    paddingHorizontal: 16,
-    paddingTop: 6,
-  },
-  fieldRow: {
-    gap: 10,
-    paddingTop: 14,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(171,129,110,0.18)',
-  },
-  fieldRowLast: {
-    borderBottomWidth: 0,
-    paddingBottom: 14,
-  },
-  fieldLabel: {
-    ...canvasText.bodyStrong,
-    color: 'rgba(70,58,52,0.92)',
-    letterSpacing: 0.2,
-  },
-  inputLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  lineInput: {
-    flex: 1,
-    minHeight: 34,
-    paddingVertical: 6,
-    color: '#3B2F29',
-    ...canvasText.body,
-  },
-  eyeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  assistCard: {
-    gap: 8,
-    paddingTop: 16,
-  },
-  assistCardHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  assistTitle: {
-    ...canvasText.bodyStrong,
-    color: '#6E5247',
-  },
-  assistText: {
-    ...canvasText.bodyMuted,
-    color: 'rgba(109,90,80,0.8)',
-    lineHeight: 20,
-    flexShrink: 1,
-  },
-  errorCard: {
-    ...canvasUi.subtleCard,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderColor: 'rgba(195,91,99,0.22)',
-    backgroundColor: 'rgba(255,244,244,0.92)',
-  },
-  errorText: {
-    ...canvasText.body,
-    flex: 1,
-    color: VISION_THEME.feedback.danger,
-    lineHeight: 18,
-  },
-  primaryBtn: {
-    ...canvasUi.primaryButton,
-    minHeight: 52,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  primaryBtnDisabled: {
-    opacity: 0.82,
-  },
-  primaryBtnText: {
-    ...canvasText.bodyStrong,
-    color: '#FFF6F2',
-  },
-  bottomNote: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(171,129,110,0.16)',
-    paddingTop: 14,
-  },
-  bottomNoteText: {
-    ...canvasText.bodyMuted,
-    color: 'rgba(109,90,80,0.84)',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  switchHint: {
-    ...canvasText.bodyMuted,
-    color: 'rgba(109,90,80,0.84)',
-  },
-  switchLink: {
-    ...canvasText.bodyStrong,
-    color: '#A34A3C',
-  },
-  metaText: {
-    ...canvasText.bodyMuted,
-    color: 'rgba(109,90,80,0.84)',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  summaryText: {
-    ...canvasText.body,
-    color: 'rgba(76,64,56,0.9)',
-    lineHeight: 18,
-  },
-  orbLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  orb: {
-    position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.14,
-  },
-  orbPrimary: {
-    width: 380,
-    height: 380,
-    right: -120,
-    top: -110,
-    backgroundColor: '#D6A08C',
-    opacity: 0.2,
-  },
-  orbAccent: {
-    width: 320,
-    height: 320,
-    left: -130,
-    bottom: '22%',
-    backgroundColor: '#B05D50',
-    opacity: 0.1,
-  },
-  orbWarm: {
-    width: 260,
-    height: 260,
-    right: 16,
-    top: '40%',
-    backgroundColor: '#8E3C2F',
-    opacity: 0.08,
-  },
-  textureDots: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    opacity: 0.4,
+    color: semanticColors.text.secondary,
   },
 });

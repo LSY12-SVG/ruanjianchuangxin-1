@@ -16,6 +16,8 @@ import {
   type ModuleCapabilityItem,
 } from '../modules/api';
 import {PageHero} from '../components/app/PageHero';
+import {GlassCard} from '../components/ui/GlassCard';
+import {PrimaryButton} from '../components/ui/PrimaryButton';
 import {HERO_AGENT} from '../assets/design';
 import {canvasText, canvasUi, cardSurfaceViolet, glassShadow} from '../theme/canvasDesign';
 import {useAgentExecutionContextStore} from '../agent/executionContextStore';
@@ -31,6 +33,7 @@ import {
   type MissingContextGuide,
 } from '../agent/dualEntryOrchestrator';
 import {useAgentVoiceGoal} from '../agent/useAgentVoiceGoal';
+import {semanticColors} from '../theme/tokens';
 
 const QUICK_PROMPTS: Array<{
   icon: string;
@@ -357,7 +360,7 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
         overlayStrength="normal"
       />
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="compass" size={13} color="#A34A3C" />
@@ -375,34 +378,42 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
         <TextInput
           value={prompt}
           onChangeText={setPrompt}
-          style={styles.input}
+          style={[styles.input, styles.promptComposer]}
           multiline
           placeholder="例如：先自动调色，再生成3D模型并准备社区发布草稿"
           placeholderTextColor="rgba(134,112,100,0.7)"
         />
         <View style={styles.actionRow}>
-          <Pressable style={styles.primaryBtn} onPress={createPlan} disabled={loadingPlan}>
-            <Icon name="sparkles" size={15} color="#FFF6F2" />
-            <Text style={styles.primaryBtnText}>{loadingPlan ? '生成中...' : '生成计划'}</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryBtn} onPress={executePlan} disabled={!plan || loadingExecute}>
-            <Icon name="play" size={15} color="#3B2F29" />
-            <Text style={styles.secondaryBtnText}>
-              {loadingExecute
+          <PrimaryButton
+            label={loadingPlan ? '生成中...' : '生成计划'}
+            onPress={createPlan}
+            disabled={loadingPlan}
+            icon={<Icon name="sparkles-outline" size={15} color="#FFFFFF" />}
+          />
+          <PrimaryButton
+            label={
+              loadingExecute
                 ? '执行中...'
                 : executeResult?.status === 'pending_confirm'
                   ? '确认待执行'
-                  : '确认执行'}
-            </Text>
-          </Pressable>
+                  : '确认执行'
+            }
+            onPress={executePlan}
+            disabled={!plan || loadingExecute}
+            variant="secondary"
+            icon={<Icon name="play-outline" size={15} color={semanticColors.text.primary} />}
+          />
         </View>
         <View style={styles.actionRow}>
-          <Pressable style={styles.secondaryBtn} onPress={triggerQuickExecute} disabled={busy}>
-            <Icon name="flash" size={15} color="#2F2926" />
-            <Text style={styles.secondaryBtnText}>{busy ? '执行中...' : '一句话执行'}</Text>
-          </Pressable>
+          <PrimaryButton
+            label={busy ? '执行中...' : '一句话执行'}
+            onPress={triggerQuickExecute}
+            disabled={busy}
+            variant="secondary"
+            icon={<Icon name="flash-outline" size={15} color={semanticColors.text.primary} />}
+          />
           <Pressable
-            style={[styles.secondaryBtn, recording && styles.voiceBtnActive]}
+            style={[styles.secondaryBtn, styles.voiceActionBtn, recording && styles.voiceBtnActive]}
             onPressIn={onVoicePressIn}
             onPressOut={onVoicePressOut}
             disabled={busy}>
@@ -414,9 +425,9 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
           语音阶段: {toVoicePhaseText(voicePhase)}
           {liveTranscript ? ` | ${liveTranscript}` : ''}
         </Text>
-      </View>
+      </GlassCard>
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="list" size={13} color="#A34A3C" />
@@ -425,27 +436,32 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
         </View>
         <Text style={styles.metaText}>{planStatusText}</Text>
         {plan ? (
-          <View style={styles.stepWrap}>
+          <View style={styles.timelineWrap}>
             {plan.actions.map((action, index) => (
-              <View key={action.actionId} style={styles.stepCard}>
-                <View style={styles.stepHead}>
-                  <Text style={styles.stepIndex}>#{index + 1}</Text>
-                  <Text style={styles.stepDomain}>领域: {action.domain}</Text>
-                  <Text style={styles.stepOp}>操作: {action.operation}</Text>
+              <View key={action.actionId} style={styles.timelineItem}>
+                <View style={styles.timelineRail}>
+                  <View style={styles.timelineDot} />
+                  {index < plan.actions.length - 1 ? <View style={styles.timelineLine} /> : null}
                 </View>
-                <Text style={styles.stepMeta}>
-                  风险: {toRiskText(action.riskLevel)} | 需确认:{' '}
-                  {action.requiresConfirmation ? '是' : '否'}
-                </Text>
+                <View style={styles.stepCard}>
+                  <View style={styles.stepHead}>
+                    <Text style={styles.stepIndex}>步骤 {index + 1}</Text>
+                    <Text style={styles.stepOp}>{action.operation}</Text>
+                  </View>
+                  <Text style={styles.stepDomain}>领域 {action.domain}</Text>
+                  <Text style={styles.stepMeta}>
+                    风险 {toRiskText(action.riskLevel)} · 需确认 {action.requiresConfirmation ? '是' : '否'}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
         ) : (
           <Text style={styles.metaText}>生成计划后会展示步骤</Text>
         )}
-      </View>
+      </GlassCard>
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="checkmark-done" size={13} color="#A34A3C" />
@@ -461,7 +477,7 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
           </View>
         ) : null}
         {executeResult ? (
-          <View style={styles.stepWrap}>
+          <View style={styles.timelineWrap}>
             <Text style={styles.metaText}>状态: {toResultStatusText(executeResult.status)}</Text>
             {resultSummaryText ? <Text style={styles.metaText}>{resultSummaryText}</Text> : null}
             {workflowProgressText ? (
@@ -483,15 +499,21 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
                 <Text style={styles.stepMeta}>{executeResult.pageSummary}</Text>
               </View>
             ) : null}
-            {executeResult.actionResults.map(result => (
-              <View key={result.action.actionId} style={styles.stepCard}>
-                <Text style={styles.stepDomain}>
-                  领域: {result.action.domain} · 操作: {result.action.operation}
-                </Text>
-                <Text style={styles.stepMeta}>
-                  {toActionStatusText(result.status)} {result.errorCode ? `（${result.errorCode}）` : ''}
-                </Text>
-                <Text style={styles.stepMeta}>{result.message}</Text>
+            {executeResult.actionResults.map((result, index) => (
+              <View key={result.action.actionId} style={styles.timelineItem}>
+                <View style={styles.timelineRail}>
+                  <View style={styles.timelineDot} />
+                  {index < executeResult.actionResults.length - 1 ? <View style={styles.timelineLine} /> : null}
+                </View>
+                <View style={styles.stepCard}>
+                  <Text style={styles.stepDomain}>
+                    {result.action.domain} · {result.action.operation}
+                  </Text>
+                  <Text style={styles.stepMeta}>
+                    {toActionStatusText(result.status)} {result.errorCode ? `（${result.errorCode}）` : ''}
+                  </Text>
+                  <Text style={styles.stepMeta}>{result.message}</Text>
+                </View>
               </View>
             ))}
           </View>
@@ -500,18 +522,18 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
         )}
         {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
         {missingContextGuides[0] ? (
-          <Pressable
-            style={styles.secondaryBtn}
-            onPress={() => onNavigateTab(missingContextGuides[0].targetTab)}>
-            <Icon name="arrow-forward-circle" size={15} color="#2F2926" />
-            <Text style={styles.secondaryBtnText}>{toJumpButtonText(missingContextGuides[0])}</Text>
-          </Pressable>
+          <PrimaryButton
+            label={toJumpButtonText(missingContextGuides[0])}
+            onPress={() => onNavigateTab(missingContextGuides[0].targetTab)}
+            variant="secondary"
+            icon={<Icon name="arrow-forward-circle-outline" size={15} color={semanticColors.text.primary} />}
+          />
         ) : null}
         <Text style={styles.metaText}>
           严格模式: {agentCapability?.strictMode ? '开启' : '未知'} | 认证:{' '}
           {agentCapability?.auth?.required ? 'JWT' : '无'}
         </Text>
-      </View>
+      </GlassCard>
     </ScrollView>
   );
 };
@@ -522,7 +544,6 @@ const styles = StyleSheet.create({
   card: {
     ...cardSurfaceViolet,
     ...glassShadow,
-    padding: 14,
     gap: 12,
   },
   sectionTitle: {
@@ -537,13 +558,16 @@ const styles = StyleSheet.create({
   },
   input: {
     ...canvasUi.input,
-    borderRadius: 13,
+    borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingVertical: 14,
     minHeight: 90,
     textAlignVertical: 'top',
     color: '#2F2926',
     ...canvasText.body,
+  },
+  promptComposer: {
+    minHeight: 132,
   },
   quickChipRow: {
     gap: 8,
@@ -582,11 +606,14 @@ const styles = StyleSheet.create({
   secondaryBtn: {
     ...canvasUi.secondaryButton,
     flex: 1,
-    minHeight: 42,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 6,
+  },
+  voiceActionBtn: {
+    borderRadius: 20,
   },
   voiceBtnActive: {
     opacity: 0.84,
@@ -595,8 +622,30 @@ const styles = StyleSheet.create({
     ...canvasText.bodyStrong,
     color: '#2F2926',
   },
-  stepWrap: {
-    gap: 9,
+  timelineWrap: {
+    gap: 10,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+  },
+  timelineRail: {
+    width: 18,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: semanticColors.accent.primary,
+    marginTop: 12,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    marginTop: 6,
+    backgroundColor: 'rgba(203,213,225,0.8)',
   },
   progressWrap: {
     flexDirection: 'row',
@@ -618,8 +667,9 @@ const styles = StyleSheet.create({
   },
   stepCard: {
     ...canvasUi.subtleCard,
-    borderRadius: 14,
-    padding: 11,
+    flex: 1,
+    borderRadius: 20,
+    padding: 14,
     gap: 5,
   },
   stepHead: {

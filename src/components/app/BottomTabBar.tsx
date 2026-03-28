@@ -2,6 +2,8 @@ import React, {useMemo, useRef} from 'react';
 import {Animated, Easing, Pressable, StyleSheet, Text, View} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import {canvasText, glassShadow} from '../../theme/canvasDesign';
+import {radius} from '../../theme/radius';
+import {semanticColors} from '../../theme/tokens';
 import {VISION_THEME} from '../../theme/visionTheme';
 
 export type AppTabKey = 'create' | 'model' | 'agent' | 'community' | 'profile';
@@ -85,7 +87,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
                   <Icon
                     name={tab.icon}
                     size={18}
-                    color={active ? '#FFF4EF' : 'rgba(213,195,186,0.9)'}
+                    color={active ? '#FFFFFF' : semanticColors.text.secondary}
                   />
                 </View>
                 <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
@@ -105,9 +107,9 @@ const styles = StyleSheet.create({
   },
   tabBar: {
     ...glassShadow,
-    borderRadius: 22,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(177,125,110,0.38)',
+    borderColor: 'rgba(226,232,240,0.92)',
     backgroundColor: VISION_THEME.surface.nav,
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -117,7 +119,7 @@ const styles = StyleSheet.create({
   item: {
     width: '100%',
     minHeight: 56,
-    borderRadius: 15,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 6,
@@ -126,12 +128,12 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   itemActive: {
-    backgroundColor: '#A34A3C',
-    borderColor: '#BE6B5B',
+    backgroundColor: semanticColors.accent.primary,
+    borderColor: 'transparent',
   },
   itemActiveOutline: {
-    borderColor: '#BE6B5B',
-    backgroundColor: 'rgba(163,74,60,0.18)',
+    borderColor: semanticColors.border.focus,
+    backgroundColor: 'rgba(79,70,229,0.1)',
   },
   iconWrap: {
     width: 20,
@@ -141,7 +143,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...canvasText.caption,
-    color: 'rgba(213,195,186,0.9)',
+    color: semanticColors.text.secondary,
     marginTop: 2,
     lineHeight: 14,
     includeFontPadding: false,
@@ -150,7 +152,7 @@ const styles = StyleSheet.create({
     minWidth: 34,
   },
   labelActive: {
-    color: '#FFF4EF',
+    color: '#FFFFFF',
     fontWeight: '800',
   },
 });

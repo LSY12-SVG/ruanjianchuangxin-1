@@ -35,9 +35,13 @@ import {
 import {ApiRequestError} from '../modules/api/http';
 import type {InterpretResponse, VoiceAudioReadyPayload} from '../voice/types';
 import {PageHero} from '../components/app/PageHero';
+import {GlassCard} from '../components/ui/GlassCard';
+import {PrimaryButton} from '../components/ui/PrimaryButton';
+import {SegmentedControl} from '../components/ui/SegmentedControl';
 import {HERO_CREATE} from '../assets/design';
 import {canvasText, canvasUi, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
 import {buildPreviewColorMatrix} from '../colorEngine/previewColorMatrix';
+import {semanticColors} from '../theme/tokens';
 
 type CreateMode = 'voice' | 'pro';
 type VoiceInputPhase = 'idle' | 'listening' | 'parsing' | 'error';
@@ -673,20 +677,22 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
         overlayStrength="normal"
       />
 
-      <View style={styles.modeRow}>
-        <Pressable
-          onPress={() => setMode('voice')}
-          style={[styles.modeBtn, mode === 'voice' && styles.modeBtnActive]}>
-          <Icon name="mic" size={15} color="#3B2F29" />
-          <Text style={styles.modeBtnText}>语音</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setMode('pro')}
-          style={[styles.modeBtn, mode === 'pro' && styles.modeBtnActive]}>
-          <Icon name="options" size={15} color="#3B2F29" />
-          <Text style={styles.modeBtnText}>专业</Text>
-        </Pressable>
-      </View>
+      <SegmentedControl
+        value={mode}
+        onChange={setMode}
+        options={[
+          {
+            value: 'voice',
+            label: '语音',
+            icon: <Icon name="mic-outline" size={16} color={semanticColors.text.secondary} />,
+          },
+          {
+            value: 'pro',
+            label: '专业',
+            icon: <Icon name="sparkles-outline" size={16} color={semanticColors.text.secondary} />,
+          },
+        ]}
+      />
 
       <View style={styles.toolsRow}>
         <Pressable style={styles.toolChip} onPress={() => setShowPresets(prev => !prev)}>
@@ -737,7 +743,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
         </View>
       ) : null}
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         {!selectedImage?.success ? (
           <View style={styles.uploadWrap}>
             <View style={styles.sectionHead}>
@@ -746,15 +752,23 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
               </View>
               <Text style={styles.uploadTitle}>上传图片开始调色</Text>
             </View>
+            <View style={styles.dropzone}>
+              <Icon name="cloud-upload-outline" size={34} color={semanticColors.accent.primary} />
+              <Text style={styles.dropzoneTitle}>点击导入图片，开始 AI 调色</Text>
+              <Text style={styles.dropzoneHint}>支持相册选择或拍照导入，上传后即可语音精修或进入专业模式。</Text>
+            </View>
             <View style={styles.actionRow}>
-              <Pressable style={styles.primaryBtn} onPress={() => pickFromGallery()}>
-                <Icon name="images" size={16} color="#FFF6F2" />
-                <Text style={styles.primaryBtnText}>相册选择</Text>
-              </Pressable>
-              <Pressable style={styles.secondaryBtn} onPress={() => pickFromCamera()}>
-                <Icon name="camera" size={16} color="#3B2F29" />
-                <Text style={styles.secondaryBtnText}>拍照导入</Text>
-              </Pressable>
+              <PrimaryButton
+                label="相册选择"
+                onPress={() => pickFromGallery()}
+                icon={<Icon name="images-outline" size={16} color="#FFFFFF" />}
+              />
+              <PrimaryButton
+                label="拍照导入"
+                onPress={() => pickFromCamera()}
+                variant="secondary"
+                icon={<Icon name="camera-outline" size={16} color={semanticColors.text.primary} />}
+              />
             </View>
           </View>
         ) : (
@@ -774,21 +788,25 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
               {useSkiaPreview ? '当前预览已应用调色参数' : '当前预览为原图'}
             </Text>
             <View style={styles.previewActions}>
-              <Pressable style={styles.primaryBtn} onPress={runInitialSuggest} disabled={loading}>
-                <Icon name="sparkles" size={16} color="#FFF6F2" />
-                <Text style={styles.primaryBtnText}>{loading ? '处理中...' : 'AI首轮'}</Text>
-              </Pressable>
-              <Pressable style={styles.secondaryBtn} onPress={clearImage}>
-                <Icon name="refresh" size={16} color="#3B2F29" />
-                <Text style={styles.secondaryBtnText}>重选</Text>
-              </Pressable>
+              <PrimaryButton
+                label={loading ? '处理中...' : 'AI 首轮'}
+                onPress={runInitialSuggest}
+                disabled={loading}
+                icon={<Icon name="sparkles-outline" size={16} color="#FFFFFF" />}
+              />
+              <PrimaryButton
+                label="重选"
+                onPress={clearImage}
+                variant="secondary"
+                icon={<Icon name="refresh-outline" size={16} color={semanticColors.text.primary} />}
+              />
             </View>
           </View>
         )}
-      </View>
+      </GlassCard>
 
       {mode === 'voice' ? (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
               <Icon name="mic" size={13} color="#A34A3C" />
@@ -796,7 +814,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
             <Text style={styles.sectionTitle}>语音精修</Text>
           </View>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.commandInput]}
             placeholder="例如：高光降低一点，肤色自然"
             placeholderTextColor="rgba(150,124,110,0.74)"
             value={voiceText}
@@ -815,24 +833,25 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
               onPressOut={handleVoicePressOut}
               disabled={loading}>
               <Icon
-                name={recording ? 'stop-circle' : 'mic'}
+                name={recording ? 'radio-button-on-outline' : 'mic-outline'}
                 size={16}
-                color={recording ? '#2A0A11' : '#FFF6F2'}
+                color="#FFFFFF"
               />
               <Text style={styles.primaryBtnText}>{recording ? '松开结束' : '按住说话'}</Text>
             </Pressable>
-            <Pressable
-              style={styles.secondaryBtn}
+            <PrimaryButton
+              label="文本执行"
               onPress={() => runVoiceRefine(voiceText)}
-              disabled={!voiceText.trim() || loading}>
-              <Text style={styles.secondaryBtnText}>文本执行</Text>
-            </Pressable>
+              disabled={!voiceText.trim() || loading}
+              variant="secondary"
+              icon={<Icon name="flash-outline" size={16} color={semanticColors.text.primary} />}
+            />
           </View>
           <Text style={styles.metaText}>按住说话，松开后自动执行语音精修</Text>
           <Text style={styles.metaText}>语音阶段: {voicePhase}</Text>
-        </View>
+        </GlassCard>
       ) : (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
               <Icon name="options" size={13} color="#A34A3C" />
@@ -865,29 +884,37 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
             );
           })}
           <View style={styles.actionRow}>
-            <Pressable style={styles.primaryBtn} onPress={() => runAutoGrade('fast')} disabled={loading}>
-              <Icon name="flash" size={16} color="#FFF6F2" />
-              <Text style={styles.primaryBtnText}>Pro 首版</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={() => runAutoGrade('refine')} disabled={loading}>
-              <Icon name="build" size={16} color="#3B2F29" />
-              <Text style={styles.secondaryBtnText}>Pro 精修</Text>
-            </Pressable>
+            <PrimaryButton
+              label="Pro 首版"
+              onPress={() => runAutoGrade('fast')}
+              disabled={loading}
+              icon={<Icon name="flash-outline" size={16} color="#FFFFFF" />}
+            />
+            <PrimaryButton
+              label="Pro 精修"
+              onPress={() => runAutoGrade('refine')}
+              disabled={loading}
+              variant="secondary"
+              icon={<Icon name="build-outline" size={16} color={semanticColors.text.primary} />}
+            />
           </View>
-          <Pressable style={styles.secondaryBtn} onPress={runSegmentation} disabled={loading}>
-            <Icon name="grid" size={16} color="#3B2F29" />
-            <Text style={styles.secondaryBtnText}>分区摘要</Text>
-          </Pressable>
+          <PrimaryButton
+            label="分区摘要"
+            onPress={runSegmentation}
+            disabled={loading}
+            variant="secondary"
+            icon={<Icon name="grid-outline" size={16} color={semanticColors.text.primary} />}
+          />
           {segmentationSummary ? (
             <View style={styles.summaryCard}>
               <Text style={styles.summaryTitle}>分割摘要</Text>
               <Text style={styles.summaryText}>{segmentationSummary}</Text>
             </View>
           ) : null}
-        </View>
+        </GlassCard>
       )}
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="checkmark-done" size={13} color="#A34A3C" />
@@ -899,7 +926,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
         <Text style={styles.metaText}>
           严格模式: {colorCapability?.strictMode ? 'ON' : 'UNKNOWN'} | Provider: {colorCapability?.provider || '-'}
         </Text>
-      </View>
+      </GlassCard>
     </ScrollView>
   );
 };
@@ -952,13 +979,12 @@ const styles = StyleSheet.create({
   card: {
     ...cardSurfaceBlue,
     ...glassShadow,
-    padding: 14,
     gap: 12,
   },
   uploadWrap: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 12,
-    paddingVertical: 10,
+    paddingVertical: 4,
   },
   uploadTitle: {
     ...canvasText.sectionTitle,
@@ -971,9 +997,9 @@ const styles = StyleSheet.create({
   },
   previewFrame: {
     width: '100%',
-    borderRadius: 14,
+    borderRadius: 22,
     overflow: 'hidden',
-    backgroundColor: '#E7D7CC',
+    backgroundColor: 'rgba(241,245,249,0.95)',
   },
   previewActions: {
     flexDirection: 'row',
@@ -1006,21 +1032,24 @@ const styles = StyleSheet.create({
   },
   input: {
     ...canvasUi.input,
-    borderRadius: 13,
+    borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 11,
-    color: '#3B2F29',
+    paddingVertical: 14,
+    color: semanticColors.text.primary,
     ...canvasText.body,
   },
+  commandInput: {
+    minHeight: 72,
+  },
   liveDialog: {
-    borderRadius: 12,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.24)',
-    backgroundColor: 'rgba(247,239,234,0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(248,250,252,0.95)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     gap: 6,
-    minHeight: 68,
+    minHeight: 88,
   },
   liveDialogLabel: {
     ...canvasText.bodyStrong,
@@ -1054,7 +1083,7 @@ const styles = StyleSheet.create({
   primaryBtn: {
     ...canvasUi.primaryButton,
     flex: 1,
-    minHeight: 42,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -1062,28 +1091,14 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     ...canvasText.bodyStrong,
-    color: '#FFF6F2',
-  },
-  secondaryBtn: {
-    ...canvasUi.secondaryButton,
-    flex: 1,
-    minHeight: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    gap: 6,
-  },
-  secondaryBtnText: {
-    ...canvasText.bodyStrong,
-    color: '#3B2F29',
+    color: '#FFFFFF',
   },
   warnBtn: {
-    ...canvasUi.dangerButton,
+    opacity: 0.9,
   },
   summaryCard: {
     ...canvasUi.subtleCard,
-    borderRadius: 14,
+    borderRadius: 20,
     padding: 11,
     gap: 7,
   },
@@ -1103,7 +1118,30 @@ const styles = StyleSheet.create({
   },
   metaText: {
     ...canvasText.bodyMuted,
-    color: 'rgba(109,90,80,0.84)',
+    color: semanticColors.text.secondary,
+  },
+  dropzone: {
+    minHeight: 176,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(165,180,252,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 22,
+    paddingVertical: 20,
+  },
+  dropzoneTitle: {
+    ...canvasText.bodyStrong,
+    color: semanticColors.text.primary,
+    textAlign: 'center',
+  },
+  dropzoneHint: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+    textAlign: 'center',
   },
 });
 

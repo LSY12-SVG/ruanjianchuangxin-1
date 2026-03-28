@@ -19,8 +19,11 @@ import {
 } from '../modules/api';
 import {HERO_COMMUNITY} from '../assets/design';
 import {PageHero} from '../components/app/PageHero';
+import {GlassCard} from '../components/ui/GlassCard';
+import {SegmentedControl} from '../components/ui/SegmentedControl';
 import {recordCommunityHistory} from '../services/communityHistory';
 import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
+import {semanticColors} from '../theme/tokens';
 
 type CommunityView = 'feed' | 'detail';
 type CommunityFilter = 'all' | 'portrait' | 'cinema' | 'vintage';
@@ -179,22 +182,42 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
     });
   }, [feed, searchQuery]);
 
+  const feedColumns = useMemo(() => {
+    const left: CommunityPost[] = [];
+    const right: CommunityPost[] = [];
+    displayedFeed.forEach((item, index) => {
+      (index % 2 === 0 ? left : right).push(item);
+    });
+    return [left, right];
+  }, [displayedFeed]);
+
   const renderPostImages = (post: CommunityPost) => {
     const previewImages = getPostPreviewImages(post);
     if (!previewImages.length) {
-      return null;
+      return (
+        <View style={styles.postImageFallback}>
+          <Text style={styles.postImageFallbackTag}>
+            #{post.tags?.[0] || 'community'}
+          </Text>
+          <Text numberOfLines={2} style={styles.postImageFallbackTitle}>
+            {post.title}
+          </Text>
+        </View>
+      );
     }
 
     return (
       <View style={styles.postImageStrip}>
-        {previewImages.map((uri, index) => (
-          <Image
-            key={`${post.id}-${uri}-${index}`}
-            source={{uri}}
-            style={styles.postImage}
-            resizeMode="cover"
-          />
-        ))}
+        <Image source={{uri: previewImages[0]}} style={styles.postImage} resizeMode="cover" />
+        {previewImages.length > 1 ? (
+          <>
+            <Image source={{uri: previewImages[1]}} style={styles.postImageThumb} resizeMode="cover" />
+            <View style={styles.compareBadge}>
+              <Icon name="copy-outline" size={11} color="#FFFFFF" />
+              <Text style={styles.compareBadgeText}>前后对比</Text>
+            </View>
+          </>
+        ) : null}
       </View>
     );
   };
@@ -228,7 +251,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             </View>
           </View>
 
-          <View style={styles.card}>
+          <GlassCard style={styles.card}>
             {showSearch ? (
               <TextInput
                 style={styles.searchInput}
@@ -250,73 +273,76 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
               <Text style={styles.hotBadge}>NEW</Text>
             </View>
 
-            <View style={styles.filterRow}>
-              {FILTERS.map(item => (
-                <Pressable
-                  key={item.key}
-                  style={[styles.filterBtn, filter === item.key && styles.filterBtnActive]}
-                  onPress={() => setFilter(item.key)}>
-                  <Text style={styles.filterBtnText}>{item.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <SegmentedControl
+              value={filter}
+              onChange={setFilter}
+              options={FILTERS.map(item => ({value: item.key, label: item.label}))}
+            />
 
             {loadingFeed ? <Text style={styles.metaText}>加载中...</Text> : null}
 
-            {displayedFeed.map(post => (
-              <Pressable
-                key={post.id}
-                testID={`community-post-${post.id}`}
-                style={styles.postCard}
-                onPress={() => openDetail(post)}>
-                <View style={styles.postHead}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{post.author.name?.slice(0, 1) || '?'}</Text>
-                  </View>
-                  <View style={styles.postMetaWrap}>
-                    <Text style={styles.postAuthor}>{post.author.name || '匿名用户'}</Text>
-                    <Text style={styles.postTime}>{post.updatedAt}</Text>
-                  </View>
-                  <Pressable onPress={() => toggleSave(post)} style={styles.iconBtn}>
-                    <Icon
-                      name={post.isSaved ? 'bookmark' : 'bookmark-outline'}
-                      size={16}
-                      color={post.isSaved ? '#A46A34' : '#2F2926'}
-                    />
-                  </Pressable>
-                </View>
-                <Text style={styles.postTitle}>{post.title}</Text>
-                <Text numberOfLines={2} style={styles.postContent}>
-                  {post.content}
-                </Text>
-                {renderPostImages(post)}
-                <View style={styles.tagRow}>
-                  {(post.tags || []).map(tag => (
-                    <Text key={`${post.id}-${tag}`} style={styles.tag}>
-                      #{tag}
-                    </Text>
+            <View style={styles.feedColumns}>
+              {feedColumns.map((column, columnIndex) => (
+                <View key={`column-${columnIndex}`} style={styles.feedColumn}>
+                  {column.map(post => (
+                    <Pressable
+                      key={post.id}
+                      testID={`community-post-${post.id}`}
+                      style={styles.postCard}
+                      onPress={() => openDetail(post)}>
+                      {renderPostImages(post)}
+                      <View style={styles.postCardBody}>
+                        <View style={styles.postHead}>
+                          <View style={styles.avatar}>
+                            <Text style={styles.avatarText}>{post.author.name?.slice(0, 1) || '?'}</Text>
+                          </View>
+                          <View style={styles.postMetaWrap}>
+                            <Text style={styles.postAuthor}>{post.author.name || '匿名用户'}</Text>
+                            <Text style={styles.postTime}>{post.updatedAt}</Text>
+                          </View>
+                          <Pressable onPress={() => toggleSave(post)} style={styles.iconBtn}>
+                            <Icon
+                              name={post.isSaved ? 'bookmark' : 'bookmark-outline'}
+                              size={16}
+                              color={post.isSaved ? semanticColors.accent.primary : semanticColors.text.secondary}
+                            />
+                          </Pressable>
+                        </View>
+                        <Text style={styles.postTitle}>{post.title}</Text>
+                        <Text numberOfLines={2} style={styles.postContent}>
+                          {post.content}
+                        </Text>
+                        <View style={styles.tagRow}>
+                          {(post.tags || []).slice(0, 2).map(tag => (
+                            <Text key={`${post.id}-${tag}`} style={styles.tag}>
+                              #{tag}
+                            </Text>
+                          ))}
+                        </View>
+                        <View style={styles.postActions}>
+                          <Pressable style={styles.inlineAction} onPress={() => toggleLike(post)}>
+                            <Icon
+                              name={post.isLiked ? 'heart' : 'heart-outline'}
+                              size={14}
+                              color={post.isLiked ? semanticColors.feedback.danger : semanticColors.text.secondary}
+                            />
+                            <Text style={styles.inlineActionText}>{post.likesCount}</Text>
+                          </Pressable>
+                          <View style={styles.inlineAction}>
+                            <Icon name="chatbubble-outline" size={14} color={semanticColors.text.secondary} />
+                            <Text style={styles.inlineActionText}>{post.commentsCount}</Text>
+                          </View>
+                          <View style={styles.inlineAction}>
+                            <Icon name="bookmark-outline" size={14} color={semanticColors.text.secondary} />
+                            <Text style={styles.inlineActionText}>{post.savesCount}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </Pressable>
                   ))}
                 </View>
-                <View style={styles.postActions}>
-                  <Pressable style={styles.inlineAction} onPress={() => toggleLike(post)}>
-                    <Icon
-                      name={post.isLiked ? 'heart' : 'heart-outline'}
-                      size={14}
-                      color={post.isLiked ? '#C35B63' : '#2F2926'}
-                    />
-                    <Text style={styles.inlineActionText}>{post.likesCount}</Text>
-                  </Pressable>
-                  <View style={styles.inlineAction}>
-                    <Icon name="chatbubble-outline" size={14} color="#2F2926" />
-                    <Text style={styles.inlineActionText}>{post.commentsCount}</Text>
-                  </View>
-                  <View style={styles.inlineAction}>
-                    <Icon name="bookmark-outline" size={14} color="#2F2926" />
-                    <Text style={styles.inlineActionText}>{post.savesCount}</Text>
-                  </View>
-                </View>
-              </Pressable>
-            ))}
+              ))}
+            </View>
 
             {!displayedFeed.length && !loadingFeed ? (
               <Text style={styles.metaText}>没有匹配内容</Text>
@@ -333,12 +359,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
                 </Text>
               </Pressable>
             ) : null}
-          </View>
+          </GlassCard>
         </>
       ) : null}
 
       {view === 'detail' && selectedPost ? (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <Pressable style={styles.backBtn} onPress={() => setView('feed')}>
             <Icon name="arrow-back" size={16} color="#2F2926" />
             <Text style={styles.backBtnText}>返回动态</Text>
@@ -396,10 +422,10 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
               {submittingComment ? '提交中...' : '发布评论'}
             </Text>
           </Pressable>
-        </View>
+        </GlassCard>
       ) : null}
 
-      <View style={styles.card}>
+      <GlassCard style={styles.card}>
         <View style={styles.sectionHead}>
           <View style={styles.sectionIconBadge}>
             <Icon name="pulse-outline" size={13} color="#A34A3C" />
@@ -412,7 +438,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
           {communityCapability?.auth?.required ? 'JWT' : 'none'}
         </Text>
         {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
-      </View>
+      </GlassCard>
     </ScrollView>
   );
 };
@@ -441,7 +467,6 @@ const styles = StyleSheet.create({
   card: {
     ...cardSurfaceWarm,
     ...glassShadow,
-    padding: 14,
     gap: 12,
   },
   searchInput: {
@@ -504,6 +529,15 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: 'wrap',
   },
+  feedColumns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+  feedColumn: {
+    flex: 1,
+    gap: 14,
+  },
   filterBtn: {
     ...canvasUi.chip,
     minHeight: 32,
@@ -520,10 +554,15 @@ const styles = StyleSheet.create({
     color: '#2F2926',
   },
   postCard: {
-    ...canvasUi.subtleCard,
-    borderRadius: 14,
-    padding: 11,
-    gap: 9,
+    overflow: 'hidden',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(226,232,240,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+  },
+  postCardBody: {
+    gap: 8,
+    padding: 13,
   },
   postHead: {
     flexDirection: 'row',
@@ -559,45 +598,88 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(228,208,197,0.8)',
+    backgroundColor: 'rgba(241,245,249,0.95)',
   },
   postTitle: {
     ...canvasText.sectionTitle,
     color: '#2F2926',
-    fontSize: 14,
+    fontSize: 17,
+    lineHeight: 22,
   },
   postContent: {
     ...canvasText.body,
-    color: 'rgba(78,64,56,0.9)',
-    lineHeight: 18,
+    color: semanticColors.text.secondary,
+    lineHeight: 21,
   },
   postImageStrip: {
-    flexDirection: 'row',
-    gap: 8,
+    position: 'relative',
   },
   postImage: {
-    flex: 1,
-    height: 118,
-    borderRadius: 12,
-    backgroundColor: 'rgba(243,233,227,0.9)',
+    width: '100%',
+    height: 212,
+    backgroundColor: 'rgba(241,245,249,0.95)',
+  },
+  postImageThumb: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    width: 64,
+    height: 84,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(241,245,249,0.95)',
+  },
+  postImageFallback: {
+    height: 212,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(224,242,254,0.9)',
+  },
+  postImageFallbackTag: {
+    ...canvasText.caption,
+    color: semanticColors.accent.primary,
+  },
+  postImageFallbackTitle: {
+    ...canvasText.sectionTitle,
+    color: semanticColors.text.primary,
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  compareBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.56)',
+  },
+  compareBadgeText: {
+    ...canvasText.caption,
+    color: '#FFFFFF',
   },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 5,
   },
   tag: {
     ...canvasText.caption,
-    color: '#9A5A43',
-    backgroundColor: 'rgba(163,74,60,0.12)',
+    color: semanticColors.text.secondary,
+    backgroundColor: 'rgba(241,245,249,0.95)',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 999,
   },
   postActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   inlineAction: {
     flexDirection: 'row',
