@@ -227,6 +227,45 @@ const createCommunityRepository = db => {
     };
   };
 
+  const getPostById = async (userId, postId) => {
+    const normalizedUserId = normalizeUserId(userId);
+    if (normalizedUserId) {
+      await ensureUser(normalizedUserId);
+    }
+    const readUserId = normalizedUserId || '__guest__';
+
+    const rows = await db.query(
+      `
+      SELECT
+        p.*,
+        u.display_name,
+        u.avatar_url,
+        EXISTS(
+          SELECT 1 FROM community_post_likes l
+          WHERE l.post_id = p.id AND l.user_id = ?
+        ) AS is_liked,
+        EXISTS(
+          SELECT 1 FROM community_post_saves s
+          WHERE s.post_id = p.id AND s.user_id = ?
+        ) AS is_saved
+      FROM community_posts p
+      JOIN community_users u ON u.id = p.author_id
+      WHERE p.id = ?
+      LIMIT 1
+    `,
+      [readUserId, readUserId, Number(postId)],
+    );
+
+    const row = rows[0] || null;
+    if (!row) {
+      return null;
+    }
+    if (row.status !== 'published' && row.author_id !== normalizedUserId) {
+      return null;
+    }
+    return toPostView(row);
+  };
+
   const getMyPosts = async (userId, {status, size, offset, page}) => {
     const normalizedUserId = normalizeUserId(userId);
     await ensureUser(normalizedUserId);
@@ -586,6 +625,7 @@ const createCommunityRepository = db => {
     updateDraft,
     publishDraft,
     getFeed,
+    getPostById,
     getMyPosts,
     getLikedPosts,
     getSavedPosts,

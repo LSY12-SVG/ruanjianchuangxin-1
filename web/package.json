@@ -1,0 +1,20 @@
+{
+  "name": "visiongenie-community-web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev --port 4020",
+    "build": "next build",
+    "start": "next start --port 4020"
+  },
+  "dependencies": {
+    "eslint-config-next": "^16.2.0",
+    "next": "^15.5.14",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "25.5.0",
+    "@types/react": "19.2.14"
+  }
+}

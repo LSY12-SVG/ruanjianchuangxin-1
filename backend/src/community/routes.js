@@ -109,6 +109,21 @@ const createCommunityRouter = ({
     }
   });
 
+  router.get('/posts/:id', optionalAuthMiddleware, async (req, res) => {
+    const userId = resolveUserId(req) || 'guest';
+    try {
+      const post = await repo.getPostById(userId, req.params.id);
+      if (!post) {
+        sendRouteError(res, 404, 'post_not_found');
+        return;
+      }
+      res.json(post);
+    } catch (error) {
+      console.error('[community] post detail failed', error);
+      sendRouteError(res, 500, 'failed_to_fetch_post');
+    }
+  });
+
   router.get('/me/posts', authMiddleware, async (req, res) => {
     const userId = resolveUserId(req);
     const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);
