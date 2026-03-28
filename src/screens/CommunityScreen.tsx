@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +19,7 @@ import {
 } from '../modules/api';
 import {HERO_COMMUNITY} from '../assets/design';
 import {PageHero} from '../components/app/PageHero';
+import {recordCommunityHistory} from '../services/communityHistory';
 import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
 
 type CommunityView = 'feed' | 'detail';
@@ -29,6 +31,9 @@ const FILTERS: Array<{key: CommunityFilter; label: string}> = [
   {key: 'cinema', label: '电影感'},
   {key: 'vintage', label: '复古'},
 ];
+
+const getPostPreviewImages = (post: CommunityPost): string[] =>
+  [post.beforeUrl, post.afterUrl].filter(Boolean);
 
 interface CommunityScreenProps {
   capabilities: ModuleCapabilityItem[];
@@ -102,6 +107,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
     setComments([]);
     setCommentText('');
     setView('detail');
+    recordCommunityHistory(post).catch(() => undefined);
     await loadComments(post.id);
   };
 
@@ -173,6 +179,26 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
     });
   }, [feed, searchQuery]);
 
+  const renderPostImages = (post: CommunityPost) => {
+    const previewImages = getPostPreviewImages(post);
+    if (!previewImages.length) {
+      return null;
+    }
+
+    return (
+      <View style={styles.postImageStrip}>
+        {previewImages.map((uri, index) => (
+          <Image
+            key={`${post.id}-${uri}-${index}`}
+            source={{uri}}
+            style={styles.postImage}
+            resizeMode="cover"
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <PageHero
@@ -238,7 +264,11 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
             {loadingFeed ? <Text style={styles.metaText}>加载中...</Text> : null}
 
             {displayedFeed.map(post => (
-              <Pressable key={post.id} style={styles.postCard} onPress={() => openDetail(post)}>
+              <Pressable
+                key={post.id}
+                testID={`community-post-${post.id}`}
+                style={styles.postCard}
+                onPress={() => openDetail(post)}>
                 <View style={styles.postHead}>
                   <View style={styles.avatar}>
                     <Text style={styles.avatarText}>{post.author.name?.slice(0, 1) || '?'}</Text>
@@ -259,6 +289,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
                 <Text numberOfLines={2} style={styles.postContent}>
                   {post.content}
                 </Text>
+                {renderPostImages(post)}
                 <View style={styles.tagRow}>
                   {(post.tags || []).map(tag => (
                     <Text key={`${post.id}-${tag}`} style={styles.tag}>
@@ -315,6 +346,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
 
           <Text style={styles.postTitle}>{selectedPost.title}</Text>
           <Text style={styles.postContent}>{selectedPost.content}</Text>
+          {renderPostImages(selectedPost)}
 
           <View style={styles.postActions}>
             <Pressable style={styles.inlineAction} onPress={() => toggleLike(selectedPost)}>
@@ -538,6 +570,16 @@ const styles = StyleSheet.create({
     ...canvasText.body,
     color: 'rgba(78,64,56,0.9)',
     lineHeight: 18,
+  },
+  postImageStrip: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  postImage: {
+    flex: 1,
+    height: 118,
+    borderRadius: 12,
+    backgroundColor: 'rgba(243,233,227,0.9)',
   },
   tagRow: {
     flexDirection: 'row',

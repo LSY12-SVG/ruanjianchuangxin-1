@@ -83,4 +83,25 @@ describe('AuthScreen', () => {
       password: 'secret123',
     });
   });
+
+  it('does not render legacy secure access copy in the simplified header', async () => {
+    let renderer: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <AuthScreen
+          mode="login"
+          submitting={false}
+          errorMessage=""
+          onSubmitLogin={jest.fn()}
+          onSubmitRegister={jest.fn()}
+          onSwitchMode={jest.fn()}
+        />,
+      );
+    });
+
+    const text = JSON.stringify(renderer!.toJSON());
+    expect(text).not.toContain('Secure Access');
+    expect(text).not.toContain('Fresh Start');
+  });
 });

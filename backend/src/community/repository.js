@@ -266,6 +266,90 @@ const createCommunityRepository = db => {
     };
   };
 
+  const getRecentPostsByRelation = async (
+    userId,
+    {size, offset, page},
+    relationTable,
+    relationAlias,
+    relationColumn,
+  ) => {
+    const normalizedUserId = normalizeUserId(userId);
+    await ensureUser(normalizedUserId);
+    const totalRows = await db.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM ${relationTable} r
+      JOIN community_posts p ON p.id = r.post_id
+      WHERE r.user_id = ? AND p.status = 'published'
+    `,
+      [normalizedUserId],
+    );
+    const total = Number(totalRows[0]?.total || 0);
+
+    const rows = await db.query(
+      `
+      SELECT
+        p.*,
+        u.display_name,
+        u.avatar_url,
+        EXISTS(
+          SELECT 1 FROM community_post_likes l
+          WHERE l.post_id = p.id AND l.user_id = ?
+        ) AS is_liked,
+        EXISTS(
+          SELECT 1 FROM community_post_saves s
+          WHERE s.post_id = p.id AND s.user_id = ?
+        ) AS is_saved,
+        r.created_at AS ${relationAlias}
+      FROM ${relationTable} r
+      JOIN community_posts p ON p.id = r.post_id
+      JOIN community_users u ON u.id = p.author_id
+      WHERE r.user_id = ? AND p.status = 'published'
+      ORDER BY r.created_at DESC, p.published_at DESC, p.created_at DESC
+      LIMIT ? OFFSET ?
+    `,
+      [normalizedUserId, normalizedUserId, normalizedUserId, size, offset],
+    );
+
+    return {
+      items: rows.map(row =>
+        toPostView({
+          ...row,
+          is_liked:
+            relationColumn === 'liked'
+              ? 1
+              : row.is_liked,
+          is_saved:
+            relationColumn === 'saved'
+              ? 1
+              : row.is_saved,
+        }),
+      ),
+      page,
+      size,
+      total,
+      hasMore: offset + size < total,
+    };
+  };
+
+  const getLikedPosts = async (userId, pagination) =>
+    getRecentPostsByRelation(
+      userId,
+      pagination,
+      'community_post_likes',
+      'liked_at',
+      'liked',
+    );
+
+  const getSavedPosts = async (userId, pagination) =>
+    getRecentPostsByRelation(
+      userId,
+      pagination,
+      'community_post_saves',
+      'saved_at',
+      'saved',
+    );
+
   const countPublishedByAuthorIdentity = async ({userId, username}) => {
     const candidates = [normalizeUserId(userId), normalizeUserId(username)].filter(Boolean);
     const uniqueCandidates = Array.from(new Set(candidates));
@@ -503,6 +587,8 @@ const createCommunityRepository = db => {
     publishDraft,
     getFeed,
     getMyPosts,
+    getLikedPosts,
+    getSavedPosts,
     countPublishedByAuthorIdentity,
     toggleLike,
     toggleSave,

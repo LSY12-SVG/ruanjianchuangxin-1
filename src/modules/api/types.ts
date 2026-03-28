@@ -203,6 +203,10 @@ export interface CommunityPost {
   updatedAt: string;
 }
 
+export interface CommunityHistoryPost extends CommunityPost {
+  viewedAt: string;
+}
+
 export interface CommunityComment {
   id: string;
   postId: string;

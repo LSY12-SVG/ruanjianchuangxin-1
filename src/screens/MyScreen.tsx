@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,12 +12,28 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import {HERO_COMMUNITY} from '../assets/design';
 import {PageHero} from '../components/app/PageHero';
+import {useImagePicker, type ImagePickerResult} from '../hooks/useImagePicker';
 import {useMyProfileQuery} from '../hooks/queries/useMyProfileQuery';
-import {communityApi, formatApiErrorMessage, type CommunityPost} from '../modules/api';
+import {
+  communityApi,
+  formatApiErrorMessage,
+  type CommunityHistoryPost,
+  type CommunityPost,
+} from '../modules/api';
 import {hasAuthToken} from '../profile/api';
+import {listCommunityHistory} from '../services/communityHistory';
 import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
 
-type MyContentMode = 'drafts' | 'published';
+type MyActivityMode = 'history' | 'saved' | 'liked' | 'published';
+type ImageSlotKey = 'before' | 'after';
+type ActivityFeedItem = CommunityPost | CommunityHistoryPost;
+
+const QUICK_ACTIONS: Array<{key: MyActivityMode; label: string; icon: string}> = [
+  {key: 'history', label: '历史记录', icon: 'time-outline'},
+  {key: 'saved', label: '我的收藏', icon: 'star-outline'},
+  {key: 'liked', label: '最近点赞', icon: 'heart-outline'},
+  {key: 'published', label: '已发布', icon: 'albums-outline'},
+];
 
 const parseTags = (raw: string): string[] =>
   raw
@@ -25,20 +42,30 @@ const parseTags = (raw: string): string[] =>
     .filter(Boolean)
     .slice(0, 12);
 
+const getPostPreviewImages = (post: ActivityFeedItem): string[] =>
+  [post.beforeUrl, post.afterUrl].filter(Boolean);
+
 export const MyScreen: React.FC = () => {
   const profileQuery = useMyProfileQuery();
-  const [contentMode, setContentMode] = useState<MyContentMode>('drafts');
+  const [activeMode, setActiveMode] = useState<MyActivityMode>('history');
   const [drafts, setDrafts] = useState<CommunityPost[]>([]);
   const [publishedPosts, setPublishedPosts] = useState<CommunityPost[]>([]);
+  const [likedPosts, setLikedPosts] = useState<CommunityPost[]>([]);
+  const [savedPosts, setSavedPosts] = useState<CommunityPost[]>([]);
+  const [historyPosts, setHistoryPosts] = useState<CommunityHistoryPost[]>([]);
   const [editingDraftId, setEditingDraftId] = useState('');
   const [draftTitle, setDraftTitle] = useState('');
   const [draftContent, setDraftContent] = useState('');
   const [draftTagsInput, setDraftTagsInput] = useState('');
-  const [draftBeforeUrl, setDraftBeforeUrl] = useState('');
-  const [draftAfterUrl, setDraftAfterUrl] = useState('');
+  const [beforeImage, setBeforeImage] = useState<ImagePickerResult | null>(null);
+  const [afterImage, setAfterImage] = useState<ImagePickerResult | null>(null);
+  const [beforeImageUrl, setBeforeImageUrl] = useState('');
+  const [afterImageUrl, setAfterImageUrl] = useState('');
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingActivity, setLoadingActivity] = useState(false);
   const [submittingDraft, setSubmittingDraft] = useState(false);
   const [publishingDraft, setPublishingDraft] = useState(false);
+  const [uploadingSlot, setUploadingSlot] = useState<ImageSlotKey | ''>('');
   const [errorText, setErrorText] = useState('');
 
   const profile = profileQuery.data?.profile || null;
@@ -46,31 +73,80 @@ export const MyScreen: React.FC = () => {
   const settings = profileQuery.data?.settings || null;
   const accountReady = hasAuthToken();
 
+  const beforePicker = useImagePicker({
+    onImageSelected: image => {
+      setBeforeImage(image);
+      setErrorText('');
+    },
+    onImageError: message => setErrorText(message),
+  });
+  const afterPicker = useImagePicker({
+    onImageSelected: image => {
+      setAfterImage(image);
+      setErrorText('');
+    },
+    onImageError: message => setErrorText(message),
+  });
+
+  const clearSlot = useCallback(
+    (slot: ImageSlotKey) => {
+      if (slot === 'before') {
+        setBeforeImage(null);
+        setBeforeImageUrl('');
+        beforePicker.clearImage();
+        return;
+      }
+      setAfterImage(null);
+      setAfterImageUrl('');
+      afterPicker.clearImage();
+    },
+    [afterPicker, beforePicker],
+  );
+
   const resetDraftForm = useCallback(() => {
     setEditingDraftId('');
     setDraftTitle('');
     setDraftContent('');
     setDraftTagsInput('');
-    setDraftBeforeUrl('');
-    setDraftAfterUrl('');
-  }, []);
+    clearSlot('before');
+    clearSlot('after');
+  }, [clearSlot]);
 
-  const fillDraftForm = useCallback((post: CommunityPost) => {
-    setEditingDraftId(post.id);
-    setDraftTitle(post.title);
-    setDraftContent(post.content);
-    setDraftTagsInput((post.tags || []).join(','));
-    setDraftBeforeUrl(post.beforeUrl || '');
-    setDraftAfterUrl(post.afterUrl || '');
-    setContentMode('drafts');
-  }, []);
+  const fillDraftForm = useCallback(
+    (post: CommunityPost) => {
+      setEditingDraftId(post.id);
+      setDraftTitle(post.title);
+      setDraftContent(post.content);
+      setDraftTagsInput((post.tags || []).join(','));
+      setBeforeImage(null);
+      setAfterImage(null);
+      setBeforeImageUrl(post.beforeUrl || '');
+      setAfterImageUrl(post.afterUrl || '');
+      beforePicker.clearImage();
+      afterPicker.clearImage();
+    },
+    [afterPicker, beforePicker],
+  );
 
   const applyPostPatch = useCallback((postId: string, patch: Partial<CommunityPost>) => {
     setDrafts(prev => prev.map(item => (item.id === postId ? {...item, ...patch} : item)));
     setPublishedPosts(prev => prev.map(item => (item.id === postId ? {...item, ...patch} : item)));
+    setLikedPosts(prev => prev.map(item => (item.id === postId ? {...item, ...patch} : item)));
+    setSavedPosts(prev => prev.map(item => (item.id === postId ? {...item, ...patch} : item)));
+    setHistoryPosts(prev => prev.map(item => (item.id === postId ? {...item, ...patch} : item)));
+  }, []);
+
+  const loadHistoryPosts = useCallback(async () => {
+    const items = await listCommunityHistory();
+    setHistoryPosts(items);
   }, []);
 
   const loadMyPosts = useCallback(async () => {
+    if (!accountReady) {
+      setDrafts([]);
+      setPublishedPosts([]);
+      return;
+    }
     setLoadingPosts(true);
     try {
       const [draftResult, publishedResult] = await Promise.all([
@@ -85,37 +161,137 @@ export const MyScreen: React.FC = () => {
     } finally {
       setLoadingPosts(false);
     }
-  }, []);
+  }, [accountReady]);
+
+  const loadMyActivity = useCallback(async () => {
+    setLoadingActivity(true);
+    try {
+      const historyPromise = loadHistoryPosts();
+      if (!accountReady) {
+        await historyPromise;
+        setLikedPosts([]);
+        setSavedPosts([]);
+        setErrorText('');
+        return;
+      }
+
+      const [likedResult, savedResult] = await Promise.all([
+        communityApi.getLikedPosts(1, 12),
+        communityApi.getSavedPosts(1, 12),
+        historyPromise,
+      ]);
+      setLikedPosts(likedResult.items);
+      setSavedPosts(savedResult.items);
+      setErrorText('');
+    } catch (error) {
+      setErrorText(formatApiErrorMessage(error, '最近活动加载失败'));
+    } finally {
+      setLoadingActivity(false);
+    }
+  }, [accountReady, loadHistoryPosts]);
+
+  useEffect(() => {
+    loadHistoryPosts().catch(() => undefined);
+  }, [loadHistoryPosts]);
 
   useEffect(() => {
     if (!accountReady) {
       return;
     }
     loadMyPosts().catch(() => undefined);
-  }, [accountReady, loadMyPosts]);
+    loadMyActivity().catch(() => undefined);
+  }, [accountReady, loadMyActivity, loadMyPosts]);
 
-  const saveDraft = async () => {
+  const refreshAll = async () => {
+    try {
+      await Promise.all([profileQuery.refetch(), loadMyPosts(), loadMyActivity()]);
+      setErrorText('');
+    } catch (error) {
+      setErrorText(formatApiErrorMessage(error, '页面刷新失败'));
+    }
+  };
+
+  const pickImageForSlot = async (slot: ImageSlotKey) => {
+    setErrorText('');
+    const picker = slot === 'before' ? beforePicker : afterPicker;
+    const result = await picker.pickFromGallery();
+    if (!result.success && result.error && result.error !== '用户取消了选择') {
+      setErrorText(result.error);
+    }
+  };
+
+  const uploadImageIfNeeded = async (
+    slot: ImageSlotKey,
+    localImage: ImagePickerResult | null,
+    currentUrl: string,
+  ): Promise<string> => {
+    if (!localImage?.uri) {
+      return currentUrl;
+    }
+
+    try {
+      setUploadingSlot(slot);
+      const uploaded = await communityApi.uploadPostImage({
+        uri: localImage.uri,
+        name: localImage.fileName || `${slot}-image.jpg`,
+        type: localImage.type || 'image/jpeg',
+      });
+      if (slot === 'before') {
+        setBeforeImage(null);
+        beforePicker.clearImage();
+        setBeforeImageUrl(uploaded.url);
+      } else {
+        setAfterImage(null);
+        afterPicker.clearImage();
+        setAfterImageUrl(uploaded.url);
+      }
+      return uploaded.url;
+    } catch (error) {
+      const message = formatApiErrorMessage(error, '图片上传失败');
+      setErrorText(message);
+      Alert.alert('图片上传失败', message);
+      throw error;
+    } finally {
+      setUploadingSlot('');
+    }
+  };
+
+  const persistDraft = async (): Promise<CommunityPost | null> => {
     if (!draftTitle.trim()) {
       setErrorText('标题不能为空');
-      return;
+      return null;
     }
+
+    const nextBeforeUrl = await uploadImageIfNeeded('before', beforeImage, beforeImageUrl);
+    const nextAfterUrl = await uploadImageIfNeeded('after', afterImage, afterImageUrl);
+    const payload = {
+      title: draftTitle.trim(),
+      content: draftContent.trim(),
+      tags: parseTags(draftTagsInput),
+      beforeUrl: nextBeforeUrl,
+      afterUrl: nextAfterUrl,
+    };
+
+    const saved = editingDraftId
+      ? await communityApi.updateDraft(editingDraftId, payload)
+      : await communityApi.createDraft(payload);
+
+    setDrafts(prev => [saved, ...prev.filter(item => item.id !== saved.id)]);
+    setEditingDraftId(saved.id);
+    setBeforeImageUrl(saved.beforeUrl || '');
+    setAfterImageUrl(saved.afterUrl || '');
+    applyPostPatch(saved.id, saved);
+    setErrorText('');
+    return saved;
+  };
+
+  const saveDraft = async () => {
     try {
       setSubmittingDraft(true);
-      const payload = {
-        title: draftTitle.trim(),
-        content: draftContent.trim(),
-        tags: parseTags(draftTagsInput),
-        beforeUrl: draftBeforeUrl.trim(),
-        afterUrl: draftAfterUrl.trim(),
-      };
-      const saved = editingDraftId
-        ? await communityApi.updateDraft(editingDraftId, payload)
-        : await communityApi.createDraft(payload);
-      setDrafts(prev => [saved, ...prev.filter(item => item.id !== saved.id)]);
-      applyPostPatch(saved.id, saved);
-      setEditingDraftId(saved.id);
-      setContentMode('drafts');
-      setErrorText('');
+      const saved = await persistDraft();
+      if (!saved) {
+        return;
+      }
       Alert.alert('草稿已保存', '你可以继续编辑，或直接发布到社区。');
     } catch (error) {
       const message = formatApiErrorMessage(error, '草稿保存失败');
@@ -127,17 +303,18 @@ export const MyScreen: React.FC = () => {
   };
 
   const publishDraft = async () => {
-    if (!editingDraftId) {
-      setErrorText('请先保存草稿');
-      return;
-    }
     try {
       setPublishingDraft(true);
-      const published = await communityApi.publishDraft(editingDraftId);
-      setDrafts(prev => prev.filter(item => item.id !== editingDraftId));
+      const savedDraft = await persistDraft();
+      if (!savedDraft) {
+        return;
+      }
+      const published = await communityApi.publishDraft(savedDraft.id);
+      setDrafts(prev => prev.filter(item => item.id !== savedDraft.id));
       setPublishedPosts(prev => [published, ...prev.filter(item => item.id !== published.id)]);
+      applyPostPatch(published.id, published);
       resetDraftForm();
-      setContentMode('published');
+      setActiveMode('published');
       setErrorText('');
       Alert.alert('发布成功', '帖子已经发布到社区动态。');
     } catch (error) {
@@ -151,21 +328,122 @@ export const MyScreen: React.FC = () => {
 
   const profileHeaderText = useMemo(() => {
     if (!profile) {
-      return '登录后查看个人资料与发帖记录';
+      return '登录后查看个人资料、收藏和浏览记录';
     }
-    return `${profile.displayName || profile.username} · ${profile.tier}`;
+    return `用户名：${profile.username}`;
   }, [profile]);
 
-  const postList = contentMode === 'drafts' ? drafts : publishedPosts;
-  const postListTitle = contentMode === 'drafts' ? '我的草稿' : '已发布内容';
+  const activityItems = useMemo<ActivityFeedItem[]>(() => {
+    if (activeMode === 'liked') {
+      return likedPosts;
+    }
+    if (activeMode === 'saved') {
+      return savedPosts;
+    }
+    if (activeMode === 'published') {
+      return publishedPosts;
+    }
+    return historyPosts;
+  }, [activeMode, historyPosts, likedPosts, publishedPosts, savedPosts]);
+
+  const activityTitle = useMemo(() => {
+    if (activeMode === 'liked') {
+      return '最近点赞';
+    }
+    if (activeMode === 'saved') {
+      return '我的收藏';
+    }
+    if (activeMode === 'published') {
+      return '已发布内容';
+    }
+    return '历史记录';
+  }, [activeMode]);
+
+  const activityEmptyText = useMemo(() => {
+    if (activeMode === 'liked') {
+      return '还没有点赞过帖子。';
+    }
+    if (activeMode === 'saved') {
+      return '还没有收藏过帖子。';
+    }
+    if (activeMode === 'published') {
+      return '还没有已发布内容。';
+    }
+    return '还没有浏览记录，去社区看看吧。';
+  }, [activeMode]);
+
   const saveDraftText = editingDraftId ? '更新草稿' : '保存草稿';
+  const beforePreviewUri = beforeImage?.uri || beforeImageUrl;
+  const afterPreviewUri = afterImage?.uri || afterImageUrl;
+
+  const renderImageSlot = (
+    slot: ImageSlotKey,
+    label: string,
+    previewUri: string,
+    picking: boolean,
+  ) => (
+    <View style={styles.imageSlotCard}>
+      <View style={styles.imageSlotHead}>
+        <Text style={styles.imageSlotLabel}>{label}</Text>
+        {uploadingSlot === slot ? <Text style={styles.imageSlotMeta}>上传中...</Text> : null}
+      </View>
+      {previewUri ? (
+        <Image source={{uri: previewUri}} style={styles.imagePreview} resizeMode="cover" />
+      ) : (
+        <View style={styles.imagePlaceholder}>
+          <Icon name="image-outline" size={22} color="rgba(120,98,88,0.72)" />
+          <Text style={styles.imagePlaceholderText}>从相册选择图片</Text>
+        </View>
+      )}
+      <View style={styles.imageSlotActions}>
+        <Pressable
+          testID={`my-pick-${slot}-image-button`}
+          style={styles.secondaryBtn}
+          onPress={() => pickImageForSlot(slot)}
+          disabled={picking || submittingDraft || publishingDraft}>
+          <Icon name="images-outline" size={15} color="#2F2926" />
+          <Text style={styles.secondaryBtnText}>
+            {picking ? '选择中...' : previewUri ? '替换图片' : '选择图片'}
+          </Text>
+        </Pressable>
+        <Pressable
+          testID={`my-remove-${slot}-image-button`}
+          style={styles.secondaryBtn}
+          onPress={() => clearSlot(slot)}
+          disabled={!previewUri || submittingDraft || publishingDraft}>
+          <Icon name="trash-outline" size={15} color="#2F2926" />
+          <Text style={styles.secondaryBtnText}>移除</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  const renderPostImages = (post: ActivityFeedItem) => {
+    const previewImages = getPostPreviewImages(post);
+    if (!previewImages.length) {
+      return null;
+    }
+
+    return (
+      <View style={styles.postImageStrip}>
+        {previewImages.map((uri, index) => (
+          <Image
+            key={`${post.id}-${uri}-${index}`}
+            source={{uri}}
+            style={styles.postImage}
+            resizeMode="cover"
+          />
+        ))}
+      </View>
+    );
+  };
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <PageHero
         image={HERO_COMMUNITY}
         title="我的"
-        subtitle="查看账号信息，管理草稿与已发布内容"
+        subtitle="查看个人资料、收藏与浏览记录，也能继续发帖和管理内容"
         variant="editorial"
         overlayStrength="normal"
       />
@@ -175,18 +453,16 @@ export const MyScreen: React.FC = () => {
           <View style={styles.sectionIconBadge}>
             <Icon name="person-circle-outline" size={13} color="#A34A3C" />
           </View>
-          <Text style={styles.sectionTitle}>账号概览</Text>
+          <Text style={styles.sectionTitle}>个人主页</Text>
         </View>
 
         {!accountReady ? (
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>尚未登录</Text>
-            <Text style={styles.metaText}>请先登录后再查看个人资料和发帖内容。</Text>
+            <Text style={styles.metaText}>请先登录后再查看账号信息、点赞收藏和发帖记录。</Text>
           </View>
-        ) : null}
-
-        {accountReady ? (
-          <View style={styles.profileCard}>
+        ) : (
+          <View style={styles.profileShell}>
             <View style={styles.profileHead}>
               <View style={styles.avatarBadge}>
                 <Text style={styles.avatarBadgeText}>
@@ -194,11 +470,20 @@ export const MyScreen: React.FC = () => {
                 </Text>
               </View>
               <View style={styles.profileCopy}>
-                <Text style={styles.profileName}>{profile?.displayName || '加载中...'}</Text>
+                <View style={styles.profileNameRow}>
+                  <Text style={styles.profileName}>{profile?.displayName || '加载中...'}</Text>
+                  <View style={styles.tierBadge}>
+                    <Text style={styles.tierBadgeText}>
+                      {profile?.tier?.includes('Pro') ? 'PRO' : 'USER'}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={styles.profileMeta}>{profileHeaderText}</Text>
-                <Text style={styles.profileMeta}>账号：{profile?.username || 'VisionGenie 用户'}</Text>
+                <Text style={styles.profileMeta}>
+                  社区通知：{settings?.communityNotify ? '已开启' : '已关闭'}
+                </Text>
               </View>
-              <Pressable style={styles.inlineRefreshBtn} onPress={() => profileQuery.refetch()}>
+              <Pressable style={styles.inlineRefreshBtn} onPress={refreshAll}>
                 <Icon name="sync-outline" size={15} color="#2F2926" />
               </Pressable>
             </View>
@@ -215,19 +500,136 @@ export const MyScreen: React.FC = () => {
             <View style={styles.statGrid}>
               <View style={styles.statChip}>
                 <Text style={styles.statValue}>{stats?.communityPostsCount ?? 0}</Text>
-                <Text style={styles.statLabel}>社区发布</Text>
+                <Text style={styles.statLabel}>已发布</Text>
               </View>
               <View style={styles.statChip}>
-                <Text style={styles.statValue}>{stats?.modelTasksCount ?? 0}</Text>
-                <Text style={styles.statLabel}>建模任务</Text>
+                <Text style={styles.statValue}>{likedPosts.length}</Text>
+                <Text style={styles.statLabel}>最近点赞</Text>
               </View>
               <View style={styles.statChip}>
-                <Text style={styles.statValue}>{settings?.communityNotify ? 'ON' : 'OFF'}</Text>
-                <Text style={styles.statLabel}>社区通知</Text>
+                <Text style={styles.statValue}>{savedPosts.length}</Text>
+                <Text style={styles.statLabel}>最近收藏</Text>
+              </View>
+              <View style={styles.statChip}>
+                <Text style={styles.statValue}>{historyPosts.length}</Text>
+                <Text style={styles.statLabel}>历史记录</Text>
               </View>
             </View>
           </View>
+        )}
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="grid-outline" size={13} color="#A34A3C" />
+          </View>
+          <Text style={styles.sectionTitle}>快捷入口</Text>
+        </View>
+        <View style={styles.quickActionRow}>
+          {QUICK_ACTIONS.map(item => (
+            <Pressable
+              key={item.key}
+              style={[styles.quickActionCard, activeMode === item.key && styles.quickActionCardActive]}
+              onPress={() => setActiveMode(item.key)}>
+              <View style={styles.quickActionIconWrap}>
+                <Icon
+                  name={item.icon}
+                  size={18}
+                  color={activeMode === item.key ? '#A34A3C' : '#6B5B52'}
+                />
+              </View>
+              <Text style={styles.quickActionLabel}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.topControlRow}>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon
+                name={
+                  activeMode === 'history'
+                    ? 'time-outline'
+                    : activeMode === 'saved'
+                      ? 'star-outline'
+                      : activeMode === 'liked'
+                        ? 'heart-outline'
+                        : 'albums-outline'
+                }
+                size={13}
+                color="#A34A3C"
+              />
+            </View>
+            <Text style={styles.sectionTitle}>{activityTitle}</Text>
+          </View>
+          <Pressable style={styles.inlineRefreshBtn} onPress={loadMyActivity}>
+            <Icon name="sync-outline" size={15} color="#2F2926" />
+          </Pressable>
+        </View>
+
+        <Text style={styles.metaText}>
+          {activeMode === 'history'
+            ? '这里会记录你最近浏览过的社区帖子。'
+            : activeMode === 'saved'
+              ? '收藏过的帖子会集中展示在这里。'
+              : activeMode === 'liked'
+                ? '你最近点赞过的帖子会出现在这里。'
+                : '这里展示你已经公开发布到社区的内容。'}
+        </Text>
+
+        {loadingActivity ? <Text style={styles.metaText}>加载中...</Text> : null}
+        {!loadingActivity && activityItems.length === 0 ? (
+          <Text style={styles.metaText}>{activityEmptyText}</Text>
         ) : null}
+
+        {activityItems.map(item => (
+          <View key={`${activeMode}-${item.id}`} style={styles.activityCard}>
+            <View style={styles.postCardHead}>
+              <View style={styles.postTextWrap}>
+                <Text style={styles.postTitle}>{item.title}</Text>
+                <Text style={styles.postMeta}>
+                  {activeMode === 'history'
+                    ? `最近浏览 ${'viewedAt' in item ? item.viewedAt : item.updatedAt}`
+                    : activeMode === 'liked'
+                      ? `来自 ${item.author.name || '社区作者'}`
+                      : activeMode === 'saved'
+                        ? `收藏自 ${item.author.name || '社区作者'}`
+                        : `发布时间 ${item.updatedAt}`}
+                </Text>
+              </View>
+              <View style={styles.activityBadge}>
+                <Text style={styles.activityBadgeText}>
+                  {activeMode === 'history'
+                    ? '记录'
+                    : activeMode === 'liked'
+                      ? '点赞'
+                      : activeMode === 'saved'
+                        ? '收藏'
+                        : '发布'}
+                </Text>
+              </View>
+            </View>
+            <Text numberOfLines={2} style={styles.postContent}>
+              {item.content}
+            </Text>
+            {renderPostImages(item)}
+            <View style={styles.tagRow}>
+              {(item.tags || []).map(tag => (
+                <Text key={`${item.id}-${tag}`} style={styles.tag}>
+                  #{tag}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.postMetricRow}>
+              <Text style={styles.postMetricText}>点赞 {item.likesCount}</Text>
+              <Text style={styles.postMetricText}>评论 {item.commentsCount}</Text>
+              <Text style={styles.postMetricText}>收藏 {item.savesCount}</Text>
+            </View>
+          </View>
+        ))}
       </View>
 
       <View style={styles.card}>
@@ -238,7 +640,7 @@ export const MyScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>发帖管理</Text>
         </View>
         <Text style={styles.metaText}>
-          在这里保存草稿、继续编辑，并将内容发布到社区动态。
+          在这里保存草稿、继续编辑，并将内容发布到社区动态。支持单图或 before/after 双图发布。
         </Text>
 
         <TextInput
@@ -263,29 +665,18 @@ export const MyScreen: React.FC = () => {
           placeholder="标签，逗号分隔"
           placeholderTextColor="rgba(134,112,100,0.7)"
         />
-        <TextInput
-          style={styles.input}
-          value={draftBeforeUrl}
-          onChangeText={setDraftBeforeUrl}
-          placeholder="beforeUrl（可选）"
-          placeholderTextColor="rgba(134,112,100,0.7)"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          value={draftAfterUrl}
-          onChangeText={setDraftAfterUrl}
-          placeholder="afterUrl（可选）"
-          placeholderTextColor="rgba(134,112,100,0.7)"
-          autoCapitalize="none"
-        />
+
+        <View style={styles.imageSlotGrid}>
+          {renderImageSlot('before', '前图（可选）', beforePreviewUri, beforePicker.isLoading)}
+          {renderImageSlot('after', '后图（可选）', afterPreviewUri, afterPicker.isLoading)}
+        </View>
 
         <View style={styles.actionRow}>
           <Pressable
             testID="my-save-draft-button"
             style={styles.primaryBtn}
             onPress={saveDraft}
-            disabled={submittingDraft}>
+            disabled={submittingDraft || uploadingSlot !== ''}>
             <Icon name="save-outline" size={15} color="#FFF6F2" />
             <Text style={styles.primaryBtnText}>
               {submittingDraft ? '保存中...' : saveDraftText}
@@ -295,7 +686,7 @@ export const MyScreen: React.FC = () => {
             testID="my-publish-draft-button"
             style={styles.secondaryBtn}
             onPress={publishDraft}
-            disabled={publishingDraft}>
+            disabled={publishingDraft || uploadingSlot !== ''}>
             <Icon name="paper-plane-outline" size={15} color="#2F2926" />
             <Text style={styles.secondaryBtnText}>
               {publishingDraft ? '发布中...' : '发布到社区'}
@@ -308,7 +699,7 @@ export const MyScreen: React.FC = () => {
             <Icon name="refresh-outline" size={15} color="#2F2926" />
             <Text style={styles.secondaryBtnText}>清空</Text>
           </Pressable>
-          <Pressable style={styles.secondaryBtn} onPress={() => loadMyPosts()} disabled={loadingPosts}>
+          <Pressable style={styles.secondaryBtn} onPress={loadMyPosts} disabled={loadingPosts}>
             <Icon name="sync-outline" size={15} color="#2F2926" />
             <Text style={styles.secondaryBtnText}>{loadingPosts ? '刷新中...' : '刷新列表'}</Text>
           </Pressable>
@@ -319,51 +710,35 @@ export const MyScreen: React.FC = () => {
         <View style={styles.topControlRow}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
-              <Icon name="albums-outline" size={13} color="#A34A3C" />
+              <Icon name="document-text-outline" size={13} color="#A34A3C" />
             </View>
-            <Text style={styles.sectionTitle}>{postListTitle}</Text>
+            <Text style={styles.sectionTitle}>我的草稿</Text>
           </View>
-          <View style={styles.modeRow}>
-            <Pressable
-              testID="my-mode-drafts"
-              style={[styles.modeBtn, contentMode === 'drafts' && styles.modeBtnActive]}
-              onPress={() => setContentMode('drafts')}>
-              <Text style={styles.modeBtnText}>草稿</Text>
-            </Pressable>
-            <Pressable
-              testID="my-mode-published"
-              style={[styles.modeBtn, contentMode === 'published' && styles.modeBtnActive]}
-              onPress={() => setContentMode('published')}>
-              <Text style={styles.modeBtnText}>已发布</Text>
-            </Pressable>
+          <View style={styles.pillBadge}>
+            <Text style={styles.pillBadgeText}>{drafts.length}</Text>
           </View>
         </View>
 
         {loadingPosts ? <Text style={styles.metaText}>加载中...</Text> : null}
-        {!loadingPosts && postList.length === 0 ? (
-          <Text style={styles.metaText}>
-            {contentMode === 'drafts' ? '还没有草稿，先写一篇吧。' : '还没有已发布内容。'}
-          </Text>
+        {!loadingPosts && drafts.length === 0 ? (
+          <Text style={styles.metaText}>还没有草稿，先写一篇吧。</Text>
         ) : null}
 
-        {postList.map(post => (
-          <View key={post.id} style={styles.postCard}>
+        {drafts.map(post => (
+          <View key={post.id} style={styles.activityCard}>
             <View style={styles.postCardHead}>
               <View style={styles.postTextWrap}>
                 <Text style={styles.postTitle}>{post.title}</Text>
-                <Text style={styles.postMeta}>
-                  {contentMode === 'drafts' ? '草稿' : '已发布'} · 更新时间 {post.updatedAt}
-                </Text>
+                <Text style={styles.postMeta}>草稿 · 更新时间 {post.updatedAt}</Text>
               </View>
-              {contentMode === 'drafts' ? (
-                <Pressable style={styles.inlineRefreshBtn} onPress={() => fillDraftForm(post)}>
-                  <Icon name="create-outline" size={15} color="#2F2926" />
-                </Pressable>
-              ) : null}
+              <Pressable style={styles.inlineRefreshBtn} onPress={() => fillDraftForm(post)}>
+                <Icon name="create-outline" size={15} color="#2F2926" />
+              </Pressable>
             </View>
             <Text numberOfLines={2} style={styles.postContent}>
               {post.content}
             </Text>
+            {renderPostImages(post)}
             <View style={styles.tagRow}>
               {(post.tags || []).map(tag => (
                 <Text key={`${post.id}-${tag}`} style={styles.tag}>
@@ -407,6 +782,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...canvasText.sectionTitle,
     color: '#2F2926',
+    flexShrink: 1,
   },
   infoCard: {
     ...canvasUi.subtleCard,
@@ -418,11 +794,11 @@ const styles = StyleSheet.create({
     ...canvasText.bodyStrong,
     color: '#2F2926',
   },
-  profileCard: {
+  profileShell: {
     ...canvasUi.subtleCard,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 12,
-    gap: 12,
+    gap: 14,
   },
   profileHead: {
     flexDirection: 'row',
@@ -430,9 +806,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   avatarBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 18,
+    width: 56,
+    height: 56,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#A34A3C',
@@ -440,15 +816,33 @@ const styles = StyleSheet.create({
   avatarBadgeText: {
     ...canvasText.bodyStrong,
     color: '#FFF6F2',
-    fontSize: 18,
+    fontSize: 22,
   },
   profileCopy: {
     flex: 1,
-    gap: 2,
+    gap: 4,
+  },
+  profileNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   profileName: {
     ...canvasText.sectionTitle,
     color: '#2F2926',
+    flexShrink: 1,
+  },
+  tierBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#FFE5D8',
+  },
+  tierBadgeText: {
+    ...canvasText.caption,
+    color: '#A34A3C',
+    fontSize: 10,
   },
   profileMeta: {
     ...canvasText.bodyMuted,
@@ -464,11 +858,12 @@ const styles = StyleSheet.create({
   },
   statGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   statChip: {
     ...canvasUi.subtleCard,
-    flex: 1,
+    width: '48%',
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 8,
@@ -484,6 +879,44 @@ const styles = StyleSheet.create({
     ...canvasText.caption,
     color: 'rgba(110,90,80,0.82)',
   },
+  quickActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  quickActionCard: {
+    ...canvasUi.subtleCard,
+    width: '47.5%',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickActionCardActive: {
+    borderWidth: 1,
+    borderColor: 'rgba(163,74,60,0.18)',
+    backgroundColor: 'rgba(255,245,240,0.92)',
+  },
+  quickActionIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(250,233,225,0.9)',
+  },
+  quickActionLabel: {
+    ...canvasText.bodyStrong,
+    color: '#2F2926',
+    fontSize: 14,
+  },
+  topControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   input: {
     ...canvasUi.input,
     borderRadius: 13,
@@ -495,6 +928,54 @@ const styles = StyleSheet.create({
   multiline: {
     minHeight: 90,
     textAlignVertical: 'top',
+  },
+  imageSlotGrid: {
+    gap: 10,
+  },
+  imageSlotCard: {
+    ...canvasUi.subtleCard,
+    borderRadius: 16,
+    padding: 12,
+    gap: 10,
+  },
+  imageSlotHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  imageSlotLabel: {
+    ...canvasText.bodyStrong,
+    color: '#2F2926',
+  },
+  imageSlotMeta: {
+    ...canvasText.caption,
+    color: '#A34A3C',
+  },
+  imagePlaceholder: {
+    height: 120,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(171,129,110,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,250,246,0.72)',
+  },
+  imagePlaceholderText: {
+    ...canvasText.bodyMuted,
+    color: 'rgba(110,90,80,0.82)',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 140,
+    borderRadius: 14,
+    backgroundColor: 'rgba(243,233,227,0.9)',
+  },
+  imageSlotActions: {
+    flexDirection: 'row',
+    gap: 10,
   },
   actionRow: {
     flexDirection: 'row',
@@ -526,45 +1007,20 @@ const styles = StyleSheet.create({
     ...canvasText.bodyStrong,
     color: '#2F2926',
   },
-  topControlRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  modeBtn: {
-    ...canvasUi.chip,
-    minHeight: 34,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeBtnActive: {
-    ...canvasUi.chipActive,
-  },
-  modeBtnText: {
-    ...canvasText.bodyStrong,
-    color: '#2F2926',
-  },
-  postCard: {
+  activityCard: {
     ...canvasUi.subtleCard,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 12,
     gap: 8,
   },
   postCardHead: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 8,
   },
   postTextWrap: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   postTitle: {
     ...canvasText.bodyStrong,
@@ -572,12 +1028,32 @@ const styles = StyleSheet.create({
   },
   postMeta: {
     ...canvasText.caption,
-    color: 'rgba(126,104,93,0.78)',
+    color: 'rgba(110,90,80,0.82)',
+  },
+  activityBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(244,221,210,0.95)',
+  },
+  activityBadgeText: {
+    ...canvasText.caption,
+    color: '#A34A3C',
   },
   postContent: {
     ...canvasText.body,
-    color: 'rgba(78,64,56,0.9)',
-    lineHeight: 18,
+    color: '#4B403A',
+    lineHeight: 20,
+  },
+  postImageStrip: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  postImage: {
+    flex: 1,
+    height: 110,
+    borderRadius: 12,
+    backgroundColor: 'rgba(243,233,227,0.9)',
   },
   tagRow: {
     flexDirection: 'row',
@@ -586,28 +1062,41 @@ const styles = StyleSheet.create({
   },
   tag: {
     ...canvasText.caption,
-    color: '#9A5A43',
-    backgroundColor: 'rgba(163,74,60,0.12)',
+    color: '#A34A3C',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 999,
+    backgroundColor: 'rgba(244,221,210,0.95)',
   },
   postMetricRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 12,
   },
   postMetricText: {
-    ...canvasText.bodyMuted,
+    ...canvasText.caption,
     color: 'rgba(110,90,80,0.82)',
+  },
+  pillBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(250,233,225,0.9)',
+    paddingHorizontal: 8,
+  },
+  pillBadgeText: {
+    ...canvasText.bodyStrong,
+    color: '#A34A3C',
+    fontSize: 13,
   },
   metaText: {
     ...canvasText.bodyMuted,
-    color: 'rgba(116,94,84,0.82)',
-    lineHeight: 16,
+    color: 'rgba(110,90,80,0.82)',
   },
   errorText: {
     ...canvasText.body,
-    color: '#C35B63',
-    lineHeight: 18,
+    color: '#B24A57',
   },
 });

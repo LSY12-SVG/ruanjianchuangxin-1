@@ -1,6 +1,12 @@
 import {requestApi} from './http';
 import type {CommunityComment, CommunityPost, Pagination} from './types';
 
+interface CommunityUploadFile {
+  uri: string;
+  name?: string;
+  type?: string;
+}
+
 export const communityApi = {
   async getFeed(
     page = 1,
@@ -21,6 +27,37 @@ export const communityApi = {
       `/v1/modules/community/me/posts?status=${status}&page=${page}&size=${size}`,
       {auth: true},
     );
+  },
+
+  async getLikedPosts(page = 1, size = 10): Promise<Pagination<CommunityPost>> {
+    return requestApi<Pagination<CommunityPost>>(
+      `/v1/modules/community/me/liked?page=${page}&size=${size}`,
+      {auth: true},
+    );
+  },
+
+  async getSavedPosts(page = 1, size = 10): Promise<Pagination<CommunityPost>> {
+    return requestApi<Pagination<CommunityPost>>(
+      `/v1/modules/community/me/saved?page=${page}&size=${size}`,
+      {auth: true},
+    );
+  },
+
+  async uploadPostImage(file: CommunityUploadFile): Promise<{url: string}> {
+    const form = new FormData();
+    form.append(
+      'image',
+      {
+        uri: file.uri,
+        name: file.name || 'community-image.jpg',
+        type: file.type || 'image/jpeg',
+      } as any,
+    );
+    return requestApi<{url: string}>('/v1/modules/community/uploads/images', {
+      method: 'POST',
+      auth: true,
+      body: form,
+    });
   },
 
   async createDraft(payload: {

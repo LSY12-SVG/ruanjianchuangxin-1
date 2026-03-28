@@ -35,11 +35,16 @@ const buildDatabaseUrlFromParts = () => {
 const readCommunityConfig = () => {
   const pageSizeDefault = asPositiveInt(process.env.COMMUNITY_PAGE_SIZE_DEFAULT, 10);
   const pageSizeMax = asPositiveInt(process.env.COMMUNITY_PAGE_SIZE_MAX, 30);
+  const uploadMaxBytes = asPositiveInt(process.env.COMMUNITY_UPLOAD_MAX_BYTES, 8 * 1024 * 1024);
   const databaseClient = normalizeDbClient(process.env.DB_CLIENT);
   const sqlitePathRaw = process.env.SQLITE_PATH || './data/community.sqlite';
   const sqlitePath = path.isAbsolute(sqlitePathRaw)
     ? sqlitePathRaw
     : path.resolve(__dirname, '../../', sqlitePathRaw);
+  const uploadDirRaw = process.env.COMMUNITY_UPLOAD_DIR || './data/community-uploads';
+  const uploadDir = path.isAbsolute(uploadDirRaw)
+    ? uploadDirRaw
+    : path.resolve(__dirname, '../../', uploadDirRaw);
   const databaseUrl =
     process.env.DATABASE_URL ||
     (databaseClient === 'mysql'
@@ -53,6 +58,8 @@ const readCommunityConfig = () => {
     enabled: String(process.env.COMMUNITY_ENABLE || 'true').toLowerCase() !== 'false',
     pageSizeDefault: Math.min(pageSizeDefault, pageSizeMax),
     pageSizeMax,
+    uploadDir,
+    uploadMaxBytes,
   };
 };
 

@@ -64,6 +64,81 @@ jest.mock('../../src/hooks/queries/useMyProfileQuery', () => ({
   })),
 }));
 
+const mockPickBeforeFromGallery = jest.fn();
+const mockPickAfterFromGallery = jest.fn();
+const mockClearBeforeImage = jest.fn();
+const mockClearAfterImage = jest.fn();
+let mockImagePickerCallCount = 0;
+
+jest.mock('../../src/hooks/useImagePicker', () => ({
+  useImagePicker: jest.fn((options: {onImageSelected?: (result: unknown) => void}) => {
+    const slot = mockImagePickerCallCount % 2 === 0 ? 'before' : 'after';
+    mockImagePickerCallCount += 1;
+
+    if (slot === 'before') {
+      return {
+        selectedImage: null,
+        isLoading: false,
+        pickFromGallery: jest.fn(async () => {
+          const image = {
+            success: true,
+            uri: 'file:///before-image.jpg',
+            fileName: 'before-image.jpg',
+            type: 'image/jpeg',
+          };
+          options.onImageSelected?.(image);
+          mockPickBeforeFromGallery();
+          return image;
+        }),
+        pickFromCamera: jest.fn(),
+        clearImage: mockClearBeforeImage,
+      };
+    }
+
+    return {
+      selectedImage: null,
+      isLoading: false,
+      pickFromGallery: jest.fn(async () => {
+        const image = {
+          success: true,
+          uri: 'file:///after-image.jpg',
+          fileName: 'after-image.jpg',
+          type: 'image/jpeg',
+        };
+        options.onImageSelected?.(image);
+        mockPickAfterFromGallery();
+        return image;
+      }),
+      pickFromCamera: jest.fn(),
+      clearImage: mockClearAfterImage,
+    };
+  }),
+}));
+
+jest.mock('../../src/services/communityHistory', () => ({
+  listCommunityHistory: jest.fn(async () => [
+    {
+      id: 'h1',
+      author: {id: 'u2', name: 'History Author', avatarUrl: ''},
+      status: 'published',
+      title: '浏览过的帖子',
+      content: '这是浏览历史里的内容',
+      beforeUrl: '',
+      afterUrl: '',
+      tags: ['历史'],
+      gradingParams: {},
+      likesCount: 1,
+      savesCount: 2,
+      commentsCount: 0,
+      isLiked: false,
+      isSaved: true,
+      createdAt: '2026-03-27',
+      updatedAt: '2026-03-27',
+      viewedAt: '2026-03-28 09:30',
+    },
+  ]),
+}));
+
 jest.mock('../../src/modules/api', () => ({
   communityApi: {
     getMyPosts: jest.fn(async (status: 'draft' | 'published') => ({
@@ -114,6 +189,58 @@ jest.mock('../../src/modules/api', () => ({
       total: 1,
       hasMore: false,
     })),
+    getLikedPosts: jest.fn(async () => ({
+      items: [
+        {
+          id: 'l1',
+          author: {id: 'u9', name: 'Liked Author', avatarUrl: ''},
+          status: 'published',
+          title: '最近点赞帖子',
+          content: '点赞过的内容',
+          beforeUrl: '',
+          afterUrl: '',
+          tags: ['点赞'],
+          gradingParams: {},
+          likesCount: 9,
+          savesCount: 1,
+          commentsCount: 3,
+          isLiked: true,
+          isSaved: false,
+          createdAt: '2026-03-27',
+          updatedAt: '2026-03-27',
+        },
+      ],
+      page: 1,
+      size: 12,
+      total: 1,
+      hasMore: false,
+    })),
+    getSavedPosts: jest.fn(async () => ({
+      items: [
+        {
+          id: 's1',
+          author: {id: 'u8', name: 'Saved Author', avatarUrl: ''},
+          status: 'published',
+          title: '最近收藏帖子',
+          content: '收藏过的内容',
+          beforeUrl: '',
+          afterUrl: '',
+          tags: ['收藏'],
+          gradingParams: {},
+          likesCount: 5,
+          savesCount: 8,
+          commentsCount: 2,
+          isLiked: false,
+          isSaved: true,
+          createdAt: '2026-03-27',
+          updatedAt: '2026-03-27',
+        },
+      ],
+      page: 1,
+      size: 12,
+      total: 1,
+      hasMore: false,
+    })),
     createDraft: jest.fn(async payload => ({
       id: 'd2',
       author: {id: 'u1', name: 'Vision User', avatarUrl: ''},
@@ -133,6 +260,9 @@ jest.mock('../../src/modules/api', () => ({
       updatedAt: '2026-03-27',
     })),
     updateDraft: jest.fn(),
+    uploadPostImage: jest.fn(async (file: {name?: string}) => ({
+      url: `https://cdn.test/${file.name || 'image.jpg'}`,
+    })),
     publishDraft: jest.fn(async () => ({
       id: 'd2',
       author: {id: 'u1', name: 'Vision User', avatarUrl: ''},
@@ -158,19 +288,30 @@ jest.mock('../../src/modules/api', () => ({
 const {communityApi} = jest.requireMock('../../src/modules/api') as {
   communityApi: {
     getMyPosts: jest.Mock;
+    getLikedPosts: jest.Mock;
+    getSavedPosts: jest.Mock;
     createDraft: jest.Mock;
+    uploadPostImage: jest.Mock;
     publishDraft: jest.Mock;
   };
 };
 
 describe('MyScreen', () => {
   beforeEach(() => {
+    mockImagePickerCallCount = 0;
+    mockPickBeforeFromGallery.mockClear();
+    mockPickAfterFromGallery.mockClear();
+    mockClearBeforeImage.mockClear();
+    mockClearAfterImage.mockClear();
     communityApi.getMyPosts.mockClear();
+    communityApi.getLikedPosts.mockClear();
+    communityApi.getSavedPosts.mockClear();
     communityApi.createDraft.mockClear();
+    communityApi.uploadPostImage.mockClear();
     communityApi.publishDraft.mockClear();
   });
 
-  it('renders profile summary and creates a draft from the My tab', async () => {
+  it('renders profile summary, recent activity, and creates a draft from the My tab', async () => {
     let renderer: TestRenderer.ReactTestRenderer;
 
     await act(async () => {
@@ -179,7 +320,11 @@ describe('MyScreen', () => {
 
     const initialText = JSON.stringify(renderer!.toJSON());
     expect(initialText).toContain('Vision User');
+    expect(initialText).toContain('最近点赞');
+    expect(initialText).toContain('我的收藏');
+    expect(initialText).toContain('历史记录');
     expect(initialText).toContain('草稿标题');
+    expect(initialText).toContain('浏览过的帖子');
 
     const inputs = renderer!.root.findAllByType(TextInput);
     await act(async () => {
@@ -197,6 +342,41 @@ describe('MyScreen', () => {
         title: '新草稿',
         content: '准备发布',
         tags: ['新内容', '社区'],
+      }),
+    );
+  });
+
+  it('uploads selected images before saving a draft', async () => {
+    let renderer: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(<MyScreen />);
+    });
+
+    const inputs = renderer!.root.findAllByType(TextInput);
+    await act(async () => {
+      inputs[0].props.onChangeText('带图帖子');
+      inputs[1].props.onChangeText('这里有图片内容');
+      inputs[2].props.onChangeText('社区,图片');
+    });
+
+    await act(async () => {
+      await renderer!.root.findByProps({testID: 'my-pick-before-image-button'}).props.onPress();
+      await renderer!.root.findByProps({testID: 'my-pick-after-image-button'}).props.onPress();
+    });
+
+    await act(async () => {
+      await renderer!.root.findByProps({testID: 'my-save-draft-button'}).props.onPress();
+    });
+
+    expect(mockPickBeforeFromGallery).toHaveBeenCalled();
+    expect(mockPickAfterFromGallery).toHaveBeenCalled();
+    expect(communityApi.uploadPostImage).toHaveBeenCalledTimes(2);
+    expect(communityApi.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '带图帖子',
+        beforeUrl: 'https://cdn.test/before-image.jpg',
+        afterUrl: 'https://cdn.test/after-image.jpg',
       }),
     );
   });

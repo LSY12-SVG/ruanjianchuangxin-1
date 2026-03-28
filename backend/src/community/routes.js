@@ -1,4 +1,7 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
+const multer = require('multer');
 const {
   parsePageAndSize,
   sanitizePostPayload,
@@ -32,14 +35,66 @@ const sendRouteError = (res, status, code, message) =>
     },
   });
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+
+const MIME_EXTENSION_MAP = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+};
+
+const normalizeExtension = file => {
+  const rawExt = path.extname(file?.originalname || '').trim().toLowerCase();
+  if (rawExt && Object.values(MIME_EXTENSION_MAP).includes(rawExt)) {
+    return rawExt;
+  }
+  return MIME_EXTENSION_MAP[file?.mimetype] || '.jpg';
+};
+
+const createImageUpload = ({uploadDir, uploadMaxBytes}) => {
+  fs.mkdirSync(uploadDir, {recursive: true});
+  return multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadDir),
+      filename: (_req, file, cb) => {
+        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        cb(null, `${stamp}${normalizeExtension(file)}`);
+      },
+    }),
+    limits: {
+      fileSize: uploadMaxBytes,
+    },
+    fileFilter: (_req, file, cb) => {
+      if (!ALLOWED_IMAGE_MIME_TYPES.has(file.mimetype)) {
+        cb(new Error('unsupported_image_type'));
+        return;
+      }
+      cb(null, true);
+    },
+  });
+};
+
 const createCommunityRouter = ({
   repo,
   authMiddleware,
   optionalAuthMiddleware,
   pageSizeDefault,
   pageSizeMax,
+  uploadDir,
+  uploadMaxBytes,
 }) => {
   const router = express.Router();
+  const imageUpload = createImageUpload({uploadDir, uploadMaxBytes});
+
+  router.use('/uploads', express.static(uploadDir));
 
   router.get('/feed', optionalAuthMiddleware, async (req, res) => {
     const userId = resolveUserId(req) || 'guest';
@@ -65,6 +120,55 @@ const createCommunityRouter = ({
       console.error('[community] my posts failed', error);
       sendRouteError(res, 500, 'failed_to_fetch_my_posts');
     }
+  });
+
+  router.get('/me/liked', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
+    const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);
+    try {
+      const result = await repo.getLikedPosts(userId, pagination);
+      res.json(result);
+    } catch (error) {
+      console.error('[community] liked posts failed', error);
+      sendRouteError(res, 500, 'failed_to_fetch_liked_posts');
+    }
+  });
+
+  router.get('/me/saved', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
+    const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);
+    try {
+      const result = await repo.getSavedPosts(userId, pagination);
+      res.json(result);
+    } catch (error) {
+      console.error('[community] saved posts failed', error);
+      sendRouteError(res, 500, 'failed_to_fetch_saved_posts');
+    }
+  });
+
+  router.post('/uploads/images', authMiddleware, (req, res) => {
+    imageUpload.single('image')(req, res, error => {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        sendRouteError(res, 400, 'image_too_large');
+        return;
+      }
+      if (error && error.message === 'unsupported_image_type') {
+        sendRouteError(res, 400, 'unsupported_image_type');
+        return;
+      }
+      if (error) {
+        sendRouteError(res, 400, 'image_upload_failed', error.message || 'image_upload_failed');
+        return;
+      }
+      if (!req.file?.filename) {
+        sendRouteError(res, 400, 'image_required');
+        return;
+      }
+      const publicPath = `/v1/modules/community/uploads/${encodeURIComponent(req.file.filename)}`;
+      res.status(201).json({
+        url: `${req.protocol}://${req.get('host')}${publicPath}`,
+      });
+    });
   });
 
   router.post('/drafts', authMiddleware, async (req, res) => {

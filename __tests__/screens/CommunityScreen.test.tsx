@@ -2,6 +2,10 @@ import React from 'react';
 import TestRenderer, {act} from 'react-test-renderer';
 import {CommunityScreen} from '../../src/screens/CommunityScreen';
 
+jest.mock('../../src/services/communityHistory', () => ({
+  recordCommunityHistory: jest.fn(async () => undefined),
+}));
+
 jest.mock('../../src/assets/design', () => ({
   HERO_COMMUNITY: 1,
 }));
@@ -42,8 +46,8 @@ jest.mock('../../src/modules/api', () => ({
           status: 'published',
           title: '第一条动态',
           content: '社区动态内容',
-          beforeUrl: '',
-          afterUrl: '',
+          beforeUrl: 'https://cdn.test/before.jpg',
+          afterUrl: 'https://cdn.test/after.jpg',
           tags: ['电影感'],
           gradingParams: {},
           likesCount: 3,
@@ -93,5 +97,65 @@ describe('CommunityScreen', () => {
     expect(text).toContain('社区动态');
     expect(text).not.toContain('发布草稿');
     expect(text).not.toContain('保存草稿');
+  });
+
+  it('records browse history when opening a post detail', async () => {
+    const {recordCommunityHistory} = jest.requireMock('../../src/services/communityHistory') as {
+      recordCommunityHistory: jest.Mock;
+    };
+
+    let renderer: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <CommunityScreen
+          capabilities={[
+            {
+              module: 'community',
+              enabled: true,
+              strictMode: true,
+              provider: 'local',
+              auth: {required: true, scopes: []},
+              endpoints: [],
+            },
+          ]}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer!.root.findByProps({testID: 'community-post-p1'}).props.onPress();
+    });
+
+    expect(recordCommunityHistory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'p1',
+        title: '第一条动态',
+      }),
+    );
+  });
+
+  it('renders preview images for community posts', async () => {
+    let renderer: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <CommunityScreen
+          capabilities={[
+            {
+              module: 'community',
+              enabled: true,
+              strictMode: true,
+              provider: 'local',
+              auth: {required: true, scopes: []},
+              endpoints: [],
+            },
+          ]}
+        />,
+      );
+    });
+
+    const images = renderer!.root.findAllByType('Image');
+    expect(images.length).toBeGreaterThanOrEqual(2);
   });
 });

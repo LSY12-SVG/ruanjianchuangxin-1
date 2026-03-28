@@ -39,6 +39,8 @@ const initializeCommunityModule = async ({authMiddleware, optionalAuthMiddleware
     optionalAuthMiddleware,
     pageSizeDefault: config.pageSizeDefault,
     pageSizeMax: config.pageSizeMax,
+    uploadDir: config.uploadDir,
+    uploadMaxBytes: config.uploadMaxBytes,
   });
 
   return {

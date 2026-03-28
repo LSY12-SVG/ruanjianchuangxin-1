@@ -160,18 +160,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   : '创建新账号后即可直接进入 VisionGenie 首页。'}
               </Text>
             </View>
-
-            <LinearGradient colors={VISION_THEME.gradients.card} style={styles.visualCard}>
-              <View style={styles.visualHalo} />
-              <View style={styles.visualCore}>
-                <Icon
-                  name={mode === 'login' ? 'log-in-outline' : 'person-add-outline'}
-                  size={28}
-                  color="#9A4437"
-                />
-              </View>
-              <Text style={styles.visualText}>{mode === 'login' ? 'Secure Access' : 'Fresh Start'}</Text>
-            </LinearGradient>
           </View>
 
           <View style={styles.card}>
@@ -424,7 +412,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   headerBlock: {
-    gap: 18,
+    gap: 10,
     paddingHorizontal: 4,
   },
   headerCopy: {
@@ -475,42 +463,7 @@ const styles = StyleSheet.create({
     ...canvasText.body,
     color: 'rgba(92,74,65,0.82)',
     lineHeight: 20,
-    maxWidth: 280,
-  },
-  visualCard: {
-    height: 124,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.22)',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-  },
-  visualHalo: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
-    opacity: 0.7,
-  },
-  visualCore: {
-    width: 62,
-    height: 62,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,250,247,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(171,129,110,0.18)',
-  },
-  visualText: {
-    ...canvasText.caption,
-    color: 'rgba(122,94,82,0.84)',
-    marginTop: 12,
-    letterSpacing: 0.5,
+    maxWidth: 320,
   },
   card: {
     ...cardSurfaceBlue,
