@@ -38,6 +38,18 @@ const FILTERS: Array<{key: CommunityFilter; label: string}> = [
 const getPostPreviewImages = (post: CommunityPost): string[] =>
   [post.beforeUrl, post.afterUrl].filter(Boolean);
 
+const formatFeedDate = (value: string): string => {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+  const match = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) {
+    return raw;
+  }
+  return `${match[2]}-${match[3]}`;
+};
+
 interface CommunityScreenProps {
   capabilities: ModuleCapabilityItem[];
 }
@@ -297,8 +309,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
                             <Text style={styles.avatarText}>{post.author.name?.slice(0, 1) || '?'}</Text>
                           </View>
                           <View style={styles.postMetaWrap}>
-                            <Text style={styles.postAuthor}>{post.author.name || '匿名用户'}</Text>
-                            <Text style={styles.postTime}>{post.updatedAt}</Text>
+                            <Text numberOfLines={1} style={styles.postAuthor}>
+                              {post.author.name || '匿名用户'}
+                            </Text>
+                            <Text numberOfLines={1} style={styles.postTime}>
+                              {formatFeedDate(post.updatedAt)}
+                            </Text>
                           </View>
                           <Pressable onPress={() => toggleSave(post)} style={styles.iconBtn}>
                             <Icon
@@ -308,7 +324,9 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({capabilities}) 
                             />
                           </Pressable>
                         </View>
-                        <Text style={styles.postTitle}>{post.title}</Text>
+                        <Text numberOfLines={2} style={styles.postTitle}>
+                          {post.title}
+                        </Text>
                         <Text numberOfLines={2} style={styles.postContent}>
                           {post.content}
                         </Text>
@@ -532,11 +550,11 @@ const styles = StyleSheet.create({
   feedColumns: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 14,
+    gap: 10,
   },
   feedColumn: {
     flex: 1,
-    gap: 14,
+    gap: 10,
   },
   filterBtn: {
     ...canvasUi.chip,
@@ -555,24 +573,26 @@ const styles = StyleSheet.create({
   },
   postCard: {
     overflow: 'hidden',
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(226,232,240,0.92)',
     backgroundColor: 'rgba(255,255,255,0.94)',
   },
   postCardBody: {
-    gap: 8,
-    padding: 13,
+    gap: 7,
+    paddingHorizontal: 11,
+    paddingTop: 10,
+    paddingBottom: 12,
   },
   postHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: 'rgba(163,74,60,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -580,22 +600,29 @@ const styles = StyleSheet.create({
   avatarText: {
     ...canvasText.bodyStrong,
     color: '#FFF6F2',
+    fontSize: 11,
   },
   postMetaWrap: {
     flex: 1,
+    minWidth: 0,
+    gap: 1,
   },
   postAuthor: {
     ...canvasText.bodyStrong,
     color: '#2F2926',
+    fontSize: 12,
+    lineHeight: 16,
   },
   postTime: {
     ...canvasText.caption,
     color: 'rgba(126,104,93,0.78)',
+    fontSize: 10,
+    lineHeight: 13,
   },
   iconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(241,245,249,0.95)',
@@ -603,37 +630,38 @@ const styles = StyleSheet.create({
   postTitle: {
     ...canvasText.sectionTitle,
     color: '#2F2926',
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
   },
   postContent: {
     ...canvasText.body,
     color: semanticColors.text.secondary,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 19,
   },
   postImageStrip: {
     position: 'relative',
   },
   postImage: {
     width: '100%',
-    height: 212,
+    height: 184,
     backgroundColor: 'rgba(241,245,249,0.95)',
   },
   postImageThumb: {
     position: 'absolute',
-    right: 10,
-    top: 10,
-    width: 64,
-    height: 84,
-    borderRadius: 14,
+    right: 8,
+    top: 8,
+    width: 56,
+    height: 74,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.92)',
     backgroundColor: 'rgba(241,245,249,0.95)',
   },
   postImageFallback: {
-    height: 212,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    height: 184,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     justifyContent: 'space-between',
     backgroundColor: 'rgba(224,242,254,0.9)',
   },
@@ -644,18 +672,18 @@ const styles = StyleSheet.create({
   postImageFallbackTitle: {
     ...canvasText.sectionTitle,
     color: semanticColors.text.primary,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 21,
   },
   compareBadge: {
     position: 'absolute',
-    right: 10,
-    bottom: 10,
+    right: 8,
+    bottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: 'rgba(15,23,42,0.56)',
   },
@@ -672,14 +700,15 @@ const styles = StyleSheet.create({
     ...canvasText.caption,
     color: semanticColors.text.secondary,
     backgroundColor: 'rgba(241,245,249,0.95)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 999,
+    fontSize: 10,
   },
   postActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   inlineAction: {
     flexDirection: 'row',
@@ -689,6 +718,7 @@ const styles = StyleSheet.create({
   inlineActionText: {
     ...canvasText.bodyStrong,
     color: '#2F2926',
+    fontSize: 12,
   },
   input: {
     ...canvasUi.input,

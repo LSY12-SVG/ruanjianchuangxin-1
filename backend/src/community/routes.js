@@ -277,6 +277,25 @@ const createCommunityRouter = ({
     }
   });
 
+  router.delete('/posts/:id', authMiddleware, async (req, res) => {
+    const userId = resolveUserId(req);
+    try {
+      const result = await repo.deletePost(userId, req.params.id);
+      if (result?.error === 'not_found') {
+        sendRouteError(res, 404, 'post_not_found');
+        return;
+      }
+      if (result?.error === 'forbidden') {
+        sendRouteError(res, 403, 'post_delete_forbidden');
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      console.error('[community] delete post failed', error);
+      sendRouteError(res, 500, 'failed_to_delete_post');
+    }
+  });
+
   router.get('/posts/:id/comments', optionalAuthMiddleware, async (req, res) => {
     const userId = resolveUserId(req) || 'guest';
     const pagination = parsePageAndSize(req.query, pageSizeDefault, pageSizeMax);

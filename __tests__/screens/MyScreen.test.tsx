@@ -35,6 +35,18 @@ jest.mock('../../src/theme/canvasDesign', () => ({
 
 jest.mock('../../src/profile/api', () => ({
   hasAuthToken: jest.fn(() => true),
+  updateMyProfile: jest.fn(async payload => ({
+    id: 'u1',
+    username: 'vision_user',
+    displayName: payload.displayName || 'Vision User',
+    avatarUrl: '',
+    tier: 'Vision Creator · Pro',
+  })),
+  updateMySettings: jest.fn(async payload => ({
+    syncOnWifi: Boolean(payload.syncOnWifi),
+    communityNotify: Boolean(payload.communityNotify),
+    voiceAutoApply: Boolean(payload.voiceAutoApply),
+  })),
 }));
 
 jest.mock('../../src/hooks/queries/useMyProfileQuery', () => ({
@@ -281,6 +293,11 @@ jest.mock('../../src/modules/api', () => ({
       createdAt: '2026-03-27',
       updatedAt: '2026-03-27',
     })),
+    deletePost: jest.fn(async (postId: string) => ({
+      ok: true,
+      deletedId: postId,
+      deletedStatus: 'published',
+    })),
   },
   formatApiErrorMessage: jest.fn((_error: unknown, fallback: string) => fallback),
 }));
@@ -293,7 +310,13 @@ const {communityApi} = jest.requireMock('../../src/modules/api') as {
     createDraft: jest.Mock;
     uploadPostImage: jest.Mock;
     publishDraft: jest.Mock;
+    deletePost: jest.Mock;
   };
+};
+
+const {updateMyProfile, updateMySettings} = jest.requireMock('../../src/profile/api') as {
+  updateMyProfile: jest.Mock;
+  updateMySettings: jest.Mock;
 };
 
 describe('MyScreen', () => {
@@ -309,6 +332,9 @@ describe('MyScreen', () => {
     communityApi.createDraft.mockClear();
     communityApi.uploadPostImage.mockClear();
     communityApi.publishDraft.mockClear();
+    communityApi.deletePost.mockClear();
+    updateMyProfile.mockClear();
+    updateMySettings.mockClear();
   });
 
   it('renders profile summary, recent activity, and creates a draft from the My tab', async () => {
@@ -379,5 +405,61 @@ describe('MyScreen', () => {
         afterUrl: 'https://cdn.test/after-image.jpg',
       }),
     );
+  });
+
+  it('opens profile settings from the gear button and saves account changes', async () => {
+    let renderer: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(<MyScreen />);
+    });
+
+    await act(async () => {
+      renderer!.root.findByProps({testID: 'profile-settings-button'}).props.onPress();
+    });
+
+    const settingsInput = renderer!.root.findByProps({testID: 'profile-display-name-input'});
+    await act(async () => {
+      settingsInput.props.onChangeText('Vision Master');
+    });
+
+    await act(async () => {
+      renderer!.root.findByProps({testID: 'profile-toggle-community-notify'}).props.onPress();
+    });
+
+    await act(async () => {
+      renderer!.root.findByProps({testID: 'profile-save-settings-button'}).props.onPress();
+    });
+
+    expect(updateMyProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        displayName: 'Vision Master',
+      }),
+    );
+    expect(updateMySettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncOnWifi: true,
+        communityNotify: false,
+        voiceAutoApply: false,
+      }),
+    );
+  });
+
+  it('deletes a published post from the Mine page', async () => {
+    let renderer: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(<MyScreen />);
+    });
+
+    await act(async () => {
+      renderer!.root.findByProps({testID: 'my-quick-action-published'}).props.onPress();
+    });
+
+    await act(async () => {
+      renderer!.root.findByProps({testID: 'my-delete-published-p1'}).props.onPress();
+    });
+
+    expect(communityApi.deletePost).toHaveBeenCalledWith('p1');
   });
 });

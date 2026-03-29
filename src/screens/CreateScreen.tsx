@@ -111,16 +111,49 @@ const formatVoiceTranscribeError = (error: unknown): string => {
 
 const CREATE_PRESETS: Array<{
   name: string;
+  note: string;
   exposure: number;
   contrast: number;
   temperature: number;
   saturation: number;
   vibrance: number;
 }> = [
-  {name: '电影胶片', exposure: 0.2, contrast: 18, temperature: 16, saturation: 6, vibrance: 14},
-  {name: '赛博朋克', exposure: 0.08, contrast: 26, temperature: -14, saturation: 20, vibrance: 26},
-  {name: '日系清新', exposure: 0.26, contrast: -8, temperature: 10, saturation: -10, vibrance: 8},
-  {name: '复古胶卷', exposure: 0.12, contrast: -16, temperature: 18, saturation: -14, vibrance: -6},
+  {
+    name: '电影胶片',
+    note: '暖调电影感 + 更稳的反差',
+    exposure: 0.2,
+    contrast: 18,
+    temperature: 16,
+    saturation: 6,
+    vibrance: 14,
+  },
+  {
+    name: '赛博朋克',
+    note: '冷暖对撞 + 高饱和霓虹',
+    exposure: 0.08,
+    contrast: 26,
+    temperature: -14,
+    saturation: 20,
+    vibrance: 26,
+  },
+  {
+    name: '日系清新',
+    note: '空气感 + 干净肤色',
+    exposure: 0.26,
+    contrast: -8,
+    temperature: 10,
+    saturation: -10,
+    vibrance: 8,
+  },
+  {
+    name: '复古胶卷',
+    note: '暖棕胶片 + 旧时光',
+    exposure: 0.12,
+    contrast: -16,
+    temperature: 18,
+    saturation: -14,
+    vibrance: -6,
+  },
 ];
 
 const sanitizeBase64 = (raw?: string): string =>
@@ -706,41 +739,54 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
       </View>
 
       {showPresets ? (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
               <Icon name="color-palette" size={13} color="#A34A3C" />
             </View>
-            <Text style={styles.sectionTitle}>风格预设</Text>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>风格预设</Text>
+              <Text style={styles.sectionHint}>选择一套起始风格，再继续语音或专业精修。</Text>
+            </View>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetRow}>
+          <View style={styles.presetGrid}>
             {CREATE_PRESETS.map(item => (
-              <Pressable key={item.name} style={styles.presetChip} onPress={() => applyPreset(item)}>
-                <Text style={styles.presetChipText}>{item.name}</Text>
+              <Pressable key={item.name} style={styles.presetTile} onPress={() => applyPreset(item)}>
+                <Text style={styles.presetTileTitle}>{item.name}</Text>
+                <Text style={styles.presetTileNote}>{item.note}</Text>
               </Pressable>
             ))}
-          </ScrollView>
-        </View>
+          </View>
+        </GlassCard>
       ) : null}
 
       {showHistory ? (
-        <View style={styles.card}>
+        <GlassCard style={styles.card}>
           <View style={styles.sectionHead}>
             <View style={styles.sectionIconBadge}>
               <Icon name="albums" size={13} color="#A34A3C" />
             </View>
-            <Text style={styles.sectionTitle}>调色历史</Text>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>调色历史</Text>
+              <Text style={styles.sectionHint}>最近的调色动作会记录在这里，方便快速回看。</Text>
+            </View>
           </View>
           {historyEntries.length ? (
-            historyEntries.map((item, index) => (
-              <Text key={`${index}-${item}`} style={styles.metaText}>
-                {item}
-              </Text>
-            ))
+            <View style={styles.historyList}>
+              {historyEntries.map((item, index) => (
+                <View key={`${index}-${item}`} style={styles.historyItem}>
+                  <View style={styles.historyBullet} />
+                  <Text style={styles.historyText}>{item}</Text>
+                </View>
+              ))}
+            </View>
           ) : (
-            <Text style={styles.metaText}>暂无历史</Text>
+            <View style={styles.historyEmpty}>
+              <Icon name="time-outline" size={18} color={semanticColors.text.secondary} />
+              <Text style={styles.historyEmptyText}>暂无历史</Text>
+            </View>
           )}
-        </View>
+        </GlassCard>
       ) : null}
 
       <GlassCard style={styles.card}>
@@ -1010,22 +1056,51 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingRight: 10,
   },
-  presetChip: {
-    ...canvasUi.chip,
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  presetChipText: {
+  presetTile: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    minHeight: 104,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(191,219,254,0.9)',
+    backgroundColor: 'rgba(248,250,255,0.86)',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  presetTileTitle: {
     ...canvasText.bodyStrong,
     color: '#3B2F29',
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  presetTileNote: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+    lineHeight: 18,
   },
   sectionTitle: {
     ...canvasText.sectionTitle,
     color: '#3B2F29',
   },
+  sectionCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  sectionHint: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+    lineHeight: 20,
+  },
   sectionHead: {
     ...canvasUi.titleWithIcon,
+    alignItems: 'flex-start',
   },
   sectionIconBadge: {
     ...canvasUi.iconBadge,
@@ -1117,6 +1192,49 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   metaText: {
+    ...canvasText.bodyMuted,
+    color: semanticColors.text.secondary,
+  },
+  historyList: {
+    gap: 10,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(191,219,254,0.7)',
+    backgroundColor: 'rgba(248,250,255,0.75)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  historyBullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: semanticColors.accent.primary,
+    marginTop: 6,
+  },
+  historyText: {
+    ...canvasText.body,
+    flex: 1,
+    color: 'rgba(76,64,56,0.9)',
+    lineHeight: 20,
+  },
+  historyEmpty: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(191,219,254,0.65)',
+    backgroundColor: 'rgba(248,250,255,0.7)',
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  historyEmptyText: {
     ...canvasText.bodyMuted,
     color: semanticColors.text.secondary,
   },

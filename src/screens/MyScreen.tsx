@@ -24,7 +24,7 @@ import {
   type CommunityHistoryPost,
   type CommunityPost,
 } from '../modules/api';
-import {hasAuthToken} from '../profile/api';
+import {hasAuthToken, updateMyProfile, updateMySettings} from '../profile/api';
 import {listCommunityHistory} from '../services/communityHistory';
 import {canvasText, canvasUi, cardSurfaceWarm, glassShadow} from '../theme/canvasDesign';
 import {semanticColors} from '../theme/tokens';
@@ -72,6 +72,12 @@ export const MyScreen: React.FC = () => {
   const [publishingDraft, setPublishingDraft] = useState(false);
   const [uploadingSlot, setUploadingSlot] = useState<ImageSlotKey | ''>('');
   const [errorText, setErrorText] = useState('');
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [settingsDisplayName, setSettingsDisplayName] = useState('');
+  const [settingsSyncOnWifi, setSettingsSyncOnWifi] = useState(false);
+  const [settingsCommunityNotify, setSettingsCommunityNotify] = useState(false);
+  const [settingsVoiceAutoApply, setSettingsVoiceAutoApply] = useState(false);
+  const [savingAccountSettings, setSavingAccountSettings] = useState(false);
 
   const profile = profileQuery.data?.profile || null;
   const stats = profileQuery.data?.stats || null;
@@ -318,6 +324,7 @@ export const MyScreen: React.FC = () => {
       setDrafts(prev => prev.filter(item => item.id !== savedDraft.id));
       setPublishedPosts(prev => [published, ...prev.filter(item => item.id !== published.id)]);
       applyPostPatch(published.id, published);
+      await profileQuery.refetch();
       resetDraftForm();
       setActiveMode('published');
       setErrorText('');
@@ -337,6 +344,16 @@ export const MyScreen: React.FC = () => {
     }
     return `用户名：${profile.username}`;
   }, [profile]);
+
+  useEffect(() => {
+    setSettingsDisplayName(profile?.displayName || '');
+  }, [profile?.displayName]);
+
+  useEffect(() => {
+    setSettingsSyncOnWifi(Boolean(settings?.syncOnWifi));
+    setSettingsCommunityNotify(Boolean(settings?.communityNotify));
+    setSettingsVoiceAutoApply(Boolean(settings?.voiceAutoApply));
+  }, [settings?.communityNotify, settings?.syncOnWifi, settings?.voiceAutoApply]);
 
   const activityItems = useMemo<ActivityFeedItem[]>(() => {
     if (activeMode === 'liked') {
@@ -377,9 +394,68 @@ export const MyScreen: React.FC = () => {
     return '还没有浏览记录，去社区看看吧。';
   }, [activeMode]);
 
+  const publishedCountValue = useMemo(
+    () => Math.max(Number(stats?.communityPostsCount || 0), publishedPosts.length),
+    [publishedPosts.length, stats?.communityPostsCount],
+  );
+
   const saveDraftText = editingDraftId ? '更新草稿' : '保存草稿';
   const beforePreviewUri = beforeImage?.uri || beforeImageUrl;
   const afterPreviewUri = afterImage?.uri || afterImageUrl;
+
+  const resetAccountSettingsForm = useCallback(() => {
+    setSettingsDisplayName(profile?.displayName || '');
+    setSettingsSyncOnWifi(Boolean(settings?.syncOnWifi));
+    setSettingsCommunityNotify(Boolean(settings?.communityNotify));
+    setSettingsVoiceAutoApply(Boolean(settings?.voiceAutoApply));
+  }, [profile?.displayName, settings?.communityNotify, settings?.syncOnWifi, settings?.voiceAutoApply]);
+
+  const saveAccountSettings = async () => {
+    if (!accountReady || !profile) {
+      return;
+    }
+
+    try {
+      setSavingAccountSettings(true);
+      await Promise.all([
+        updateMyProfile({
+          displayName: settingsDisplayName.trim() || profile.displayName,
+        }),
+        updateMySettings({
+          syncOnWifi: settingsSyncOnWifi,
+          communityNotify: settingsCommunityNotify,
+          voiceAutoApply: settingsVoiceAutoApply,
+        }),
+      ]);
+      await profileQuery.refetch();
+      setShowAccountSettings(false);
+      setErrorText('');
+      Alert.alert('保存成功', '账号信息已更新。');
+    } catch (error) {
+      const message = formatApiErrorMessage(error, '账号信息保存失败');
+      setErrorText(message);
+      Alert.alert('账号信息保存失败', message);
+    } finally {
+      setSavingAccountSettings(false);
+    }
+  };
+
+  const deletePublishedPost = async (post: CommunityPost) => {
+    try {
+      await communityApi.deletePost(post.id);
+      setPublishedPosts(prev => prev.filter(item => item.id !== post.id));
+      setLikedPosts(prev => prev.filter(item => item.id !== post.id));
+      setSavedPosts(prev => prev.filter(item => item.id !== post.id));
+      setHistoryPosts(prev => prev.filter(item => item.id !== post.id));
+      await profileQuery.refetch();
+      setErrorText('');
+      Alert.alert('删除成功', '该帖子已从社区移除。');
+    } catch (error) {
+      const message = formatApiErrorMessage(error, '删除帖子失败');
+      setErrorText(message);
+      Alert.alert('删除帖子失败', message);
+    }
+  };
 
   const renderImageSlot = (
     slot: ImageSlotKey,
@@ -454,11 +530,24 @@ export const MyScreen: React.FC = () => {
       />
 
       <GlassCard style={styles.card}>
-        <View style={styles.sectionHead}>
-          <View style={styles.sectionIconBadge}>
-            <Icon name="person-circle-outline" size={13} color="#A34A3C" />
+        <View style={styles.topControlRow}>
+          <View style={styles.sectionHead}>
+            <View style={styles.sectionIconBadge}>
+              <Icon name="person-circle-outline" size={13} color="#A34A3C" />
+            </View>
+            <Text style={styles.sectionTitle}>个人主页</Text>
           </View>
-          <Text style={styles.sectionTitle}>个人主页</Text>
+          <Pressable
+            testID="profile-settings-button"
+            style={styles.inlineRefreshBtn}
+            onPress={() => {
+              if (!showAccountSettings) {
+                resetAccountSettingsForm();
+              }
+              setShowAccountSettings(prev => !prev);
+            }}>
+            <Icon name="settings-outline" size={15} color="#2F2926" />
+          </Pressable>
         </View>
 
         {!accountReady ? (
@@ -503,11 +592,114 @@ export const MyScreen: React.FC = () => {
             ) : null}
 
             <View style={styles.statGrid}>
-              <BentoCard style={styles.bentoHalf} title="已发布" value={stats?.communityPostsCount ?? 0} />
+              <BentoCard style={styles.bentoHalf} title="已发布" value={publishedCountValue} />
               <BentoCard style={styles.bentoHalf} title="最近点赞" value={likedPosts.length} />
               <BentoCard style={styles.bentoHalf} title="最近收藏" value={savedPosts.length} />
               <BentoCard style={styles.bentoHalf} title="历史记录" value={historyPosts.length} />
             </View>
+
+            {showAccountSettings ? (
+              <View style={styles.accountSettingsPanel}>
+                <View style={styles.accountSettingsHead}>
+                  <Text style={styles.accountSettingsTitle}>账号设置</Text>
+                  <Text style={styles.metaText}>可在这里修改显示名与常用账号设置。</Text>
+                </View>
+
+                <View style={styles.readonlyRow}>
+                  <Text style={styles.readonlyLabel}>用户名</Text>
+                  <Text style={styles.readonlyValue}>{profile?.username || '-'}</Text>
+                </View>
+
+                <TextInput
+                  testID="profile-display-name-input"
+                  style={styles.input}
+                  value={settingsDisplayName}
+                  onChangeText={setSettingsDisplayName}
+                  placeholder="显示名"
+                  placeholderTextColor="rgba(134,112,100,0.7)"
+                />
+
+                <Pressable
+                  testID="profile-toggle-sync-on-wifi"
+                  style={styles.settingToggleRow}
+                  onPress={() => setSettingsSyncOnWifi(prev => !prev)}>
+                  <View style={styles.settingToggleCopy}>
+                    <Text style={styles.settingToggleTitle}>仅 Wi‑Fi 同步</Text>
+                    <Text style={styles.settingToggleHint}>控制同步任务尽量在 Wi‑Fi 下完成。</Text>
+                  </View>
+                  <View style={[styles.settingTogglePill, settingsSyncOnWifi && styles.settingTogglePillActive]}>
+                    <Text style={[styles.settingTogglePillText, settingsSyncOnWifi && styles.settingTogglePillTextActive]}>
+                      {settingsSyncOnWifi ? '开' : '关'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  testID="profile-toggle-community-notify"
+                  style={styles.settingToggleRow}
+                  onPress={() => setSettingsCommunityNotify(prev => !prev)}>
+                  <View style={styles.settingToggleCopy}>
+                    <Text style={styles.settingToggleTitle}>社区通知</Text>
+                    <Text style={styles.settingToggleHint}>接收互动与社区内容相关提醒。</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.settingTogglePill,
+                      settingsCommunityNotify && styles.settingTogglePillActive,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.settingTogglePillText,
+                        settingsCommunityNotify && styles.settingTogglePillTextActive,
+                      ]}>
+                      {settingsCommunityNotify ? '开' : '关'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  testID="profile-toggle-voice-auto-apply"
+                  style={styles.settingToggleRow}
+                  onPress={() => setSettingsVoiceAutoApply(prev => !prev)}>
+                  <View style={styles.settingToggleCopy}>
+                    <Text style={styles.settingToggleTitle}>语音自动应用</Text>
+                    <Text style={styles.settingToggleHint}>语音识别完成后自动执行参数应用。</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.settingTogglePill,
+                      settingsVoiceAutoApply && styles.settingTogglePillActive,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.settingTogglePillText,
+                        settingsVoiceAutoApply && styles.settingTogglePillTextActive,
+                      ]}>
+                      {settingsVoiceAutoApply ? '开' : '关'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <View style={styles.actionRow}>
+                  <PrimaryButton
+                    testID="profile-save-settings-button"
+                    label={savingAccountSettings ? '保存中...' : '保存修改'}
+                    onPress={saveAccountSettings}
+                    disabled={savingAccountSettings}
+                    icon={<Icon name="checkmark-outline" size={15} color="#FFFFFF" />}
+                  />
+                  <PrimaryButton
+                    label="取消"
+                    onPress={() => {
+                      resetAccountSettingsForm();
+                      setShowAccountSettings(false);
+                    }}
+                    variant="secondary"
+                    icon={<Icon name="close-outline" size={15} color={semanticColors.text.primary} />}
+                  />
+                </View>
+              </View>
+            ) : null}
           </View>
         )}
       </GlassCard>
@@ -528,8 +720,18 @@ export const MyScreen: React.FC = () => {
               caption={activeMode === item.key ? '当前查看中' : '点击切换'}
               icon={<Icon name={item.icon} size={18} color={activeMode === item.key ? semanticColors.accent.primary : semanticColors.text.secondary} />}
             >
-              <Pressable style={[styles.quickActionCard, activeMode === item.key && styles.quickActionCardActive]} onPress={() => setActiveMode(item.key)}>
-                <Text style={styles.quickActionLabel}>{item.label}</Text>
+              <Pressable
+                testID={`my-quick-action-${item.key}`}
+                style={[styles.quickActionCard, activeMode === item.key && styles.quickActionCardActive]}
+                onPress={() => setActiveMode(item.key)}>
+                <Text style={[styles.quickActionLabel, activeMode === item.key && styles.quickActionLabelActive]}>
+                  {activeMode === item.key ? '当前查看中' : '进入查看'}
+                </Text>
+                <Icon
+                  name={activeMode === item.key ? 'checkmark-circle' : 'chevron-forward'}
+                  size={14}
+                  color={activeMode === item.key ? semanticColors.accent.primary : semanticColors.text.secondary}
+                />
               </Pressable>
             </BentoCard>
           ))}
@@ -611,6 +813,15 @@ export const MyScreen: React.FC = () => {
                   </Text>
                 ))}
               </View>
+              {activeMode === 'published' ? (
+                <Pressable
+                  testID={`my-delete-published-${item.id}`}
+                  style={styles.deletePostBtn}
+                  onPress={() => deletePublishedPost(item as CommunityPost)}>
+                  <Icon name="trash-outline" size={14} color="#B24A57" />
+                  <Text style={styles.deletePostBtnText}>删除帖子</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         ))}
@@ -820,6 +1031,81 @@ const styles = StyleSheet.create({
     ...canvasText.bodyMuted,
     color: 'rgba(110,90,80,0.82)',
   },
+  accountSettingsPanel: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(224,214,206,0.95)',
+    backgroundColor: 'rgba(255,252,249,0.82)',
+    padding: 14,
+    gap: 12,
+  },
+  accountSettingsHead: {
+    gap: 4,
+  },
+  accountSettingsTitle: {
+    ...canvasText.bodyStrong,
+    color: '#2F2926',
+  },
+  readonlyRow: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(230,220,212,0.95)',
+    backgroundColor: 'rgba(255,248,243,0.72)',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 4,
+  },
+  readonlyLabel: {
+    ...canvasText.caption,
+    color: 'rgba(110,90,80,0.82)',
+  },
+  readonlyValue: {
+    ...canvasText.bodyStrong,
+    color: '#2F2926',
+  },
+  settingToggleRow: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(230,220,212,0.95)',
+    backgroundColor: 'rgba(255,248,243,0.72)',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  settingToggleCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  settingToggleTitle: {
+    ...canvasText.bodyStrong,
+    color: '#2F2926',
+  },
+  settingToggleHint: {
+    ...canvasText.bodyMuted,
+    color: 'rgba(110,90,80,0.82)',
+  },
+  settingTogglePill: {
+    minWidth: 40,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(232,226,221,0.92)',
+  },
+  settingTogglePillActive: {
+    backgroundColor: 'rgba(163,74,60,0.14)',
+  },
+  settingTogglePillText: {
+    ...canvasText.caption,
+    color: 'rgba(110,90,80,0.82)',
+  },
+  settingTogglePillTextActive: {
+    color: '#A34A3C',
+  },
   inlineRefreshBtn: {
     width: 34,
     height: 34,
@@ -851,12 +1137,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   quickActionCard: {
-    minHeight: 12,
+    minHeight: 38,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: 'rgba(248,250,255,0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,219,254,0.72)',
   },
   quickActionCardActive: {
-    opacity: 1,
+    backgroundColor: 'rgba(238,242,255,0.96)',
+    borderColor: 'rgba(129,140,248,0.35)',
   },
   quickActionIconWrap: {
     width: 38,
@@ -867,9 +1162,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(250,233,225,0.9)',
   },
   quickActionLabel: {
-    ...canvasText.bodyStrong,
-    color: '#2F2926',
-    fontSize: 14,
+    ...canvasText.caption,
+    color: semanticColors.text.secondary,
+  },
+  quickActionLabelActive: {
+    color: semanticColors.accent.primary,
   },
   topControlRow: {
     flexDirection: 'row',
@@ -1021,15 +1318,35 @@ const styles = StyleSheet.create({
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   tag: {
     ...canvasText.caption,
-    color: '#A34A3C',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    color: '#8A5B4D',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(244,221,210,0.95)',
+    backgroundColor: 'rgba(252,244,239,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(233,212,201,0.9)',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  deletePostBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(178,74,87,0.18)',
+    backgroundColor: 'rgba(255,244,246,0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  deletePostBtnText: {
+    ...canvasText.caption,
+    color: '#B24A57',
   },
   postMetricRow: {
     flexDirection: 'row',

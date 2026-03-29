@@ -109,6 +109,16 @@ export const communityApi = {
     return response.item;
   },
 
+  async deletePost(postId: string): Promise<{ok: boolean; deletedId: string; deletedStatus?: string}> {
+    return requestApi<{ok: boolean; deletedId: string; deletedStatus?: string}>(
+      `/v1/modules/community/posts/${encodeURIComponent(postId)}`,
+      {
+        method: 'DELETE',
+        auth: true,
+      },
+    );
+  },
+
   async toggleLike(postId: string, liked: boolean): Promise<{likesCount: number; liked: boolean}> {
     return requestApi(`/v1/modules/community/posts/${encodeURIComponent(postId)}/like`, {
       method: 'POST',

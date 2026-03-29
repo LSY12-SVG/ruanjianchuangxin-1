@@ -176,6 +176,46 @@ const createCommunityRepository = db => {
     return row ? toPostView(row) : null;
   };
 
+  const deletePost = async (userId, postId) => {
+    const normalizedUserId = normalizeUserId(userId);
+    return db.withTransaction(async client => {
+      const postRows = await client.query(
+        `
+        SELECT id, author_id, status
+        FROM community_posts
+        WHERE id = ?
+        LIMIT 1
+      `,
+        [Number(postId)],
+      );
+      const post = postRows[0] || null;
+      if (!post) {
+        return {error: 'not_found'};
+      }
+      if (post.author_id !== normalizedUserId) {
+        return {error: 'forbidden'};
+      }
+
+      await client.query('DELETE FROM community_post_likes WHERE post_id = ?', [Number(postId)]);
+      await client.query('DELETE FROM community_post_saves WHERE post_id = ?', [Number(postId)]);
+      await client.query('DELETE FROM community_comments WHERE post_id = ?', [Number(postId)]);
+      const deleted = await client.query('DELETE FROM community_posts WHERE id = ? AND author_id = ?', [
+        Number(postId),
+        normalizedUserId,
+      ]);
+
+      if (!deleted.affectedRows) {
+        return {error: 'not_found'};
+      }
+
+      return {
+        ok: true,
+        deletedId: String(postId),
+        deletedStatus: post.status,
+      };
+    });
+  };
+
   const getFeed = async (userId, {filter, size, offset, page}) => {
     const normalizedUserId = normalizeUserId(userId);
     if (normalizedUserId) {
@@ -624,6 +664,7 @@ const createCommunityRepository = db => {
     createDraft,
     updateDraft,
     publishDraft,
+    deletePost,
     getFeed,
     getPostById,
     getMyPosts,
