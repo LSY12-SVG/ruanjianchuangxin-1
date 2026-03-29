@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-VisionGenieApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-VisionGenieApp.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		29A8E734B3A24E47800C1A01 /* FileTransferModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A8E734B3A24E47800C1A00 /* FileTransferModule.swift */; };
+		29A8E734B3A24E47800C1A03 /* FileTransferModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 29A8E734B3A24E47800C1A02 /* FileTransferModuleBridge.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		A77B70B18C4645F0B2E61B9B /* Inter-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BFF6DDB74FFE44D5AD8AF648 /* Inter-Variable.ttf */; };
@@ -20,6 +22,8 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = VisionGenieApp/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = VisionGenieApp/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = VisionGenieApp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		29A8E734B3A24E47800C1A00 /* FileTransferModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FileTransferModule.swift; path = VisionGenieApp/FileTransferModule.swift; sourceTree = "<group>"; };
+		29A8E734B3A24E47800C1A02 /* FileTransferModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = FileTransferModuleBridge.m; path = VisionGenieApp/FileTransferModuleBridge.m; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-VisionGenieApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-VisionGenieApp.debug.xcconfig"; path = "Target Support Files/Pods-VisionGenieApp/Pods-VisionGenieApp.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-VisionGenieApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-VisionGenieApp.release.xcconfig"; path = "Target Support Files/Pods-VisionGenieApp/Pods-VisionGenieApp.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-VisionGenieApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-VisionGenieApp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -47,6 +51,8 @@
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				29A8E734B3A24E47800C1A00 /* FileTransferModule.swift */,
+				29A8E734B3A24E47800C1A02 /* FileTransferModuleBridge.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -261,6 +267,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				29A8E734B3A24E47800C1A03 /* FileTransferModuleBridge.m in Sources */,
+				29A8E734B3A24E47800C1A01 /* FileTransferModule.swift in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

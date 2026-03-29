@@ -25,6 +25,7 @@ import type {
 import {useAgentExecutionContextStore} from '../../agent/executionContextStore';
 import {useAppStore} from '../../store/appStore';
 import {
+  agentApi,
   formatApiErrorMessage,
   type AgentExecuteResponse,
   type AgentPlanAction,
@@ -32,15 +33,21 @@ import {
   type ModuleCapabilityItem,
 } from '../../modules/api';
 import {
+  areMissingContextGuidesResolved,
   buildCurrentPageSummary,
+  buildExecuteStatusPresentation,
   buildMissingContextHintText,
+  cancelPendingAgentWorkflow,
   executeAgentPlanCycle,
+  resumePendingAgentWorkflow,
   runAgentGoalCycle,
   toResultStatusText,
   type AgentClientTab,
   type MissingContextGuide,
+  type AgentExecutionStrategy,
 } from '../../agent/dualEntryOrchestrator';
 import {useAgentVoiceGoal} from '../../agent/useAgentVoiceGoal';
+import {useAgentWorkflowContinuationStore} from '../../agent/workflowContinuationStore';
 
 const COLLAPSED_SIZE = 88;
 const PANEL_BOTTOM_OFFSET = 92;
@@ -70,6 +77,11 @@ const PANEL_CONFIG: AssistantPanelVisualConfig = {
   },
 };
 
+const buildChatMessageId = (sequence: number) =>
+  `m_${Date.now().toString(36)}_${sequence.toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 7)}`;
+
 const mapTabToScenePage = (tab: FloatingAssistantTab): AssistantScenePage => {
   if (tab === 'create') {
     return 'editor';
@@ -83,6 +95,13 @@ const mapTabToScenePage = (tab: FloatingAssistantTab): AssistantScenePage => {
 const toContextJumpLabel = (guide: MissingContextGuide): string =>
   guide.targetTab === 'model' ? '去建模页补图' : '去调色页补图';
 
+const FLOATING_STRATEGY_OPTIONS: Array<{value: AgentExecutionStrategy; label: string}> = [
+  {value: 'adaptive', label: '自适应'},
+  {value: 'fast', label: '快速'},
+  {value: 'quality', label: '质量'},
+  {value: 'cost', label: '成本'},
+];
+
 export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   activeTab,
   capabilities,
@@ -94,7 +113,10 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   const currentRuleIdRef = useRef('');
   const previousTabRef = useRef<FloatingAssistantTab | null>(null);
   const messageIdRef = useRef(0);
+  const contextResumeKeyRef = useRef('');
+  const asyncResumeKeyRef = useRef('');
   const panStartRef = useRef({x: 0, y: 0});
+  const panelPanStartRef = useRef({x: 0, y: 0});
   const panelAnim = useRef(new Animated.Value(0)).current;
   const position = useRef(
     new Animated.ValueXY({
@@ -102,11 +124,15 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       y: Math.max(90, windowHeight - bottomInset - 210),
     }),
   ).current;
+  const panelPosition = useRef(new Animated.ValueXY({x: 0, y: 0})).current;
 
   const colorContext = useAgentExecutionContextStore(state => state.colorContext);
   const modelingImageContext = useAgentExecutionContextStore(state => state.modelingImageContext);
   const assistantFrequency = useAppStore(state => state.assistantFrequency);
   const setAssistantFrequency = useAppStore(state => state.setAssistantFrequency);
+  const pendingWorkflow = useAgentWorkflowContinuationStore(state => state.pendingWorkflow);
+  const persistedRunRef = useAgentWorkflowContinuationStore(state => state.persistedRunRef);
+  const setPersistedRunRef = useAgentWorkflowContinuationStore(state => state.setPersistedRunRef);
 
   const [, setUiState] = useState<AssistantUiState>('S1_collapsed');
   const [panelMode, setPanelMode] = useState<'hidden' | 'half' | 'full'>('hidden');
@@ -116,6 +142,8 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   const [loading, setLoading] = useState(false);
   const [live2dReady, setLive2dReady] = useState(false);
   const [live2dFailed, setLive2dFailed] = useState(false);
+  const [live2dReloadToken, setLive2dReloadToken] = useState(0);
+  const [live2dAutoRetryCount, setLive2dAutoRetryCount] = useState(0);
   const [avatarViewport, setAvatarViewport] = useState({width: 0, height: 0});
   const [statusText, setStatusText] = useState('');
   const [errorText, setErrorText] = useState('');
@@ -123,9 +151,10 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   const [latestPlan, setLatestPlan] = useState<AgentPlanResponse | null>(null);
   const [latestExecuteResult, setLatestExecuteResult] = useState<AgentExecuteResponse | null>(null);
   const [latestHydratedActions, setLatestHydratedActions] = useState<AgentPlanAction[]>([]);
+  const [executionStrategy, setExecutionStrategy] = useState<AgentExecutionStrategy>('adaptive');
   const [chatMessages, setChatMessages] = useState<AssistantChatMessage[]>([
     {
-      id: 'm0',
+      id: buildChatMessageId(0),
       role: 'assistant',
       text: '你好，我是 Hiyori。你可以直接告诉我要完成什么任务。',
     },
@@ -162,7 +191,16 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       return;
     }
     messageIdRef.current += 1;
-    setChatMessages(prev => [...prev, {id: `m${messageIdRef.current}`, role, text: finalText}]);
+    setChatMessages(prev => [
+      ...prev,
+      {id: buildChatMessageId(messageIdRef.current), role, text: finalText},
+    ]);
+  }, []);
+
+  const requestLive2dReload = useCallback(() => {
+    setLive2dReady(false);
+    setLive2dFailed(false);
+    setLive2dReloadToken(prev => prev + 1);
   }, []);
 
   const openHalfPanel = useCallback(() => {
@@ -197,12 +235,14 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       if (!finalGoal) {
         return;
       }
+      contextResumeKeyRef.current = '';
       setLoading(true);
       setErrorText('');
       setStatusText('');
       setMissingContextGuides([]);
       setUiState(prev => reduceAssistantUiState(prev, 'run_start'));
       try {
+        await cancelPendingAgentWorkflow();
         const {plan, cycle} = await runAgentGoalCycle({
           goal: finalGoal,
           context: {
@@ -226,10 +266,26 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
             allowConfirmActions: options?.allowConfirm === true,
             actionIds: options?.actionIds,
             inputSource: options?.inputSource === 'voice' ? 'voice' : 'text',
+            executionStrategy,
           },
         });
         setLatestPlan(plan);
         setLatestHydratedActions(cycle.hydratedActions);
+        if (plan.reasoningSummary) {
+          const prefix =
+            plan.decisionPath === 'fallback_direct'
+              ? '我先给你可执行答复：'
+              : plan.summarySource === 'model'
+                ? '我将按以下 AI 规划执行：'
+                : '我将按以下规划执行：';
+          pushChatMessage('assistant', `${prefix}${plan.reasoningSummary}`);
+        }
+        if (plan.fallback?.used) {
+          pushChatMessage('assistant', `已启用直答兜底：${plan.fallback.reason}`);
+        }
+        if (plan.decisionPath !== 'fallback_direct' && plan.clarificationRequired && plan.clarificationQuestion) {
+          pushChatMessage('assistant', `需要澄清：${plan.clarificationQuestion}`);
+        }
         if (cycle.executeResult) {
           setLatestExecuteResult(cycle.executeResult);
         }
@@ -247,38 +303,46 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
         }
 
         if (!cycle.executeResult) {
+          if (plan.decisionPath === 'fallback_direct') {
+            setStatusText('已返回可执行答复。');
+            setUiState(prev => reduceAssistantUiState(prev, 'run_done'));
+            return;
+          }
           setErrorText('执行结果为空');
           setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
           pushChatMessage('assistant', '执行结果为空');
           return;
         }
 
-        setUiState(prev => reduceAssistantUiState(prev, 'run_done'));
-        let assistantReply = '';
-        if (cycle.executeResult.status === 'pending_confirm') {
-          setStatusText('已自动执行可用动作，存在待确认步骤。');
-          assistantReply = '我已自动执行可用动作，还剩待确认步骤，请在下方确认或取消。';
-          openFullPanel();
-        } else if (cycle.executeResult.status === 'applied') {
-          const handledCount = cycle.executeResult.clientHandledActions?.length || 0;
-          setStatusText(
-            handledCount > 0 ? `执行完成（客户端补执行 ${handledCount} 项）。` : '执行完成。',
-          );
-          assistantReply = cycle.executeResult.pageSummary
-            ? `执行完成。当前页摘要：${cycle.executeResult.pageSummary}`
-            : '执行完成。';
-        } else if (cycle.executeResult.status === 'client_required') {
-          setStatusText('已执行服务器动作，存在待客户端处理动作。');
-          assistantReply = '已完成服务器侧执行，客户端动作已尝试处理。';
-        } else {
+                setUiState(prev => reduceAssistantUiState(prev, 'run_done'));
+        const firstToolCall = cycle.executeResult.toolCalls?.[0];
+        const toolHint = firstToolCall
+          ? `${firstToolCall.serverId}/${firstToolCall.toolName}`
+          : '';
+        const presentation = buildExecuteStatusPresentation(cycle.executeResult);
+        if (cycle.executeResult.status === 'failed') {
           const firstMessage =
             cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
-            '执行失败';
+            presentation.assistantReply;
           setErrorText(firstMessage);
           setUiState(prev => reduceAssistantUiState(prev, 'run_failed'));
-          assistantReply = firstMessage;
+          pushChatMessage('assistant', firstMessage);
+          return;
         }
-        pushChatMessage('assistant', assistantReply);
+        if (cycle.executeResult.status === 'pending_confirm') {
+          openFullPanel();
+        }
+        const handledCount = cycle.executeResult.clientHandledActions?.length || 0;
+        if (cycle.executeResult.status === 'applied') {
+          setStatusText(
+            handledCount > 0
+              ? `${presentation.statusLine}（客户端补执行 ${handledCount} 项）${toolHint ? ` · MCP: ${toolHint}` : ''}`
+              : `${presentation.statusLine}${toolHint ? ` · MCP: ${toolHint}` : ''}`,
+          );
+        } else {
+          setStatusText(presentation.statusLine);
+        }
+        pushChatMessage('assistant', presentation.assistantReply);
       } catch (error) {
         const message = formatApiErrorMessage(error, '执行失败');
         setErrorText(message);
@@ -293,6 +357,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       colorContext,
       latestExecuteResult,
       latestPlan,
+      executionStrategy,
       modelingImageContext,
       onNavigateTab,
       openFullPanel,
@@ -352,40 +417,77 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
   ]);
 
   const confirmPending = useCallback(async () => {
-    if (!latestPlan || pendingActionIds.length === 0 || latestHydratedActions.length === 0) {
+    const resumableRunId =
+      latestExecuteResult?.workflowRun?.runId ||
+      pendingWorkflow?.workflowRun?.runId ||
+      persistedRunRef?.runId ||
+      '';
+    if (
+      (!latestPlan || latestHydratedActions.length === 0) &&
+      !(resumableRunId && pendingActionIds.length > 0)
+    ) {
       return;
     }
     setLoading(true);
     setErrorText('');
     setMissingContextGuides([]);
     try {
-      const cycle = await executeAgentPlanCycle({
-        plan: {
-          ...latestPlan,
-          actions: latestHydratedActions,
-        },
-        context: {
-          currentTab: activeTab,
-          colorContext,
-          modelingImageContext,
-          latestExecuteResult,
-        },
-        clientHandlers: {
-          navigateToTab: onNavigateTab,
-          summarizeCurrentPage: () =>
-            buildCurrentPageSummary({
+      const cycle = resumableRunId
+        ? await resumePendingAgentWorkflow({
+            context: {
               currentTab: activeTab,
               colorContext,
               modelingImageContext,
-              latestPlan,
               latestExecuteResult,
-            }),
-        },
-        options: {
-          allowConfirmActions: true,
-          actionIds: pendingActionIds,
-        },
-      });
+            },
+            clientHandlers: {
+              navigateToTab: onNavigateTab,
+              summarizeCurrentPage: () =>
+                buildCurrentPageSummary({
+                  currentTab: activeTab,
+                  colorContext,
+                  modelingImageContext,
+                  latestPlan,
+                  latestExecuteResult,
+                }),
+            },
+            options: {
+              allowConfirmActions: true,
+            },
+          })
+        : await executeAgentPlanCycle({
+            plan: {
+              ...latestPlan!,
+              actions: latestHydratedActions,
+            },
+            context: {
+              currentTab: activeTab,
+              colorContext,
+              modelingImageContext,
+              latestExecuteResult,
+            },
+            clientHandlers: {
+              navigateToTab: onNavigateTab,
+              summarizeCurrentPage: () =>
+                buildCurrentPageSummary({
+                  currentTab: activeTab,
+                  colorContext,
+                  modelingImageContext,
+                  latestPlan,
+                  latestExecuteResult,
+                }),
+            },
+            options: {
+              allowConfirmActions: true,
+              actionIds: pendingActionIds,
+              executionStrategy,
+            },
+          });
+      if (!cycle) {
+        setErrorText('确认执行结果为空');
+        pushChatMessage('assistant', '确认执行结果为空');
+        return;
+      }
       if (cycle.missingContextGuides.length > 0) {
         setMissingContextGuides(cycle.missingContextGuides);
         const hintText = buildMissingContextHintText(cycle.missingContextGuides);
@@ -425,33 +527,261 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     latestExecuteResult,
     latestHydratedActions,
     latestPlan,
+    executionStrategy,
     modelingImageContext,
     onNavigateTab,
+    pendingWorkflow,
     pendingActionIds,
+    persistedRunRef?.runId,
     pushChatMessage,
   ]);
 
   const dismissPending = useCallback(() => {
-    setStatusText('已取消待确认动作。');
-    pushChatMessage('assistant', '已取消待确认动作。');
-    setLatestExecuteResult(prev =>
-      prev
-        ? {
-            ...prev,
-            status: 'applied',
-            actionResults: prev.actionResults.map(item =>
-              item.status === 'pending_confirm'
-                ? {
-                    ...item,
-                    status: 'skipped',
-                    message: '用户已取消',
-                  }
-                : item,
-            ),
-          }
-        : prev,
-    );
+    setLoading(true);
+    cancelPendingAgentWorkflow()
+      .then(result => {
+        setStatusText('已取消当前流程。');
+        pushChatMessage('assistant', '已取消当前流程。');
+        setLatestExecuteResult(result);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [pushChatMessage]);
+
+  useEffect(() => {
+    if (!persistedRunRef?.runId || pendingWorkflow || latestExecuteResult || loading) {
+      return;
+    }
+    let cancelled = false;
+    agentApi
+      .getWorkflowRun(persistedRunRef.runId)
+      .then(result => {
+        if (cancelled) {
+          return;
+        }
+        setLatestExecuteResult(result);
+        if (
+          result.workflowRun?.status &&
+          result.workflowRun.status !== 'waiting_async_result' &&
+          result.workflowRun.status !== 'waiting_confirm' &&
+          result.workflowRun.status !== 'waiting_context' &&
+          result.workflowRun.status !== 'running'
+        ) {
+          setPersistedRunRef(null);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [latestExecuteResult, loading, pendingWorkflow, persistedRunRef?.runId, setPersistedRunRef]);
+
+  useEffect(() => {
+    const waitingAsyncRun =
+      pendingWorkflow?.workflowRun?.status === 'waiting_async_result'
+        ? pendingWorkflow.workflowRun
+        : persistedRunRef?.status === 'waiting_async_result'
+          ? persistedRunRef
+          : null;
+    if (!waitingAsyncRun || loading) {
+      return;
+    }
+    const taskId =
+      pendingWorkflow?.workflowRun?.pendingTask?.taskId ||
+      latestExecuteResult?.workflowRun?.pendingTask?.taskId ||
+      '';
+    const resumeKey = `${waitingAsyncRun.runId}:${taskId}:${pendingWorkflow?.updatedAt || persistedRunRef?.updatedAt || 0}`;
+    if (asyncResumeKeyRef.current === resumeKey) {
+      return;
+    }
+    asyncResumeKeyRef.current = resumeKey;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      resumePendingAgentWorkflow({
+        context: {
+          currentTab: activeTab,
+          colorContext,
+          modelingImageContext,
+          latestExecuteResult,
+        },
+        clientHandlers: {
+          navigateToTab: onNavigateTab,
+          summarizeCurrentPage: () =>
+            buildCurrentPageSummary({
+              currentTab: activeTab,
+              colorContext,
+              modelingImageContext,
+              latestPlan,
+              latestExecuteResult,
+            }),
+        },
+      })
+        .then(cycle => {
+          if (cancelled || !cycle?.executeResult) {
+            return;
+          }
+          setLatestHydratedActions(cycle.hydratedActions);
+          setLatestExecuteResult(cycle.executeResult);
+          if (cycle.executeResult.status === 'waiting_async_result') {
+            setStatusText('任务仍在后台处理中...');
+            return;
+          }
+          if (cycle.executeResult.status === 'failed') {
+            const failureText =
+              cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
+              '后台任务失败';
+            setErrorText(failureText);
+            pushChatMessage('assistant', failureText);
+            return;
+          }
+          setStatusText('后台任务已完成，已继续推进后续步骤。');
+          pushChatMessage('assistant', '后台任务已完成，我已继续推进后续工作流。');
+        })
+        .catch(error => {
+          if (!cancelled) {
+            const message = formatApiErrorMessage(error, '后台任务续跑失败');
+            setErrorText(message);
+            pushChatMessage('assistant', message);
+          }
+        });
+    }, pendingWorkflow?.workflowRun?.pendingTask?.pollAfterMs || latestExecuteResult?.workflowRun?.pendingTask?.pollAfterMs || 4000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    activeTab,
+    colorContext,
+    latestExecuteResult,
+    latestHydratedActions,
+    latestPlan,
+    loading,
+    modelingImageContext,
+    onNavigateTab,
+    pendingWorkflow,
+    persistedRunRef,
+    pushChatMessage,
+    setPersistedRunRef,
+  ]);
+
+  useEffect(() => {
+    if (!latestPlan || !missingContextGuides.length || loading) {
+      return;
+    }
+    if (
+      !areMissingContextGuidesResolved(missingContextGuides, {
+        colorContext,
+        modelingImageContext,
+      })
+    ) {
+      return;
+    }
+
+    const resumeKey = [
+      latestPlan.planId,
+      latestExecuteResult?.executionId || 'root',
+      missingContextGuides.map(item => item.operation).join(','),
+      colorContext?.image?.base64 ? 'color' : 'no-color',
+      modelingImageContext?.image?.base64 ? 'model' : 'no-model',
+    ].join(':');
+    if (contextResumeKeyRef.current === resumeKey) {
+      return;
+    }
+    contextResumeKeyRef.current = resumeKey;
+
+    let cancelled = false;
+    const resume = async () => {
+      try {
+        setLoading(true);
+        setErrorText('');
+        setStatusText('检测到上下文已补齐，继续执行中...');
+        const cycle = await executeAgentPlanCycle({
+          plan: {
+            ...latestPlan,
+            actions: latestHydratedActions.length ? latestHydratedActions : latestPlan.actions,
+          },
+          context: {
+            currentTab: activeTab,
+            colorContext,
+            modelingImageContext,
+            latestExecuteResult,
+          },
+          clientHandlers: {
+            navigateToTab: onNavigateTab,
+            summarizeCurrentPage: () =>
+              buildCurrentPageSummary({
+                currentTab: activeTab,
+                colorContext,
+                modelingImageContext,
+                latestPlan,
+                latestExecuteResult,
+              }),
+          },
+        });
+
+        if (cancelled) {
+          return;
+        }
+        setLatestHydratedActions(cycle.hydratedActions);
+        if (cycle.executeResult) {
+          setLatestExecuteResult(cycle.executeResult);
+        }
+        if (cycle.missingContextGuides.length > 0) {
+          setMissingContextGuides(cycle.missingContextGuides);
+          const hintText = buildMissingContextHintText(cycle.missingContextGuides);
+          setErrorText(hintText);
+          pushChatMessage('assistant', hintText);
+          return;
+        }
+        setMissingContextGuides([]);
+        if (!cycle.executeResult) {
+          setErrorText('上下文补齐后未获得执行结果');
+          pushChatMessage('assistant', '上下文补齐后未获得执行结果');
+          return;
+        }
+        if (cycle.executeResult.status === 'failed') {
+          const failureText =
+            cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
+            '上下文补齐后执行失败';
+          setErrorText(failureText);
+          pushChatMessage('assistant', failureText);
+          return;
+        }
+        setStatusText('已在补齐上下文后继续执行。');
+        pushChatMessage('assistant', '已在补齐上下文后继续执行。');
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const message = formatApiErrorMessage(error, '上下文补齐后继续执行失败');
+        setErrorText(message);
+        pushChatMessage('assistant', message);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    resume().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    colorContext,
+    latestExecuteResult,
+    latestHydratedActions,
+    latestPlan,
+    loading,
+    missingContextGuides,
+    modelingImageContext,
+    onNavigateTab,
+    pushChatMessage,
+  ]);
 
   useEffect(() => {
     setUiState(prev => reduceAssistantUiState(prev, 'app_ready'));
@@ -469,8 +799,22 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     if (panelMode !== 'hidden') {
       setLive2dFailed(false);
       setLive2dReady(false);
+      setLive2dAutoRetryCount(0);
     }
   }, [panelMode]);
+
+  useEffect(() => {
+    if (!live2dFailed || panelMode === 'hidden' || live2dAutoRetryCount >= 2) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLive2dAutoRetryCount(prev => prev + 1);
+      requestLive2dReload();
+    }, 750);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [live2dAutoRetryCount, live2dFailed, panelMode, requestLive2dReload]);
 
   useEffect(() => {
     if (previousTabRef.current === activeTab) {
@@ -568,6 +912,79 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     };
   }, [bottomInset, panelMode, windowHeight, windowWidth]);
 
+  const clampExpandedPanelOffset = useCallback(
+    (x: number, y: number) => {
+      const margin = 8;
+      const minTopInset = 70;
+      const panelWidth = Math.max(220, Math.round(panelSizeStyle.width));
+      const panelHeight = Math.max(220, Math.round(panelSizeStyle.maxHeight));
+      const baseLeft = windowWidth - 12 - panelWidth;
+      const baseTop = windowHeight - (bottomInset + PANEL_BOTTOM_OFFSET) - panelHeight;
+      const minOffsetX = margin - baseLeft;
+      const maxOffsetX = windowWidth - panelWidth - margin - baseLeft;
+      const minTop = minTopInset;
+      const maxTop = Math.max(minTop, windowHeight - panelHeight - margin);
+      const minOffsetY = minTop - baseTop;
+      const maxOffsetY = maxTop - baseTop;
+      const boundedMinOffsetX = Math.min(minOffsetX, maxOffsetX);
+      const boundedMaxOffsetX = Math.max(minOffsetX, maxOffsetX);
+      const boundedMinOffsetY = Math.min(minOffsetY, maxOffsetY);
+      const boundedMaxOffsetY = Math.max(minOffsetY, maxOffsetY);
+      return {
+        x: Math.min(boundedMaxOffsetX, Math.max(boundedMinOffsetX, x)),
+        y: Math.min(boundedMaxOffsetY, Math.max(boundedMinOffsetY, y)),
+      };
+    },
+    [bottomInset, panelSizeStyle.maxHeight, panelSizeStyle.width, windowHeight, windowWidth],
+  );
+
+  useEffect(() => {
+    if (panelMode === 'hidden') {
+      return;
+    }
+    panelPosition.stopAnimation(current => {
+      const clamped = clampExpandedPanelOffset(current.x, current.y);
+      if (Math.abs(clamped.x - current.x) > 0.5 || Math.abs(clamped.y - current.y) > 0.5) {
+        panelPosition.setValue(clamped);
+      }
+    });
+  }, [clampExpandedPanelOffset, panelMode, panelPosition]);
+
+  const expandedHeaderPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          panelMode !== 'hidden' &&
+          (Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4),
+        onPanResponderGrant: () => {
+          panelPosition.stopAnimation(current => {
+            panelPanStartRef.current = {x: current.x, y: current.y};
+          });
+          setUiState(prev => reduceAssistantUiState(prev, 'user_drag_start'));
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const nextOffset = clampExpandedPanelOffset(
+            panelPanStartRef.current.x + gestureState.dx,
+            panelPanStartRef.current.y + gestureState.dy,
+          );
+          panelPosition.setValue(nextOffset);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const nextOffset = clampExpandedPanelOffset(
+            panelPanStartRef.current.x + gestureState.dx,
+            panelPanStartRef.current.y + gestureState.dy,
+          );
+          Animated.spring(panelPosition, {
+            toValue: nextOffset,
+            useNativeDriver: false,
+            bounciness: 4,
+          }).start();
+          setUiState(prev => reduceAssistantUiState(prev, 'user_drag_end'));
+        },
+      }),
+    [clampExpandedPanelOffset, panelMode, panelPosition],
+  );
+
   const chatListModeStyle = useMemo(
     () => ({
       maxHeight:
@@ -615,7 +1032,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       {!live2dFailed && avatarViewport.width > 8 && avatarViewport.height > 8 ? (
         <View style={styles.avatarLive2dHost}>
           <WebView
-            key={`live2d-${Math.round(avatarViewport.width)}x${Math.round(avatarViewport.height)}-${panelMode}`}
+            key={`live2d-${Math.round(avatarViewport.width)}x${Math.round(avatarViewport.height)}-${panelMode}-${live2dReloadToken}`}
             source={{uri: live2dUri}}
             originWhitelist={['*']}
             allowFileAccess
@@ -632,6 +1049,12 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
             }}
             onError={() => {
               setLive2dFailed(true);
+              setErrorText('模型渲染异常，正在尝试恢复。');
+            }}
+            onRenderProcessGone={() => {
+              setLive2dFailed(true);
+              setLive2dReady(false);
+              setErrorText('模型渲染进程异常，正在重建。');
             }}
             onMessage={event => {
               try {
@@ -642,6 +1065,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
                 if (payload.type === 'loaded') {
                   setLive2dReady(true);
                   setLive2dFailed(false);
+                  setLive2dAutoRetryCount(0);
                 }
                 if (payload.type === 'error') {
                   setLive2dFailed(true);
@@ -663,7 +1087,12 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       {!live2dReady || live2dFailed ? (
         <View style={styles.avatarPanelOverlay}>
           {live2dFailed ? (
-            <Text style={styles.avatarPanelOverlayText}>模型加载失败</Text>
+            <>
+              <Text style={styles.avatarPanelOverlayText}>模型加载失败，正在恢复</Text>
+              <Pressable style={styles.avatarRetryBtn} onPress={requestLive2dReload}>
+                <Text style={styles.avatarRetryBtnText}>重试加载</Text>
+              </Pressable>
+            </>
           ) : (
             <>
               <ActivityIndicator size="small" color="#F8D7C2" />
@@ -716,6 +1145,33 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
       return `客户端补执行 ${clientHandledCount} 项`;
     }
     return '';
+  }, [latestExecuteResult]);
+
+  const mcpSummaryText = useMemo(() => {
+    if (!latestExecuteResult?.toolCalls?.length) {
+      return '';
+    }
+    const first = latestExecuteResult.toolCalls[0];
+    const total = latestExecuteResult.toolCalls.length;
+    if (!first) {
+      return '';
+    }
+    return `MCP 调用 ${total} 次，首个工具 ${first.serverId}/${first.toolName}`;
+  }, [latestExecuteResult]);
+
+  const resultCardSummaries = useMemo(
+    () =>
+      Array.isArray(latestExecuteResult?.resultCards)
+        ? latestExecuteResult.resultCards.slice(0, 2).map(card => `${card.title}：${card.summary}`)
+        : [],
+    [latestExecuteResult],
+  );
+
+  const completionScoreText = useMemo(() => {
+    if (typeof latestExecuteResult?.completionScore !== 'number') {
+      return '';
+    }
+    return `完成度 ${Math.round(latestExecuteResult.completionScore * 100)}%`;
   }, [latestExecuteResult]);
 
   return (
@@ -772,23 +1228,35 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
               opacity: panelAnim,
               transform: [
                 {
-                  translateY: panelAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [20, 0],
-                  }),
+                  translateX: panelPosition.x,
+                },
+                {
+                  translateY: Animated.add(
+                    panelPosition.y,
+                    panelAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [20, 0],
+                    }),
+                  ),
                 },
               ],
             },
           ]}>
           <View style={styles.panelHeader}>
-            <Text style={styles.panelTitle}>Hiyori 对话助手</Text>
+            <View
+              style={styles.panelDragHandle}
+              testID="floating-agent-drag-handle"
+              {...expandedHeaderPanResponder.panHandlers}>
+              <Icon name="reorder-two" size={13} color="rgba(252,231,216,0.86)" />
+              <Text style={styles.panelTitle}>Hiyori 对话助手</Text>
+            </View>
             <View style={styles.panelHeaderActions}>
               {panelMode === 'half' ? (
-                <Pressable style={styles.headerBtn} onPress={openFullPanel}>
+                <Pressable testID="floating-agent-expand-btn" style={styles.headerBtn} onPress={openFullPanel}>
                   <Icon name="expand" size={14} color="#F3DDCD" />
                 </Pressable>
               ) : null}
-              <Pressable style={styles.headerBtn} onPress={closePanel}>
+              <Pressable testID="floating-agent-close-btn" style={styles.headerBtn} onPress={closePanel}>
                 <Icon name="close" size={15} color="#F3DDCD" />
               </Pressable>
             </View>
@@ -815,9 +1283,9 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
                 style={[styles.chatList, chatListModeStyle]}
                 contentContainerStyle={styles.chatListContent}
                 keyboardShouldPersistTaps="handled">
-                {chatMessages.map(message => (
+                {chatMessages.map((message, index) => (
                   <View
-                    key={message.id}
+                    key={`${message.id}:${index}`}
                     style={[
                       styles.chatBubble,
                       message.role === 'assistant' ? styles.chatBubbleAssistant : styles.chatBubbleUser,
@@ -837,6 +1305,17 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
                   </View>
                 ) : null}
               </ScrollView>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strategyRow}>
+                {FLOATING_STRATEGY_OPTIONS.map(item => (
+                  <Pressable
+                    key={item.value}
+                    style={[styles.strategyChip, executionStrategy === item.value ? styles.strategyChipActive : null]}
+                    onPress={() => setExecutionStrategy(item.value)}>
+                    <Text style={styles.strategyChipText}>{item.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <Text style={styles.voiceMetaText}>执行策略: {executionStrategy === 'adaptive' ? '自适应' : executionStrategy}</Text>
               <View style={styles.customGoalWrap}>
                 <TextInput
                   value={customGoal}
@@ -887,7 +1366,27 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
                 <Text style={styles.statusText}>执行状态: {toResultStatusText(latestExecuteResult.status)}</Text>
               ) : null}
               {combinedResultText ? <Text style={styles.statusText}>{combinedResultText}</Text> : null}
+              {mcpSummaryText ? <Text style={styles.statusText}>{mcpSummaryText}</Text> : null}
+              {resultCardSummaries.map((line, index) => (
+                <Text key={`${line}:${index}`} style={styles.statusText}>
+                  {line}
+                </Text>
+              ))}
+              {latestExecuteResult?.auditId ? (
+                <Text style={styles.statusText}>审计追踪: {latestExecuteResult.auditId}</Text>
+              ) : null}
               {workflowProgressText ? <Text style={styles.statusText}>{workflowProgressText}</Text> : null}
+              {latestExecuteResult?.workflowRun?.runId ? (
+                <Pressable
+                  style={styles.contextJumpBtn}
+                  onPress={() => {
+                    onNavigateTab('agent');
+                    closePanel();
+                  }}>
+                  <Icon name="document-text-outline" size={12} color="#2F2926" />
+                  <Text style={styles.contextJumpBtnText}>查看运行详情</Text>
+                </Pressable>
+              ) : null}
               {latestExecuteResult?.workflowState?.nextRequiredContext ? (
                 <Text style={styles.statusText}>
                   下一步需要: {toRequiredContextText(latestExecuteResult.workflowState.nextRequiredContext)}
@@ -992,6 +1491,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  avatarRetryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(248,220,203,0.6)',
+    backgroundColor: 'rgba(248,220,203,0.16)',
+  },
+  avatarRetryBtnText: {
+    color: '#FCE2D0',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   avatarBadge: {
     position: 'absolute',
     right: 6,
@@ -1047,6 +1560,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+  },
+  panelDragHandle: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
   },
   panelTitle: {
     color: '#FCE7D8',
@@ -1147,6 +1667,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  strategyRow: {
+    gap: 6,
+    paddingRight: 6,
+  },
+  strategyChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(252,215,192,0.28)',
+    backgroundColor: 'rgba(71,45,38,0.45)',
+  },
+  strategyChipActive: {
+    borderColor: 'rgba(255,220,197,0.72)',
+    backgroundColor: 'rgba(155,74,60,0.65)',
+  },
+  strategyChipText: {
+    color: '#FFEEDF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   customGoalInput: {
     flex: 1,
     minHeight: 38,
@@ -1193,6 +1734,22 @@ const styles = StyleSheet.create({
     padding: 9,
     gap: 8,
   },
+  contextJumpBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#F3DDCD',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  contextJumpBtnText: {
+    color: '#2F2926',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   statusText: {
     color: '#FDE9DB',
     fontSize: 11,
@@ -1228,3 +1785,9 @@ const styles = StyleSheet.create({
     color: '#FFD4D4',
   },
 });
+
+
+
+
+
+

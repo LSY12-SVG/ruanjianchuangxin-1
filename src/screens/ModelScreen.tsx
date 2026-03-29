@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
   Alert,
   Image,
@@ -14,6 +14,13 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import {WebView} from 'react-native-webview';
 import {useImagePicker} from '../hooks/useImagePicker';
 import {useAgentExecutionContextStore} from '../agent/executionContextStore';
+import {
+  buildCurrentPageSummary,
+  resumePendingAgentWorkflow,
+  toResultStatusText,
+} from '../agent/dualEntryOrchestrator';
+import {useAgentWorkflowContinuationStore} from '../agent/workflowContinuationStore';
+import {useAgentClientNavigationBridge} from '../agent/clientNavigationBridge';
 import {
   ApiRequestError,
   formatApiErrorMessage,
@@ -139,9 +146,15 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   const [captureModel, setCaptureModel] = useState<ModelingModelAssetResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
+  const [agentHintText, setAgentHintText] = useState('');
+  const resumeCycleKeyRef = useRef('');
   const setModelingImageContext = useAgentExecutionContextStore(
     state => state.setModelingImageContext,
   );
+  const modelingImageContext = useAgentExecutionContextStore(state => state.modelingImageContext);
+  const colorContext = useAgentExecutionContextStore(state => state.colorContext);
+  const pendingWorkflow = useAgentWorkflowContinuationStore(state => state.pendingWorkflow);
+  const navigateToTab = useAgentClientNavigationBridge(state => state.navigateToTab);
 
   const modelingGalleryOptions = useMemo(
     () => ({
@@ -163,6 +176,10 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   });
 
   const modelingCapability = capabilities.find(item => item.module === 'modeling');
+  const pendingModelGuide = useMemo(
+    () => pendingWorkflow?.missingContextGuides.find(item => item.targetTab === 'model') || null,
+    [pendingWorkflow],
+  );
 
   useEffect(() => {
     const selected = jobPicker.selectedImage;
@@ -170,7 +187,6 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
       .replace(/^data:[^;]+;base64,/, '')
       .trim();
     if (!selected?.success || !normalizedBase64) {
-      setModelingImageContext(null);
       return;
     }
     setModelingImageContext({
@@ -181,6 +197,71 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
       },
     });
   }, [jobPicker.selectedImage, setModelingImageContext]);
+
+  useEffect(() => {
+    const isWaitingContext = pendingWorkflow?.workflowRun?.status === 'waiting_context';
+    if (!modelingImageContext?.image?.base64 || !pendingWorkflow || !isWaitingContext) {
+      return;
+    }
+    const resumeKey = [
+      pendingWorkflow.plan.planId,
+      pendingWorkflow.latestExecuteResult?.executionId || 'root',
+      pendingModelGuide?.operation || 'model-context',
+      modelingImageContext.image.base64 ? `${modelingImageContext.image.base64.length}` : 'missing',
+    ].join(':');
+    if (resumeCycleKeyRef.current === resumeKey) {
+      return;
+    }
+    resumeCycleKeyRef.current = resumeKey;
+
+    let cancelled = false;
+    const resume = async () => {
+      try {
+        setErrorText('');
+        setAgentHintText('已检测到补图，正在自动继续 Agent 工作流...');
+        const cycle = await resumePendingAgentWorkflow({
+          context: {
+            currentTab: 'model',
+            colorContext,
+            modelingImageContext,
+            latestExecuteResult: pendingWorkflow.latestExecuteResult,
+          },
+          clientHandlers: {
+            navigateToTab,
+            summarizeCurrentPage: () =>
+              buildCurrentPageSummary({
+                currentTab: 'model',
+                colorContext,
+                modelingImageContext,
+                latestPlan: pendingWorkflow.plan,
+                latestExecuteResult: pendingWorkflow.latestExecuteResult,
+              }),
+          },
+        });
+        if (!cancelled && cycle?.executeResult) {
+          if (cycle.executeResult.status === 'failed') {
+            const failedMessage =
+              cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
+              '续跑失败';
+            setAgentHintText('');
+            setErrorText(failedMessage);
+            return;
+          }
+          setAgentHintText(`已自动继续 Agent 工作流：${toResultStatusText(cycle.executeResult.status)}`);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAgentHintText('');
+          setErrorText(formatApiErrorMessage(error, '自动续跑失败'));
+        }
+      }
+    };
+    resume().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [colorContext, modelingImageContext, navigateToTab, pendingModelGuide?.operation, pendingWorkflow]);
 
   useEffect(() => {
     if (job?.status === 'succeeded') {
@@ -240,10 +321,29 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
     return () => clearInterval(timer);
   }, [captureTaskId]);
 
-  const uploadPreviewUri = jobPicker.selectedImage?.success ? jobPicker.selectedImage.uri || '' : '';
+  const effectiveJobImage = useMemo(() => {
+    if (jobPicker.selectedImage?.success) {
+      return jobPicker.selectedImage;
+    }
+    const storedImage = modelingImageContext?.image;
+    const storedBase64 = String(storedImage?.base64 || '').replace(/^data:[^;]+;base64,/, '').trim();
+    if (!storedImage || !storedBase64) {
+      return null;
+    }
+    const mimeType = String(storedImage.mimeType || 'image/jpeg');
+    return {
+      success: true,
+      uri: `data:${mimeType};base64,${storedBase64}`,
+      base64: storedBase64,
+      type: mimeType,
+      fileName: storedImage.fileName || 'agent-model.jpg',
+    };
+  }, [jobPicker.selectedImage, modelingImageContext]);
+
+  const uploadPreviewUri = effectiveJobImage?.success ? effectiveJobImage.uri || '' : '';
   const uploadPreviewHeight = useMemo(() => {
-    const sourceWidth = Number(jobPicker.selectedImage?.width || 0);
-    const sourceHeight = Number(jobPicker.selectedImage?.height || 0);
+    const sourceWidth = Number(effectiveJobImage?.width || 0);
+    const sourceHeight = Number(effectiveJobImage?.height || 0);
     if (sourceWidth <= 0 || sourceHeight <= 0) {
       return 220;
     }
@@ -252,7 +352,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
     const usableWidth = Math.max(windowWidth - 72, 220);
     const fittedHeight = usableWidth / ratio;
     return Math.max(170, Math.min(360, fittedHeight));
-  }, [jobPicker.selectedImage?.height, jobPicker.selectedImage?.width, windowWidth]);
+  }, [effectiveJobImage?.height, effectiveJobImage?.width, windowWidth]);
   const captureViewerUrl = resolveCaptureViewerUrl(captureModel);
   const viewerUrl = useMemo(() => {
     if (mode === 'capture') {
@@ -389,6 +489,19 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
           <Text style={styles.modeBtnText}>实景捕捉</Text>
         </Pressable>
       </View>
+      {pendingModelGuide ? (
+        <View style={styles.agentGuideBar}>
+          <View style={styles.agentGuideHead}>
+            <Icon name="flash" size={14} color="#A34A3C" />
+            <Text style={styles.agentGuideTitle}>Agent 等待补图</Text>
+          </View>
+          <Text style={styles.agentGuideText}>{pendingModelGuide.message}</Text>
+          <Pressable style={styles.secondaryBtn} onPress={() => jobPicker.pickFromGallery()}>
+            <Icon name="images" size={15} color="#3B2F29" />
+            <Text style={styles.secondaryBtnText}>上传图片继续</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {mode === 'job' ? (
         <View style={styles.card}>
@@ -426,7 +539,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
                 style={[styles.uploadPreviewImage, {height: uploadPreviewHeight}]}
                 resizeMode="contain"
               />
-              <Text style={styles.previewMeta}>{jobPicker.selectedImage?.fileName || uploadPreviewUri}</Text>
+              <Text style={styles.previewMeta}>{effectiveJobImage?.fileName || uploadPreviewUri}</Text>
             </View>
           ) : null}
           {job ? (
@@ -522,6 +635,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
             </View>
           )}
         </View>
+        {agentHintText ? <Text style={styles.statusLine}>{agentHintText}</Text> : null}
         {errorText ? <Text style={styles.errorText}>错误: {errorText}</Text> : null}
       </View>
     </ScrollView>
@@ -554,6 +668,26 @@ const styles = StyleSheet.create({
     ...glassShadow,
     padding: 14,
     gap: 12,
+  },
+  agentGuideBar: {
+    ...cardSurfaceBlue,
+    ...glassShadow,
+    padding: 12,
+    gap: 10,
+  },
+  agentGuideHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  agentGuideTitle: {
+    ...canvasText.bodyStrong,
+    color: '#3B2F29',
+  },
+  agentGuideText: {
+    ...canvasText.body,
+    color: 'rgba(109,90,80,0.86)',
+    lineHeight: 18,
   },
   sectionTitle: {
     ...canvasText.sectionTitle,

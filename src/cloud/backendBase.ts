@@ -5,6 +5,14 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '10.0.2.2', '10.0.3.2'
 
 const isIpv4Host = (hostname: string): boolean => /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
 
+const isLanHost = (hostname: string): boolean => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized || LOOPBACK_HOSTS.has(normalized)) {
+    return false;
+  }
+  return isIpv4Host(normalized);
+};
+
 const isUsableDevHost = (hostname: string): boolean => {
   const normalized = hostname.trim().toLowerCase();
   if (!normalized) {
@@ -42,13 +50,24 @@ export const resolveBackendBaseCandidates = (
 ): string[] => {
   const resolvedPort = Number.isFinite(port) ? Math.max(1, Math.floor(port)) : DEFAULT_BACKEND_PORT;
   const set = new Set<string>();
+  const fromScript = resolveScriptHostBase(resolvedPort);
+
+  if (fromScript) {
+    try {
+      const hostname = new URL(fromScript).hostname || '';
+      if (isLanHost(hostname)) {
+        set.add(fromScript);
+      }
+    } catch {
+      // ignore invalid dev host
+    }
+  }
 
   set.add(`http://127.0.0.1:${resolvedPort}`);
   set.add(`http://localhost:${resolvedPort}`);
   set.add(`http://10.0.2.2:${resolvedPort}`);
   set.add(`http://10.0.3.2:${resolvedPort}`);
 
-  const fromScript = resolveScriptHostBase(resolvedPort);
   if (fromScript) {
     set.add(fromScript);
   }

@@ -1,7 +1,9 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {colorApi, formatApiErrorMessage} from '../modules/api';
-import {createSpeechRecognizer, requestRecordAudioPermission} from '../voice/speechRecognizer';
+import {ApiRequestError} from '../modules/api/http';
+import {createSpeechRecognizer} from '../voice/speechRecognizer';
 import type {VoiceAudioReadyPayload} from '../voice/types';
+import {requestClientPermission} from '../permissions/clientPermissionBroker';
 
 type AgentVoicePhase = 'idle' | 'listening' | 'transcribing' | 'error';
 
@@ -42,6 +44,33 @@ const normalizeSpeechErrorMessage = (rawMessage: string): string => {
   }
 
   return message;
+};
+
+const mapAsrErrorCodeToMessage = (code: string): string | null => {
+  switch (code) {
+    case 'ASR_TIMEOUT':
+      return '语音转写超时，请检查网络后重试。';
+    case 'ASR_MODEL_UNAVAILABLE':
+      return '语音转写模型不可用，请稍后重试。';
+    case 'ASR_BAD_AUDIO':
+      return '音频无效或过短，请按住说话 1 秒以上后重试。';
+    case 'ASR_NETWORK_ERROR':
+      return '语音转写网络异常，请检查后端与网络连接。';
+    case 'ASR_MISCONFIG':
+      return '语音转写服务未配置，请联系开发者检查 ASR 配置。';
+    default:
+      return null;
+  }
+};
+
+const formatVoiceTranscribeError = (error: unknown): string => {
+  if (error instanceof ApiRequestError) {
+    const mapped = mapAsrErrorCodeToMessage(String(error.code || '').toUpperCase());
+    if (mapped) {
+      return mapped;
+    }
+  }
+  return normalizeSpeechErrorMessage(formatApiErrorMessage(error, '语音转写失败'));
 };
 
 export const useAgentVoiceGoal = ({
@@ -101,13 +130,13 @@ export const useAgentVoiceGoal = ({
         const transcript = String(result.transcript || '').trim();
         if (!transcript) {
           setPhase('error');
-          setErrorText('语音转写未返回有效文本，请重试。');
+          setErrorText('语音转写未返回有效文本，请重试。可尝试按住说话 1 秒以上。');
           return false;
         }
         return submitTranscript(transcript);
       } catch (error) {
         setPhase('error');
-        setErrorText(normalizeSpeechErrorMessage(formatApiErrorMessage(error, '语音转写失败')));
+        setErrorText(formatVoiceTranscribeError(error));
         return false;
       }
     },
@@ -163,10 +192,10 @@ export const useAgentVoiceGoal = ({
     if (recording) {
       return;
     }
-    const granted = await requestRecordAudioPermission();
-    if (!granted) {
+    const permission = await requestClientPermission('microphone');
+    if (!permission.granted) {
       setPhase('error');
-      setErrorText('录音权限未开启');
+      setErrorText(permission.message || '录音权限未开启');
       return;
     }
     if (!pressingRef.current) {

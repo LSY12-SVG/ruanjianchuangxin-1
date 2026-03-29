@@ -5,6 +5,15 @@ import {
   type ColorParamKey,
 } from '../../src/types/colorGrading';
 
+const EXPECTED_NEW_PRESET_IDS = [
+  'preset_night_clarity',
+  'preset_black_gold_film',
+  'preset_portrait_clear',
+  'preset_documentary_film',
+  'preset_japanese_creamy',
+  'preset_cyber_neon',
+] as const;
+
 const getParamValue = (
   params: typeof defaultColorGradingParams,
   key: ColorParamKey,
@@ -36,6 +45,14 @@ const getParamValue = (
 };
 
 describe('built-in presets', () => {
+  it('includes original presets and 6 new expanded presets', () => {
+    expect(BUILTIN_PRESETS.length).toBeGreaterThanOrEqual(12);
+    const presetIds = new Set(BUILTIN_PRESETS.map(item => item.id));
+    EXPECTED_NEW_PRESET_IDS.forEach(id => {
+      expect(presetIds.has(id)).toBe(true);
+    });
+  });
+
   it('contains complete 14-parameter vectors in range', () => {
     BUILTIN_PRESETS.forEach(preset => {
       (Object.keys(COLOR_PARAM_SPECS) as ColorParamKey[]).forEach(key => {

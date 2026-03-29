@@ -1,0 +1,165 @@
+{
+  "records": {
+    "1::app.agent::task_outcomes.v1": {
+      "value": {
+        "items": [
+          {
+            "id": "1774785157525_18bfe9",
+            "createdAt": "2026-03-29T11:52:37.525Z",
+            "executionId": "1774785154787_c52d12",
+            "planId": "plan_1774785133433_9f7457",
+            "status": "failed",
+            "completionScore": 0,
+            "nextRequiredContext": "context.color.image",
+            "topResultCardKind": "failure",
+            "errorCode": "tool_error"
+          },
+          {
+            "id": "1774785134866_4d717d",
+            "createdAt": "2026-03-29T11:52:14.866Z",
+            "executionId": "1774785134833_ba6c1c",
+            "planId": "plan_1774785133433_9f7457",
+            "status": "client_required",
+            "completionScore": 0.1167,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774784956449_031eb0",
+            "createdAt": "2026-03-29T11:49:16.449Z",
+            "executionId": "1774784956402_220b4b",
+            "planId": "plan_1774784955108_3b01f5",
+            "status": "client_required",
+            "completionScore": 0.35,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774780717975_08ef2a",
+            "createdAt": "2026-03-29T10:38:37.975Z",
+            "executionId": "1774780717970_5947ed",
+            "planId": "plan_1774780716644_b47428",
+            "status": "client_required",
+            "completionScore": 0.35,
+            "nextRequiredContext": "",
+            "topResultCardKind": "summary",
+            "errorCode": ""
+          },
+          {
+            "id": "1774780717927_940984",
+            "createdAt": "2026-03-29T10:38:37.927Z",
+            "executionId": "1774780717922_86e03a",
+            "planId": "plan_1774780716644_b47428",
+            "status": "client_required",
+            "completionScore": 0.175,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774778158446_54cef5",
+            "createdAt": "2026-03-29T09:55:58.446Z",
+            "executionId": "1774778158412_05fe6f",
+            "planId": "plan_1774778157165_28753f",
+            "status": "client_required",
+            "completionScore": 0.175,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774708206360_4c6273",
+            "createdAt": "2026-03-28T14:30:06.361Z",
+            "executionId": "1774708206353_eda1b5",
+            "planId": "plan_1774708157471_176fa9",
+            "status": "client_required",
+            "completionScore": 0.35,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774706413275_d0e11d",
+            "createdAt": "2026-03-28T14:00:13.275Z",
+            "executionId": "1774706412878_292447",
+            "planId": "plan_1774706385646_ffcf4e",
+            "status": "client_required",
+            "completionScore": 0.35,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774704895434_3b439c",
+            "createdAt": "2026-03-28T13:34:55.434Z",
+            "executionId": "1774704895432_b16462",
+            "planId": "plan_1774704870865_007a27",
+            "status": "client_required",
+            "completionScore": 0.35,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774702058594_beaf11",
+            "createdAt": "2026-03-28T12:47:38.594Z",
+            "executionId": "1774702058148_0dab8a",
+            "planId": "plan_1774702041481_b9a9dd",
+            "status": "pending_confirm",
+            "completionScore": 0.875,
+            "nextRequiredContext": "context.community.draftId",
+            "topResultCardKind": "draft_ready",
+            "errorCode": ""
+          },
+          {
+            "id": "1774702058084_165a6b",
+            "createdAt": "2026-03-28T12:47:38.084Z",
+            "executionId": "1774702058081_9dc7a8",
+            "planId": "plan_1774702041481_b9a9dd",
+            "status": "client_required",
+            "completionScore": 0.1167,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          },
+          {
+            "id": "1774702011547_06a71c",
+            "createdAt": "2026-03-28T12:46:51.547Z",
+            "executionId": "1774702011545_355f25",
+            "planId": "plan_1774702005443_ec5a2d",
+            "status": "client_required",
+            "completionScore": 0.35,
+            "nextRequiredContext": "",
+            "topResultCardKind": "summary",
+            "errorCode": ""
+          },
+          {
+            "id": "1774702011500_566109",
+            "createdAt": "2026-03-28T12:46:51.500Z",
+            "executionId": "1774702011479_2c1177",
+            "planId": "plan_1774702005443_ec5a2d",
+            "status": "client_required",
+            "completionScore": 0.175,
+            "nextRequiredContext": "",
+            "topResultCardKind": "client_action",
+            "errorCode": ""
+          }
+        ]
+      },
+      "version": 14,
+      "updatedAt": "2026-03-29T11:52:37.525Z",
+      "expiresAt": "2026-06-27T11:52:37.525Z"
+    },
+    "1::app.agent::user_preferences.v1": {
+      "value": {
+        "preferredExecutionStrategy": "fast",
+        "updatedAt": "2026-03-29T11:52:37.528Z"
+      },
+      "version": 14,
+      "updatedAt": "2026-03-29T11:52:37.528Z",
+      "expiresAt": "2026-09-25T11:52:37.528Z"
+    }
+  }
+}

@@ -1,0 +1,1648 @@
+Compiled from "OnlineRecognizer.kt"
+public final class com.k2fsa.sherpa.onnx.OnlineRecognizerKt {
+  public static final com.k2fsa.sherpa.onnx.OnlineModelConfig getModelConfig(int);
+    Code:
+         0: iload_0
+         1: lookupswitch  { // 32
+                       0: 268
+                       1: 377
+                       2: 486
+                       3: 595
+                       4: 704
+                       5: 813
+                       6: 903
+                       7: 1012
+                       8: 1121
+                       9: 1230
+                      10: 1339
+                      11: 1448
+                      12: 1518
+                      13: 1588
+                      14: 1658
+                      15: 1767
+                      16: 1837
+                      17: 1907
+                      18: 1977
+                      19: 2048
+                      20: 2119
+                      21: 2228
+                      22: 2337
+                      23: 2446
+                      24: 2555
+                      25: 2664
+                      26: 2773
+                      27: 2882
+                      28: 2952
+                      29: 3060
+                    1000: 3169
+                    1001: 3283
+                 default: 3397
+            }
+       268: ldc           #9                  // String sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+       270: astore_1
+       271: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       274: dup
+       275: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+       278: dup
+       279: new           #15                 // class java/lang/StringBuilder
+       282: dup
+       283: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       286: aload_1
+       287: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       290: ldc           #25                 // String /encoder-epoch-99-avg-1.onnx
+       292: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       295: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       298: new           #15                 // class java/lang/StringBuilder
+       301: dup
+       302: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       305: aload_1
+       306: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       309: ldc           #31                 // String /decoder-epoch-99-avg-1.onnx
+       311: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       314: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       317: new           #15                 // class java/lang/StringBuilder
+       320: dup
+       321: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       324: aload_1
+       325: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       328: ldc           #33                 // String /joiner-epoch-99-avg-1.onnx
+       330: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       333: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       336: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+       339: aconst_null
+       340: aconst_null
+       341: aconst_null
+       342: aconst_null
+       343: new           #15                 // class java/lang/StringBuilder
+       346: dup
+       347: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       350: aload_1
+       351: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       354: ldc           #38                 // String /tokens.txt
+       356: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       359: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       362: iconst_0
+       363: iconst_0
+       364: aconst_null
+       365: ldc           #40                 // String zipformer
+       367: aconst_null
+       368: aconst_null
+       369: sipush        3550
+       372: aconst_null
+       373: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+       376: areturn
+       377: ldc           #45                 // String sherpa-onnx-lstm-zh-2023-02-20
+       379: astore_1
+       380: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       383: dup
+       384: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+       387: dup
+       388: new           #15                 // class java/lang/StringBuilder
+       391: dup
+       392: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       395: aload_1
+       396: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       399: ldc           #47                 // String /encoder-epoch-11-avg-1.onnx
+       401: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       404: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       407: new           #15                 // class java/lang/StringBuilder
+       410: dup
+       411: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       414: aload_1
+       415: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       418: ldc           #49                 // String /decoder-epoch-11-avg-1.onnx
+       420: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       423: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       426: new           #15                 // class java/lang/StringBuilder
+       429: dup
+       430: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       433: aload_1
+       434: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       437: ldc           #51                 // String /joiner-epoch-11-avg-1.onnx
+       439: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       442: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       445: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+       448: aconst_null
+       449: aconst_null
+       450: aconst_null
+       451: aconst_null
+       452: new           #15                 // class java/lang/StringBuilder
+       455: dup
+       456: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       459: aload_1
+       460: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       463: ldc           #38                 // String /tokens.txt
+       465: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       468: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       471: iconst_0
+       472: iconst_0
+       473: aconst_null
+       474: ldc           #53                 // String lstm
+       476: aconst_null
+       477: aconst_null
+       478: sipush        3550
+       481: aconst_null
+       482: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+       485: areturn
+       486: ldc           #55                 // String sherpa-onnx-lstm-en-2023-02-17
+       488: astore_1
+       489: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       492: dup
+       493: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+       496: dup
+       497: new           #15                 // class java/lang/StringBuilder
+       500: dup
+       501: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       504: aload_1
+       505: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       508: ldc           #25                 // String /encoder-epoch-99-avg-1.onnx
+       510: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       513: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       516: new           #15                 // class java/lang/StringBuilder
+       519: dup
+       520: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       523: aload_1
+       524: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       527: ldc           #31                 // String /decoder-epoch-99-avg-1.onnx
+       529: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       532: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       535: new           #15                 // class java/lang/StringBuilder
+       538: dup
+       539: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       542: aload_1
+       543: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       546: ldc           #33                 // String /joiner-epoch-99-avg-1.onnx
+       548: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       551: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       554: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+       557: aconst_null
+       558: aconst_null
+       559: aconst_null
+       560: aconst_null
+       561: new           #15                 // class java/lang/StringBuilder
+       564: dup
+       565: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       568: aload_1
+       569: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       572: ldc           #38                 // String /tokens.txt
+       574: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       577: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       580: iconst_0
+       581: iconst_0
+       582: aconst_null
+       583: ldc           #53                 // String lstm
+       585: aconst_null
+       586: aconst_null
+       587: sipush        3550
+       590: aconst_null
+       591: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+       594: areturn
+       595: ldc           #57                 // String icefall-asr-zipformer-streaming-wenetspeech-20230615
+       597: astore_1
+       598: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       601: dup
+       602: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+       605: dup
+       606: new           #15                 // class java/lang/StringBuilder
+       609: dup
+       610: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       613: aload_1
+       614: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       617: ldc           #59                 // String /exp/encoder-epoch-12-avg-4-chunk-16-left-128.int8.onnx
+       619: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       622: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       625: new           #15                 // class java/lang/StringBuilder
+       628: dup
+       629: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       632: aload_1
+       633: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       636: ldc           #61                 // String /exp/decoder-epoch-12-avg-4-chunk-16-left-128.onnx
+       638: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       641: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       644: new           #15                 // class java/lang/StringBuilder
+       647: dup
+       648: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       651: aload_1
+       652: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       655: ldc           #63                 // String /exp/joiner-epoch-12-avg-4-chunk-16-left-128.onnx
+       657: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       660: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       663: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+       666: aconst_null
+       667: aconst_null
+       668: aconst_null
+       669: aconst_null
+       670: new           #15                 // class java/lang/StringBuilder
+       673: dup
+       674: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       677: aload_1
+       678: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       681: ldc           #65                 // String /data/lang_char/tokens.txt
+       683: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       686: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       689: iconst_0
+       690: iconst_0
+       691: aconst_null
+       692: ldc           #67                 // String zipformer2
+       694: aconst_null
+       695: aconst_null
+       696: sipush        3550
+       699: aconst_null
+       700: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+       703: areturn
+       704: ldc           #57                 // String icefall-asr-zipformer-streaming-wenetspeech-20230615
+       706: astore_1
+       707: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       710: dup
+       711: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+       714: dup
+       715: new           #15                 // class java/lang/StringBuilder
+       718: dup
+       719: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       722: aload_1
+       723: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       726: ldc           #69                 // String /exp/encoder-epoch-12-avg-4-chunk-16-left-128.onnx
+       728: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       731: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       734: new           #15                 // class java/lang/StringBuilder
+       737: dup
+       738: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       741: aload_1
+       742: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       745: ldc           #61                 // String /exp/decoder-epoch-12-avg-4-chunk-16-left-128.onnx
+       747: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       750: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       753: new           #15                 // class java/lang/StringBuilder
+       756: dup
+       757: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       760: aload_1
+       761: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       764: ldc           #63                 // String /exp/joiner-epoch-12-avg-4-chunk-16-left-128.onnx
+       766: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       769: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       772: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+       775: aconst_null
+       776: aconst_null
+       777: aconst_null
+       778: aconst_null
+       779: new           #15                 // class java/lang/StringBuilder
+       782: dup
+       783: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       786: aload_1
+       787: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       790: ldc           #65                 // String /data/lang_char/tokens.txt
+       792: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       795: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       798: iconst_0
+       799: iconst_0
+       800: aconst_null
+       801: ldc           #67                 // String zipformer2
+       803: aconst_null
+       804: aconst_null
+       805: sipush        3550
+       808: aconst_null
+       809: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+       812: areturn
+       813: ldc           #71                 // String sherpa-onnx-streaming-paraformer-bilingual-zh-en
+       815: astore_1
+       816: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       819: dup
+       820: aconst_null
+       821: new           #73                 // class com/k2fsa/sherpa/onnx/OnlineParaformerModelConfig
+       824: dup
+       825: new           #15                 // class java/lang/StringBuilder
+       828: dup
+       829: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       832: aload_1
+       833: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       836: ldc           #75                 // String /encoder.int8.onnx
+       838: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       841: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       844: new           #15                 // class java/lang/StringBuilder
+       847: dup
+       848: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       851: aload_1
+       852: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       855: ldc           #77                 // String /decoder.int8.onnx
+       857: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       860: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       863: invokespecial #80                 // Method com/k2fsa/sherpa/onnx/OnlineParaformerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;)V
+       866: aconst_null
+       867: aconst_null
+       868: aconst_null
+       869: new           #15                 // class java/lang/StringBuilder
+       872: dup
+       873: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       876: aload_1
+       877: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       880: ldc           #38                 // String /tokens.txt
+       882: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       885: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       888: iconst_0
+       889: iconst_0
+       890: aconst_null
+       891: ldc           #82                 // String paraformer
+       893: aconst_null
+       894: aconst_null
+       895: sipush        3549
+       898: aconst_null
+       899: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+       902: areturn
+       903: ldc           #84                 // String sherpa-onnx-streaming-zipformer-en-2023-06-26
+       905: astore_1
+       906: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+       909: dup
+       910: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+       913: dup
+       914: new           #15                 // class java/lang/StringBuilder
+       917: dup
+       918: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       921: aload_1
+       922: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       925: ldc           #86                 // String /encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx
+       927: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       930: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       933: new           #15                 // class java/lang/StringBuilder
+       936: dup
+       937: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       940: aload_1
+       941: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       944: ldc           #88                 // String /decoder-epoch-99-avg-1-chunk-16-left-128.onnx
+       946: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       949: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       952: new           #15                 // class java/lang/StringBuilder
+       955: dup
+       956: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       959: aload_1
+       960: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       963: ldc           #90                 // String /joiner-epoch-99-avg-1-chunk-16-left-128.onnx
+       965: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       968: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       971: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+       974: aconst_null
+       975: aconst_null
+       976: aconst_null
+       977: aconst_null
+       978: new           #15                 // class java/lang/StringBuilder
+       981: dup
+       982: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+       985: aload_1
+       986: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       989: ldc           #38                 // String /tokens.txt
+       991: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+       994: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+       997: iconst_0
+       998: iconst_0
+       999: aconst_null
+      1000: ldc           #67                 // String zipformer2
+      1002: aconst_null
+      1003: aconst_null
+      1004: sipush        3550
+      1007: aconst_null
+      1008: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1011: areturn
+      1012: ldc           #92                 // String sherpa-onnx-streaming-zipformer-fr-2023-04-14
+      1014: astore_1
+      1015: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1018: dup
+      1019: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      1022: dup
+      1023: new           #15                 // class java/lang/StringBuilder
+      1026: dup
+      1027: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1030: aload_1
+      1031: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1034: ldc           #94                 // String /encoder-epoch-29-avg-9-with-averaged-model.int8.onnx
+      1036: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1039: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1042: new           #15                 // class java/lang/StringBuilder
+      1045: dup
+      1046: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1049: aload_1
+      1050: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1053: ldc           #96                 // String /decoder-epoch-29-avg-9-with-averaged-model.onnx
+      1055: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1058: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1061: new           #15                 // class java/lang/StringBuilder
+      1064: dup
+      1065: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1068: aload_1
+      1069: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1072: ldc           #98                 // String /joiner-epoch-29-avg-9-with-averaged-model.onnx
+      1074: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1077: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1080: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      1083: aconst_null
+      1084: aconst_null
+      1085: aconst_null
+      1086: aconst_null
+      1087: new           #15                 // class java/lang/StringBuilder
+      1090: dup
+      1091: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1094: aload_1
+      1095: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1098: ldc           #38                 // String /tokens.txt
+      1100: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1103: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1106: iconst_0
+      1107: iconst_0
+      1108: aconst_null
+      1109: ldc           #40                 // String zipformer
+      1111: aconst_null
+      1112: aconst_null
+      1113: sipush        3550
+      1116: aconst_null
+      1117: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1120: areturn
+      1121: ldc           #9                  // String sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+      1123: astore_1
+      1124: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1127: dup
+      1128: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      1131: dup
+      1132: new           #15                 // class java/lang/StringBuilder
+      1135: dup
+      1136: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1139: aload_1
+      1140: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1143: ldc           #100                // String /encoder-epoch-99-avg-1.int8.onnx
+      1145: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1148: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1151: new           #15                 // class java/lang/StringBuilder
+      1154: dup
+      1155: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1158: aload_1
+      1159: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1162: ldc           #31                 // String /decoder-epoch-99-avg-1.onnx
+      1164: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1167: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1170: new           #15                 // class java/lang/StringBuilder
+      1173: dup
+      1174: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1177: aload_1
+      1178: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1181: ldc           #102                // String /joiner-epoch-99-avg-1.int8.onnx
+      1183: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1186: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1189: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      1192: aconst_null
+      1193: aconst_null
+      1194: aconst_null
+      1195: aconst_null
+      1196: new           #15                 // class java/lang/StringBuilder
+      1199: dup
+      1200: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1203: aload_1
+      1204: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1207: ldc           #38                 // String /tokens.txt
+      1209: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1212: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1215: iconst_0
+      1216: iconst_0
+      1217: aconst_null
+      1218: ldc           #40                 // String zipformer
+      1220: aconst_null
+      1221: aconst_null
+      1222: sipush        3550
+      1225: aconst_null
+      1226: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1229: areturn
+      1230: ldc           #104                // String sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23
+      1232: astore_1
+      1233: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1236: dup
+      1237: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      1240: dup
+      1241: new           #15                 // class java/lang/StringBuilder
+      1244: dup
+      1245: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1248: aload_1
+      1249: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1252: ldc           #100                // String /encoder-epoch-99-avg-1.int8.onnx
+      1254: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1257: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1260: new           #15                 // class java/lang/StringBuilder
+      1263: dup
+      1264: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1267: aload_1
+      1268: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1271: ldc           #31                 // String /decoder-epoch-99-avg-1.onnx
+      1273: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1276: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1279: new           #15                 // class java/lang/StringBuilder
+      1282: dup
+      1283: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1286: aload_1
+      1287: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1290: ldc           #102                // String /joiner-epoch-99-avg-1.int8.onnx
+      1292: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1295: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1298: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      1301: aconst_null
+      1302: aconst_null
+      1303: aconst_null
+      1304: aconst_null
+      1305: new           #15                 // class java/lang/StringBuilder
+      1308: dup
+      1309: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1312: aload_1
+      1313: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1316: ldc           #38                 // String /tokens.txt
+      1318: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1321: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1324: iconst_0
+      1325: iconst_0
+      1326: aconst_null
+      1327: ldc           #40                 // String zipformer
+      1329: aconst_null
+      1330: aconst_null
+      1331: sipush        3550
+      1334: aconst_null
+      1335: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1338: areturn
+      1339: ldc           #106                // String sherpa-onnx-streaming-zipformer-en-20M-2023-02-17
+      1341: astore_1
+      1342: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1345: dup
+      1346: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      1349: dup
+      1350: new           #15                 // class java/lang/StringBuilder
+      1353: dup
+      1354: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1357: aload_1
+      1358: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1361: ldc           #100                // String /encoder-epoch-99-avg-1.int8.onnx
+      1363: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1366: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1369: new           #15                 // class java/lang/StringBuilder
+      1372: dup
+      1373: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1376: aload_1
+      1377: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1380: ldc           #31                 // String /decoder-epoch-99-avg-1.onnx
+      1382: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1385: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1388: new           #15                 // class java/lang/StringBuilder
+      1391: dup
+      1392: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1395: aload_1
+      1396: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1399: ldc           #102                // String /joiner-epoch-99-avg-1.int8.onnx
+      1401: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1404: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1407: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      1410: aconst_null
+      1411: aconst_null
+      1412: aconst_null
+      1413: aconst_null
+      1414: new           #15                 // class java/lang/StringBuilder
+      1417: dup
+      1418: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1421: aload_1
+      1422: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1425: ldc           #38                 // String /tokens.txt
+      1427: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1430: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1433: iconst_0
+      1434: iconst_0
+      1435: aconst_null
+      1436: ldc           #40                 // String zipformer
+      1438: aconst_null
+      1439: aconst_null
+      1440: sipush        3550
+      1443: aconst_null
+      1444: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1447: areturn
+      1448: ldc           #108                // String sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-80ms
+      1450: astore_1
+      1451: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1454: dup
+      1455: aconst_null
+      1456: aconst_null
+      1457: aconst_null
+      1458: new           #110                // class com/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig
+      1461: dup
+      1462: new           #15                 // class java/lang/StringBuilder
+      1465: dup
+      1466: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1469: aload_1
+      1470: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1473: ldc           #112                // String /model.onnx
+      1475: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1478: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1481: invokespecial #115                // Method com/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig."<init>":(Ljava/lang/String;)V
+      1484: aconst_null
+      1485: new           #15                 // class java/lang/StringBuilder
+      1488: dup
+      1489: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1492: aload_1
+      1493: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1496: ldc           #38                 // String /tokens.txt
+      1498: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1501: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1504: iconst_0
+      1505: iconst_0
+      1506: aconst_null
+      1507: aconst_null
+      1508: aconst_null
+      1509: aconst_null
+      1510: sipush        4055
+      1513: aconst_null
+      1514: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1517: areturn
+      1518: ldc           #117                // String sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-480ms
+      1520: astore_1
+      1521: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1524: dup
+      1525: aconst_null
+      1526: aconst_null
+      1527: aconst_null
+      1528: new           #110                // class com/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig
+      1531: dup
+      1532: new           #15                 // class java/lang/StringBuilder
+      1535: dup
+      1536: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1539: aload_1
+      1540: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1543: ldc           #112                // String /model.onnx
+      1545: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1548: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1551: invokespecial #115                // Method com/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig."<init>":(Ljava/lang/String;)V
+      1554: aconst_null
+      1555: new           #15                 // class java/lang/StringBuilder
+      1558: dup
+      1559: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1562: aload_1
+      1563: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1566: ldc           #38                 // String /tokens.txt
+      1568: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1571: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1574: iconst_0
+      1575: iconst_0
+      1576: aconst_null
+      1577: aconst_null
+      1578: aconst_null
+      1579: aconst_null
+      1580: sipush        4055
+      1583: aconst_null
+      1584: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1587: areturn
+      1588: ldc           #119                // String sherpa-onnx-nemo-streaming-fast-conformer-ctc-en-1040ms
+      1590: astore_1
+      1591: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1594: dup
+      1595: aconst_null
+      1596: aconst_null
+      1597: aconst_null
+      1598: new           #110                // class com/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig
+      1601: dup
+      1602: new           #15                 // class java/lang/StringBuilder
+      1605: dup
+      1606: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1609: aload_1
+      1610: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1613: ldc           #112                // String /model.onnx
+      1615: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1618: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1621: invokespecial #115                // Method com/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig."<init>":(Ljava/lang/String;)V
+      1624: aconst_null
+      1625: new           #15                 // class java/lang/StringBuilder
+      1628: dup
+      1629: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1632: aload_1
+      1633: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1636: ldc           #38                 // String /tokens.txt
+      1638: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1641: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1644: iconst_0
+      1645: iconst_0
+      1646: aconst_null
+      1647: aconst_null
+      1648: aconst_null
+      1649: aconst_null
+      1650: sipush        4055
+      1653: aconst_null
+      1654: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1657: areturn
+      1658: ldc           #121                // String sherpa-onnx-streaming-zipformer-korean-2024-06-16
+      1660: astore_1
+      1661: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1664: dup
+      1665: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      1668: dup
+      1669: new           #15                 // class java/lang/StringBuilder
+      1672: dup
+      1673: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1676: aload_1
+      1677: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1680: ldc           #100                // String /encoder-epoch-99-avg-1.int8.onnx
+      1682: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1685: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1688: new           #15                 // class java/lang/StringBuilder
+      1691: dup
+      1692: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1695: aload_1
+      1696: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1699: ldc           #31                 // String /decoder-epoch-99-avg-1.onnx
+      1701: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1704: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1707: new           #15                 // class java/lang/StringBuilder
+      1710: dup
+      1711: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1714: aload_1
+      1715: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1718: ldc           #102                // String /joiner-epoch-99-avg-1.int8.onnx
+      1720: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1723: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1726: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      1729: aconst_null
+      1730: aconst_null
+      1731: aconst_null
+      1732: aconst_null
+      1733: new           #15                 // class java/lang/StringBuilder
+      1736: dup
+      1737: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1740: aload_1
+      1741: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1744: ldc           #38                 // String /tokens.txt
+      1746: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1749: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1752: iconst_0
+      1753: iconst_0
+      1754: aconst_null
+      1755: ldc           #40                 // String zipformer
+      1757: aconst_null
+      1758: aconst_null
+      1759: sipush        3550
+      1762: aconst_null
+      1763: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1766: areturn
+      1767: ldc           #123                // String sherpa-onnx-streaming-zipformer-small-ctc-zh-int8-2025-04-01
+      1769: astore_1
+      1770: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1773: dup
+      1774: aconst_null
+      1775: aconst_null
+      1776: new           #125                // class com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig
+      1779: dup
+      1780: new           #15                 // class java/lang/StringBuilder
+      1783: dup
+      1784: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1787: aload_1
+      1788: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1791: ldc           #127                // String /model.int8.onnx
+      1793: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1796: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1799: invokespecial #128                // Method com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig."<init>":(Ljava/lang/String;)V
+      1802: aconst_null
+      1803: aconst_null
+      1804: new           #15                 // class java/lang/StringBuilder
+      1807: dup
+      1808: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1811: aload_1
+      1812: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1815: ldc           #38                 // String /tokens.txt
+      1817: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1820: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1823: iconst_0
+      1824: iconst_0
+      1825: aconst_null
+      1826: aconst_null
+      1827: aconst_null
+      1828: aconst_null
+      1829: sipush        4059
+      1832: aconst_null
+      1833: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1836: areturn
+      1837: ldc           #130                // String sherpa-onnx-streaming-zipformer-small-ctc-zh-2025-04-01
+      1839: astore_1
+      1840: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1843: dup
+      1844: aconst_null
+      1845: aconst_null
+      1846: new           #125                // class com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig
+      1849: dup
+      1850: new           #15                 // class java/lang/StringBuilder
+      1853: dup
+      1854: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1857: aload_1
+      1858: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1861: ldc           #112                // String /model.onnx
+      1863: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1866: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1869: invokespecial #128                // Method com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig."<init>":(Ljava/lang/String;)V
+      1872: aconst_null
+      1873: aconst_null
+      1874: new           #15                 // class java/lang/StringBuilder
+      1877: dup
+      1878: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1881: aload_1
+      1882: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1885: ldc           #38                 // String /tokens.txt
+      1887: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1890: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1893: iconst_0
+      1894: iconst_0
+      1895: aconst_null
+      1896: aconst_null
+      1897: aconst_null
+      1898: aconst_null
+      1899: sipush        4059
+      1902: aconst_null
+      1903: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1906: areturn
+      1907: ldc           #132                // String sherpa-onnx-streaming-zipformer-ctc-zh-int8-2025-06-30
+      1909: astore_1
+      1910: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1913: dup
+      1914: aconst_null
+      1915: aconst_null
+      1916: new           #125                // class com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig
+      1919: dup
+      1920: new           #15                 // class java/lang/StringBuilder
+      1923: dup
+      1924: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1927: aload_1
+      1928: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1931: ldc           #127                // String /model.int8.onnx
+      1933: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1936: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1939: invokespecial #128                // Method com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig."<init>":(Ljava/lang/String;)V
+      1942: aconst_null
+      1943: aconst_null
+      1944: new           #15                 // class java/lang/StringBuilder
+      1947: dup
+      1948: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1951: aload_1
+      1952: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1955: ldc           #38                 // String /tokens.txt
+      1957: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      1960: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      1963: iconst_0
+      1964: iconst_0
+      1965: aconst_null
+      1966: aconst_null
+      1967: aconst_null
+      1968: aconst_null
+      1969: sipush        4059
+      1972: aconst_null
+      1973: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      1976: areturn
+      1977: ldc           #134                // String sherpa-onnx-streaming-zipformer-ctc-zh-2025-06-30
+      1979: astore_1
+      1980: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      1983: dup
+      1984: aconst_null
+      1985: aconst_null
+      1986: new           #125                // class com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig
+      1989: dup
+      1990: new           #15                 // class java/lang/StringBuilder
+      1993: dup
+      1994: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      1997: aload_1
+      1998: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2001: ldc           #112                // String /model.onnx
+      2003: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2006: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2009: invokespecial #128                // Method com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig."<init>":(Ljava/lang/String;)V
+      2012: aconst_null
+      2013: aconst_null
+      2014: new           #15                 // class java/lang/StringBuilder
+      2017: dup
+      2018: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2021: aload_1
+      2022: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2025: ldc           #38                 // String /tokens.txt
+      2027: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2030: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2033: iconst_0
+      2034: iconst_0
+      2035: aconst_null
+      2036: ldc           #67                 // String zipformer2
+      2038: aconst_null
+      2039: aconst_null
+      2040: sipush        3547
+      2043: aconst_null
+      2044: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2047: areturn
+      2048: ldc           #136                // String sherpa-onnx-streaming-zipformer-ctc-zh-fp16-2025-06-30
+      2050: astore_1
+      2051: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2054: dup
+      2055: aconst_null
+      2056: aconst_null
+      2057: new           #125                // class com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig
+      2060: dup
+      2061: new           #15                 // class java/lang/StringBuilder
+      2064: dup
+      2065: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2068: aload_1
+      2069: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2072: ldc           #138                // String /model.fp16.onnx
+      2074: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2077: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2080: invokespecial #128                // Method com/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig."<init>":(Ljava/lang/String;)V
+      2083: aconst_null
+      2084: aconst_null
+      2085: new           #15                 // class java/lang/StringBuilder
+      2088: dup
+      2089: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2092: aload_1
+      2093: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2096: ldc           #38                 // String /tokens.txt
+      2098: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2101: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2104: iconst_0
+      2105: iconst_0
+      2106: aconst_null
+      2107: ldc           #67                 // String zipformer2
+      2109: aconst_null
+      2110: aconst_null
+      2111: sipush        3547
+      2114: aconst_null
+      2115: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2118: areturn
+      2119: ldc           #140                // String sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30
+      2121: astore_1
+      2122: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2125: dup
+      2126: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2129: dup
+      2130: new           #15                 // class java/lang/StringBuilder
+      2133: dup
+      2134: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2137: aload_1
+      2138: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2141: ldc           #75                 // String /encoder.int8.onnx
+      2143: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2146: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2149: new           #15                 // class java/lang/StringBuilder
+      2152: dup
+      2153: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2156: aload_1
+      2157: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2160: ldc           #142                // String /decoder.onnx
+      2162: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2165: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2168: new           #15                 // class java/lang/StringBuilder
+      2171: dup
+      2172: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2175: aload_1
+      2176: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2179: ldc           #144                // String /joiner.int8.onnx
+      2181: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2184: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2187: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2190: aconst_null
+      2191: aconst_null
+      2192: aconst_null
+      2193: aconst_null
+      2194: new           #15                 // class java/lang/StringBuilder
+      2197: dup
+      2198: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2201: aload_1
+      2202: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2205: ldc           #38                 // String /tokens.txt
+      2207: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2210: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2213: iconst_0
+      2214: iconst_0
+      2215: aconst_null
+      2216: ldc           #67                 // String zipformer2
+      2218: aconst_null
+      2219: aconst_null
+      2220: sipush        3550
+      2223: aconst_null
+      2224: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2227: areturn
+      2228: ldc           #146                // String sherpa-onnx-streaming-zipformer-en-kroko-2025-08-06
+      2230: astore_1
+      2231: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2234: dup
+      2235: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2238: dup
+      2239: new           #15                 // class java/lang/StringBuilder
+      2242: dup
+      2243: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2246: aload_1
+      2247: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2250: ldc           #148                // String /encoder.onnx
+      2252: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2255: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2258: new           #15                 // class java/lang/StringBuilder
+      2261: dup
+      2262: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2265: aload_1
+      2266: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2269: ldc           #142                // String /decoder.onnx
+      2271: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2274: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2277: new           #15                 // class java/lang/StringBuilder
+      2280: dup
+      2281: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2284: aload_1
+      2285: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2288: ldc           #150                // String /joiner.onnx
+      2290: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2293: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2296: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2299: aconst_null
+      2300: aconst_null
+      2301: aconst_null
+      2302: aconst_null
+      2303: new           #15                 // class java/lang/StringBuilder
+      2306: dup
+      2307: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2310: aload_1
+      2311: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2314: ldc           #38                 // String /tokens.txt
+      2316: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2319: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2322: iconst_0
+      2323: iconst_0
+      2324: aconst_null
+      2325: ldc           #67                 // String zipformer2
+      2327: aconst_null
+      2328: aconst_null
+      2329: sipush        3550
+      2332: aconst_null
+      2333: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2336: areturn
+      2337: ldc           #152                // String sherpa-onnx-streaming-zipformer-es-kroko-2025-08-06
+      2339: astore_1
+      2340: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2343: dup
+      2344: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2347: dup
+      2348: new           #15                 // class java/lang/StringBuilder
+      2351: dup
+      2352: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2355: aload_1
+      2356: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2359: ldc           #148                // String /encoder.onnx
+      2361: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2364: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2367: new           #15                 // class java/lang/StringBuilder
+      2370: dup
+      2371: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2374: aload_1
+      2375: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2378: ldc           #142                // String /decoder.onnx
+      2380: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2383: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2386: new           #15                 // class java/lang/StringBuilder
+      2389: dup
+      2390: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2393: aload_1
+      2394: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2397: ldc           #150                // String /joiner.onnx
+      2399: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2402: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2405: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2408: aconst_null
+      2409: aconst_null
+      2410: aconst_null
+      2411: aconst_null
+      2412: new           #15                 // class java/lang/StringBuilder
+      2415: dup
+      2416: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2419: aload_1
+      2420: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2423: ldc           #38                 // String /tokens.txt
+      2425: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2428: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2431: iconst_0
+      2432: iconst_0
+      2433: aconst_null
+      2434: ldc           #67                 // String zipformer2
+      2436: aconst_null
+      2437: aconst_null
+      2438: sipush        3550
+      2441: aconst_null
+      2442: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2445: areturn
+      2446: ldc           #154                // String sherpa-onnx-streaming-zipformer-fr-kroko-2025-08-06
+      2448: astore_1
+      2449: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2452: dup
+      2453: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2456: dup
+      2457: new           #15                 // class java/lang/StringBuilder
+      2460: dup
+      2461: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2464: aload_1
+      2465: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2468: ldc           #148                // String /encoder.onnx
+      2470: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2473: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2476: new           #15                 // class java/lang/StringBuilder
+      2479: dup
+      2480: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2483: aload_1
+      2484: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2487: ldc           #142                // String /decoder.onnx
+      2489: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2492: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2495: new           #15                 // class java/lang/StringBuilder
+      2498: dup
+      2499: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2502: aload_1
+      2503: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2506: ldc           #150                // String /joiner.onnx
+      2508: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2511: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2514: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2517: aconst_null
+      2518: aconst_null
+      2519: aconst_null
+      2520: aconst_null
+      2521: new           #15                 // class java/lang/StringBuilder
+      2524: dup
+      2525: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2528: aload_1
+      2529: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2532: ldc           #38                 // String /tokens.txt
+      2534: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2537: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2540: iconst_0
+      2541: iconst_0
+      2542: aconst_null
+      2543: ldc           #67                 // String zipformer2
+      2545: aconst_null
+      2546: aconst_null
+      2547: sipush        3550
+      2550: aconst_null
+      2551: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2554: areturn
+      2555: ldc           #156                // String sherpa-onnx-streaming-zipformer-de-kroko-2025-08-06
+      2557: astore_1
+      2558: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2561: dup
+      2562: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2565: dup
+      2566: new           #15                 // class java/lang/StringBuilder
+      2569: dup
+      2570: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2573: aload_1
+      2574: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2577: ldc           #148                // String /encoder.onnx
+      2579: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2582: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2585: new           #15                 // class java/lang/StringBuilder
+      2588: dup
+      2589: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2592: aload_1
+      2593: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2596: ldc           #142                // String /decoder.onnx
+      2598: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2601: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2604: new           #15                 // class java/lang/StringBuilder
+      2607: dup
+      2608: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2611: aload_1
+      2612: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2615: ldc           #150                // String /joiner.onnx
+      2617: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2620: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2623: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2626: aconst_null
+      2627: aconst_null
+      2628: aconst_null
+      2629: aconst_null
+      2630: new           #15                 // class java/lang/StringBuilder
+      2633: dup
+      2634: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2637: aload_1
+      2638: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2641: ldc           #38                 // String /tokens.txt
+      2643: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2646: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2649: iconst_0
+      2650: iconst_0
+      2651: aconst_null
+      2652: ldc           #67                 // String zipformer2
+      2654: aconst_null
+      2655: aconst_null
+      2656: sipush        3550
+      2659: aconst_null
+      2660: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2663: areturn
+      2664: ldc           #158                // String sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16
+      2666: astore_1
+      2667: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2670: dup
+      2671: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2674: dup
+      2675: new           #15                 // class java/lang/StringBuilder
+      2678: dup
+      2679: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2682: aload_1
+      2683: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2686: ldc           #75                 // String /encoder.int8.onnx
+      2688: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2691: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2694: new           #15                 // class java/lang/StringBuilder
+      2697: dup
+      2698: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2701: aload_1
+      2702: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2705: ldc           #142                // String /decoder.onnx
+      2707: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2710: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2713: new           #15                 // class java/lang/StringBuilder
+      2716: dup
+      2717: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2720: aload_1
+      2721: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2724: ldc           #144                // String /joiner.int8.onnx
+      2726: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2729: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2732: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2735: aconst_null
+      2736: aconst_null
+      2737: aconst_null
+      2738: aconst_null
+      2739: new           #15                 // class java/lang/StringBuilder
+      2742: dup
+      2743: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2746: aload_1
+      2747: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2750: ldc           #38                 // String /tokens.txt
+      2752: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2755: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2758: iconst_0
+      2759: iconst_0
+      2760: aconst_null
+      2761: ldc           #67                 // String zipformer2
+      2763: aconst_null
+      2764: aconst_null
+      2765: sipush        3550
+      2768: aconst_null
+      2769: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2772: areturn
+      2773: ldc           #160                // String sherpa-onnx-streaming-zipformer-small-ru-vosk-2025-08-16
+      2775: astore_1
+      2776: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2779: dup
+      2780: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2783: dup
+      2784: new           #15                 // class java/lang/StringBuilder
+      2787: dup
+      2788: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2791: aload_1
+      2792: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2795: ldc           #148                // String /encoder.onnx
+      2797: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2800: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2803: new           #15                 // class java/lang/StringBuilder
+      2806: dup
+      2807: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2810: aload_1
+      2811: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2814: ldc           #142                // String /decoder.onnx
+      2816: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2819: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2822: new           #15                 // class java/lang/StringBuilder
+      2825: dup
+      2826: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2829: aload_1
+      2830: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2833: ldc           #150                // String /joiner.onnx
+      2835: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2838: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2841: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      2844: aconst_null
+      2845: aconst_null
+      2846: aconst_null
+      2847: aconst_null
+      2848: new           #15                 // class java/lang/StringBuilder
+      2851: dup
+      2852: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2855: aload_1
+      2856: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2859: ldc           #38                 // String /tokens.txt
+      2861: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2864: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2867: iconst_0
+      2868: iconst_0
+      2869: aconst_null
+      2870: ldc           #67                 // String zipformer2
+      2872: aconst_null
+      2873: aconst_null
+      2874: sipush        3550
+      2877: aconst_null
+      2878: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2881: areturn
+      2882: ldc           #162                // String sherpa-onnx-streaming-t-one-russian-2025-09-08
+      2884: astore_1
+      2885: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2888: dup
+      2889: aconst_null
+      2890: aconst_null
+      2891: aconst_null
+      2892: aconst_null
+      2893: new           #164                // class com/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig
+      2896: dup
+      2897: new           #15                 // class java/lang/StringBuilder
+      2900: dup
+      2901: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2904: aload_1
+      2905: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2908: ldc           #112                // String /model.onnx
+      2910: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2913: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2916: invokespecial #165                // Method com/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig."<init>":(Ljava/lang/String;)V
+      2919: new           #15                 // class java/lang/StringBuilder
+      2922: dup
+      2923: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2926: aload_1
+      2927: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2930: ldc           #38                 // String /tokens.txt
+      2932: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2935: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2938: iconst_0
+      2939: iconst_0
+      2940: aconst_null
+      2941: aconst_null
+      2942: aconst_null
+      2943: aconst_null
+      2944: sipush        4047
+      2947: aconst_null
+      2948: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      2951: areturn
+      2952: ldc           #167                // String sherpa-onnx-nemotron-speech-streaming-en-0.6b-int8-2026-01-14
+      2954: astore_1
+      2955: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      2958: dup
+      2959: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      2962: dup
+      2963: new           #15                 // class java/lang/StringBuilder
+      2966: dup
+      2967: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2970: aload_1
+      2971: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2974: ldc           #75                 // String /encoder.int8.onnx
+      2976: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2979: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      2982: new           #15                 // class java/lang/StringBuilder
+      2985: dup
+      2986: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      2989: aload_1
+      2990: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2993: ldc           #77                 // String /decoder.int8.onnx
+      2995: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      2998: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3001: new           #15                 // class java/lang/StringBuilder
+      3004: dup
+      3005: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3008: aload_1
+      3009: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3012: ldc           #144                // String /joiner.int8.onnx
+      3014: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3017: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3020: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      3023: aconst_null
+      3024: aconst_null
+      3025: aconst_null
+      3026: aconst_null
+      3027: new           #15                 // class java/lang/StringBuilder
+      3030: dup
+      3031: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3034: aload_1
+      3035: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3038: ldc           #38                 // String /tokens.txt
+      3040: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3043: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3046: iconst_0
+      3047: iconst_0
+      3048: aconst_null
+      3049: aconst_null
+      3050: aconst_null
+      3051: aconst_null
+      3052: sipush        4062
+      3055: aconst_null
+      3056: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      3059: areturn
+      3060: ldc           #169                // String sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09
+      3062: astore_1
+      3063: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      3066: dup
+      3067: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      3070: dup
+      3071: new           #15                 // class java/lang/StringBuilder
+      3074: dup
+      3075: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3078: aload_1
+      3079: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3082: ldc           #148                // String /encoder.onnx
+      3084: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3087: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3090: new           #15                 // class java/lang/StringBuilder
+      3093: dup
+      3094: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3097: aload_1
+      3098: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3101: ldc           #142                // String /decoder.onnx
+      3103: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3106: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3109: new           #15                 // class java/lang/StringBuilder
+      3112: dup
+      3113: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3116: aload_1
+      3117: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3120: ldc           #150                // String /joiner.onnx
+      3122: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3125: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3128: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      3131: aconst_null
+      3132: aconst_null
+      3133: aconst_null
+      3134: aconst_null
+      3135: new           #15                 // class java/lang/StringBuilder
+      3138: dup
+      3139: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3142: aload_1
+      3143: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3146: ldc           #38                 // String /tokens.txt
+      3148: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3151: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3154: iconst_0
+      3155: iconst_0
+      3156: aconst_null
+      3157: ldc           #67                 // String zipformer2
+      3159: aconst_null
+      3160: aconst_null
+      3161: sipush        3550
+      3164: aconst_null
+      3165: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      3168: areturn
+      3169: ldc           #171                // String sherpa-onnx-rk3588-streaming-zipformer-bilingual-zh-en-2023-02-20
+      3171: astore_1
+      3172: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      3175: dup
+      3176: new           #15                 // class java/lang/StringBuilder
+      3179: dup
+      3180: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3183: aload_1
+      3184: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3187: ldc           #173                // String /encoder.rknn
+      3189: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3192: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3195: new           #15                 // class java/lang/StringBuilder
+      3198: dup
+      3199: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3202: aload_1
+      3203: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3206: ldc           #175                // String /decoder.rknn
+      3208: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3211: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3214: new           #15                 // class java/lang/StringBuilder
+      3217: dup
+      3218: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3221: aload_1
+      3222: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3225: ldc           #177                // String /joiner.rknn
+      3227: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3230: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3233: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      3236: astore_2
+      3237: new           #15                 // class java/lang/StringBuilder
+      3240: dup
+      3241: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3244: aload_1
+      3245: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3248: ldc           #38                 // String /tokens.txt
+      3250: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3253: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3256: astore_3
+      3257: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      3260: dup
+      3261: aload_2
+      3262: aconst_null
+      3263: aconst_null
+      3264: aconst_null
+      3265: aconst_null
+      3266: aload_3
+      3267: iconst_0
+      3268: iconst_0
+      3269: ldc           #179                // String rknn
+      3271: ldc           #40                 // String zipformer
+      3273: aconst_null
+      3274: aconst_null
+      3275: sipush        3294
+      3278: aconst_null
+      3279: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      3282: areturn
+      3283: ldc           #181                // String sherpa-onnx-rk3588-streaming-zipformer-small-bilingual-zh-en-2023-02-16
+      3285: astore_1
+      3286: new           #13                 // class com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig
+      3289: dup
+      3290: new           #15                 // class java/lang/StringBuilder
+      3293: dup
+      3294: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3297: aload_1
+      3298: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3301: ldc           #173                // String /encoder.rknn
+      3303: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3306: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3309: new           #15                 // class java/lang/StringBuilder
+      3312: dup
+      3313: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3316: aload_1
+      3317: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3320: ldc           #175                // String /decoder.rknn
+      3322: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3325: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3328: new           #15                 // class java/lang/StringBuilder
+      3331: dup
+      3332: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3335: aload_1
+      3336: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3339: ldc           #177                // String /joiner.rknn
+      3341: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3344: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3347: invokespecial #36                 // Method com/k2fsa/sherpa/onnx/OnlineTransducerModelConfig."<init>":(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+      3350: astore_2
+      3351: new           #15                 // class java/lang/StringBuilder
+      3354: dup
+      3355: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+      3358: aload_1
+      3359: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3362: ldc           #38                 // String /tokens.txt
+      3364: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+      3367: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+      3370: astore_3
+      3371: new           #11                 // class com/k2fsa/sherpa/onnx/OnlineModelConfig
+      3374: dup
+      3375: aload_2
+      3376: aconst_null
+      3377: aconst_null
+      3378: aconst_null
+      3379: aconst_null
+      3380: aload_3
+      3381: iconst_0
+      3382: iconst_0
+      3383: ldc           #179                // String rknn
+      3385: ldc           #40                 // String zipformer
+      3387: aconst_null
+      3388: aconst_null
+      3389: sipush        3294
+      3392: aconst_null
+      3393: invokespecial #43                 // Method com/k2fsa/sherpa/onnx/OnlineModelConfig."<init>":(Lcom/k2fsa/sherpa/onnx/OnlineTransducerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineParaformerModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineZipformer2CtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineNeMoCtcModelConfig;Lcom/k2fsa/sherpa/onnx/OnlineToneCtcModelConfig;Ljava/lang/String;IZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+      3396: areturn
+      3397: aconst_null
+      3398: areturn
+
+  public static final com.k2fsa.sherpa.onnx.OnlineLMConfig getOnlineLMConfig(int);
+    Code:
+         0: iload_0
+         1: ifne          36
+         4: ldc           #9                  // String sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+         6: astore_1
+         7: new           #190                // class com/k2fsa/sherpa/onnx/OnlineLMConfig
+        10: dup
+        11: new           #15                 // class java/lang/StringBuilder
+        14: dup
+        15: invokespecial #19                 // Method java/lang/StringBuilder."<init>":()V
+        18: aload_1
+        19: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        22: ldc           #192                // String /with-state-epoch-99-avg-1.int8.onnx
+        24: invokevirtual #23                 // Method java/lang/StringBuilder.append:(Ljava/lang/String;)Ljava/lang/StringBuilder;
+        27: invokevirtual #29                 // Method java/lang/StringBuilder.toString:()Ljava/lang/String;
+        30: ldc           #193                // float 0.5f
+        32: invokespecial #196                // Method com/k2fsa/sherpa/onnx/OnlineLMConfig."<init>":(Ljava/lang/String;F)V
+        35: areturn
+        36: new           #190                // class com/k2fsa/sherpa/onnx/OnlineLMConfig
+        39: dup
+        40: aconst_null
+        41: fconst_0
+        42: iconst_3
+        43: aconst_null
+        44: invokespecial #199                // Method com/k2fsa/sherpa/onnx/OnlineLMConfig."<init>":(Ljava/lang/String;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+        47: areturn
+
+  public static final com.k2fsa.sherpa.onnx.EndpointConfig getEndpointConfig();
+    Code:
+         0: new           #203                // class com/k2fsa/sherpa/onnx/EndpointConfig
+         3: dup
+         4: new           #205                // class com/k2fsa/sherpa/onnx/EndpointRule
+         7: dup
+         8: iconst_0
+         9: ldc           #206                // float 2.4f
+        11: fconst_0
+        12: invokespecial #209                // Method com/k2fsa/sherpa/onnx/EndpointRule."<init>":(ZFF)V
+        15: new           #205                // class com/k2fsa/sherpa/onnx/EndpointRule
+        18: dup
+        19: iconst_1
+        20: ldc           #210                // float 1.4f
+        22: fconst_0
+        23: invokespecial #209                // Method com/k2fsa/sherpa/onnx/EndpointRule."<init>":(ZFF)V
+        26: new           #205                // class com/k2fsa/sherpa/onnx/EndpointRule
+        29: dup
+        30: iconst_0
+        31: fconst_0
+        32: ldc           #211                // float 20.0f
+        34: invokespecial #209                // Method com/k2fsa/sherpa/onnx/EndpointRule."<init>":(ZFF)V
+        37: invokespecial #214                // Method com/k2fsa/sherpa/onnx/EndpointConfig."<init>":(Lcom/k2fsa/sherpa/onnx/EndpointRule;Lcom/k2fsa/sherpa/onnx/EndpointRule;Lcom/k2fsa/sherpa/onnx/EndpointRule;)V
+        40: areturn
+}

@@ -50,7 +50,15 @@ jest.mock('../../src/voice/localParser', () => ({
 
 jest.mock('../../src/voice/speechRecognizer', () => ({
   createSpeechRecognizer: jest.fn(),
-  requestRecordAudioPermission: jest.fn(async () => true),
+}));
+
+jest.mock('../../src/permissions/clientPermissionBroker', () => ({
+  requestClientPermission: jest.fn(async () => ({
+    permission: 'microphone',
+    granted: true,
+    state: 'granted',
+    canOpenSettings: false,
+  })),
 }));
 
 jest.mock('../../src/modules/api', () => {
@@ -105,12 +113,12 @@ const {parseLocalVoiceCommand} = jest.requireMock('../../src/voice/localParser')
   parseLocalVoiceCommand: jest.Mock;
 };
 
-const {
-  createSpeechRecognizer,
-  requestRecordAudioPermission,
-} = jest.requireMock('../../src/voice/speechRecognizer') as {
+const {createSpeechRecognizer} = jest.requireMock('../../src/voice/speechRecognizer') as {
   createSpeechRecognizer: jest.Mock;
-  requestRecordAudioPermission: jest.Mock;
+};
+
+const {requestClientPermission} = jest.requireMock('../../src/permissions/clientPermissionBroker') as {
+  requestClientPermission: jest.Mock;
 };
 
 const {colorApi} = jest.requireMock('../../src/modules/api') as {
@@ -170,7 +178,12 @@ describe('CreateScreen voice flow', () => {
       imageStats: {brightness: 0.5},
     });
 
-    requestRecordAudioPermission.mockResolvedValue(true);
+    requestClientPermission.mockResolvedValue({
+      permission: 'microphone',
+      granted: true,
+      state: 'granted',
+      canOpenSettings: false,
+    });
     colorApi.voiceTranscribe.mockClear();
     colorApi.voiceTranscribe.mockResolvedValue({
       transcript: '高光降低一点',

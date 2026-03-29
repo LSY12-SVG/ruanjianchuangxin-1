@@ -51,6 +51,16 @@ jest.mock('../../src/modules/api', () => ({
   agentApi: {
     createPlan: jest.fn(),
     executePlan: jest.fn(),
+    getWorkflowRun: jest.fn(),
+    getWorkflowRunHistory: jest.fn(async () => ({ok: true, runId: 'run-1', planId: 'plan-agent-1', history: [], latestExecuteResult: null})),
+    retryWorkflowRun: jest.fn(),
+    registerWorkflowRun: jest.fn(async (input: any) => input.latestExecuteResult),
+    cancelWorkflowRun: jest.fn(async () => ({
+      executionId: 'exec-cancel',
+      planId: 'plan-agent-1',
+      status: 'cancelled',
+      actionResults: [],
+    })),
   },
   formatApiErrorMessage: jest.fn((error: unknown, fallback: string) => {
     if (error instanceof Error && error.message) {
@@ -64,6 +74,11 @@ const {agentApi} = jest.requireMock('../../src/modules/api') as {
   agentApi: {
     createPlan: jest.Mock;
     executePlan: jest.Mock;
+    getWorkflowRun: jest.Mock;
+    getWorkflowRunHistory: jest.Mock;
+    retryWorkflowRun: jest.Mock;
+    registerWorkflowRun: jest.Mock;
+    cancelWorkflowRun: jest.Mock;
   };
 };
 
@@ -152,11 +167,36 @@ describe('AgentScreen action args injection', () => {
   beforeEach(() => {
     agentApi.createPlan.mockReset();
     agentApi.executePlan.mockReset();
+    agentApi.getWorkflowRun.mockReset();
+    agentApi.getWorkflowRunHistory.mockReset();
+    agentApi.retryWorkflowRun.mockReset();
+    agentApi.registerWorkflowRun.mockReset();
+    agentApi.cancelWorkflowRun.mockReset();
     agentApi.createPlan.mockResolvedValue(basePlan);
     agentApi.executePlan.mockResolvedValue({
       executionId: 'exec-1',
       planId: 'plan-agent-1',
       status: 'applied',
+      actionResults: [],
+    });
+    agentApi.getWorkflowRunHistory.mockResolvedValue({ok: true, runId: 'run-1', planId: 'plan-agent-1', history: [], latestExecuteResult: null});
+    agentApi.executePlan.mockResolvedValue({
+      executionId: 'exec-1',
+      planId: 'plan-agent-1',
+      status: 'applied',
+      actionResults: [],
+    });
+    agentApi.registerWorkflowRun.mockImplementation(async (input: any) => input.latestExecuteResult);
+    agentApi.retryWorkflowRun.mockResolvedValue({
+      executionId: 'exec-retry',
+      planId: 'plan-agent-1',
+      status: 'failed',
+      actionResults: [],
+    });
+    agentApi.cancelWorkflowRun.mockResolvedValue({
+      executionId: 'exec-cancel',
+      planId: 'plan-agent-1',
+      status: 'cancelled',
       actionResults: [],
     });
     useAgentExecutionContextStore.setState({
@@ -258,4 +298,70 @@ describe('AgentScreen action args injection', () => {
     expect(text).toContain('执行前缺少上下文');
     expect(agentApi.executePlan).not.toHaveBeenCalled();
   }, 15000);
+
+  it('renders result cards when execute response includes them', async () => {
+    agentApi.executePlan.mockResolvedValueOnce({
+      executionId: 'exec-2',
+      planId: 'plan-agent-1',
+      status: 'applied',
+      resultCards: [
+        {
+          kind: 'draft_ready',
+          title: '社区草稿已创建',
+          summary: '草稿已生成，可以继续编辑或确认发布。',
+          status: 'applied',
+          nextAction: {label: '确认后发布'},
+        },
+      ],
+      actionResults: [],
+    });
+
+    useAgentExecutionContextStore.setState({
+      colorContext: {
+        locale: 'zh-CN',
+        currentParams: {basic: {}, colorBalance: {}, curves: {}, colorWheels: {}} as never,
+        image: {
+          mimeType: 'image/jpeg',
+          width: 1080,
+          height: 720,
+          base64: 'ZmFrZS1pbWFnZQ==',
+        },
+        imageStats: {
+          lumaMean: 0.3,
+          lumaStd: 0.2,
+          highlightClipPct: 0.1,
+          shadowClipPct: 0.15,
+          saturationMean: 0.4,
+        },
+      },
+      modelingImageContext: {
+        image: {
+          mimeType: 'image/jpeg',
+          fileName: 'agent.jpg',
+          base64: 'ZmFrZS1tb2RlbA==',
+        },
+      },
+    });
+
+    await renderScreen();
+    const input = renderer.root.findByType(TextInput);
+    await act(async () => {
+      input.props.onChangeText('执行任务');
+    });
+    await act(async () => {
+      findPressableByLabel('生成计划').props.onPress();
+    });
+    await flushMicrotasks();
+    await act(async () => {
+      findPressableByLabel('确认执行').props.onPress();
+    });
+    await flushMicrotasks();
+
+    const text = stringifyNodeText(renderer.toJSON());
+    expect(text).toContain('结果卡');
+    expect(text).toContain('社区草稿已创建');
+    expect(text).toContain('确认后发布');
+  }, 15000);
 });
+
+

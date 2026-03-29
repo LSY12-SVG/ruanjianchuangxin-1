@@ -114,7 +114,7 @@ const requestWithTimeout = async (
 const normalizeNetworkErrorMessage = (error: Error | null): string => {
   const raw = error?.message || '无法连接后端服务';
   if (/Network request failed/i.test(raw)) {
-    return 'Network request failed (请确认后端已启动，并执行 adb reverse tcp:8787 tcp:8787)';
+    return 'Network request failed (请确认后端已启动；真机调试请执行 adb reverse tcp:8787 tcp:8787，或确保手机与电脑同网段并可访问宿主机:8787)';
   }
   if (/aborted|abort/i.test(raw)) {
     return 'Request aborted (后端响应超时，请稍后重试)';

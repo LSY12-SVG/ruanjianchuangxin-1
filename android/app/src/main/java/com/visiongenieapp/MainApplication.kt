@@ -12,6 +12,7 @@ import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import com.visiongenieapp.colorengine.ProColorEnginePackage
 import com.visiongenieapp.voice.VoiceRecognitionPackage
+import com.visiongenieapp.FileTransferPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -21,6 +22,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           add(ProColorEnginePackage())
           add(VoiceRecognitionPackage())
+          add(FileTransferPackage())
         }
 
       override fun getJSMainModuleName(): String = "index"

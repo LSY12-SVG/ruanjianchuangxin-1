@@ -51,6 +51,10 @@ export interface AgentAction {
   id?: string;
   domain: AgentDomain;
   operation: string;
+  toolRef?: {
+    serverId: string;
+    toolName: string;
+  };
   args?: Record<string, unknown>;
   riskLevel: AgentRiskLevel;
   requiresConfirmation: boolean;
@@ -65,6 +69,13 @@ export interface AgentPlanResponse {
   planId: string;
   actions: AgentAction[];
   reasoningSummary: string;
+  clarificationRequired?: boolean;
+  clarificationQuestion?: string;
+  decisionTrace?: Array<{step: string; reason: string; confidence?: number}>;
+  selectedSkillPack?: string;
+  candidateSkillPacks?: Array<{id: string; score: number}>;
+  memoryApplied?: {preferences: boolean; outcomes: boolean};
+  executionStrategy?: 'fast' | 'quality' | 'cost';
   estimatedSteps: number;
   undoPlan: string[];
   plannerSource: AgentPlannerSource;
@@ -194,6 +205,15 @@ export interface AgentExecuteResponse {
   executionId: string;
   planId: string;
   namespace?: string;
+  auditId?: string;
+  toolCalls?: Array<{
+    actionId: string;
+    serverId: string;
+    toolName: string;
+    status: string;
+    latencyMs: number;
+    requestId: string;
+  }>;
   actionResults: AgentActionExecution[];
   appliedActions: AgentAction[];
   failedActions: AgentActionFailure[];
@@ -201,3 +221,4 @@ export interface AgentExecuteResponse {
   rollbackAvailable: boolean;
   status: Exclude<AgentRuntimePhase, 'idle' | 'planned'>;
 }
+

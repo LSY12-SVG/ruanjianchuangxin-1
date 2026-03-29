@@ -57,6 +57,30 @@ describe('agent execution real adapters', () => {
     );
     expect(communityRepo.publishDraft).toHaveBeenCalledWith('u1', 'd-1');
     expect(result.actionResults.map(item => item.status)).toEqual(['applied', 'applied']);
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.toolCalls[0]).toMatchObject({
+      actionId: 'a1',
+      serverId: 'app-core',
+      toolName: 'community.create_draft',
+      retryCount: 0,
+    });
+    expect(result.traceId).toEqual(expect.any(String));
+    expect(result.resultCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'draft_ready',
+          artifact: expect.objectContaining({draftId: 'd-1'}),
+        }),
+      ]),
+    );
+    expect(result.completionScore).toBeGreaterThan(0);
+    expect(result.resultSummary).toEqual(
+      expect.objectContaining({
+        done: expect.any(String),
+        why: expect.any(String),
+        next: expect.any(String),
+      }),
+    );
   });
 
   test('settings.apply_patch calls settings repository', async () => {
@@ -116,6 +140,139 @@ describe('agent execution real adapters', () => {
     expect(result.actionResults[0].errorCode).toBe('invalid_action');
   });
 
+
+  test('grading.apply_visual_suggest falls back when strict model path times out', async () => {
+    const colorInterpreter = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 502,
+        payload: {
+          error: {
+            code: 'MODEL_CHAIN_FAILED',
+            message:
+              'strict_model_chain_failed:model_chain_failed:Qwen/Qwen3-VL-8B-Instruct:provider request timeout',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        payload: {
+          actions: [{action: 'set_param'}],
+          confidence: 0.61,
+          source: 'fallback',
+          modelRoute: 'fallback_parser',
+        },
+      });
+
+    const service = buildService({colorInterpreter});
+    const result = await service.execute({
+      userId: 'u3-fallback',
+      planId: 'plan-grade-fallback-1',
+      grantedScopes: ['grading:write'],
+      actions: [
+        {
+          actionId: 'g-timeout',
+          domain: 'grading',
+          operation: 'apply_visual_suggest',
+          args: {
+            locale: 'zh-CN',
+            currentParams: {
+              basic: {},
+              colorBalance: {},
+              pro: {},
+            },
+            image: {
+              mimeType: 'image/jpeg',
+              width: 1280,
+              height: 720,
+              base64: Buffer.from('grading-fallback-image').toString('base64'),
+            },
+          },
+          riskLevel: 'low',
+          requiresConfirmation: false,
+          requiredScopes: ['grading:write'],
+        },
+      ],
+    });
+
+    expect(result.status).toBe('applied');
+    expect(result.failedActions).toHaveLength(0);
+    expect(result.actionResults[0]).toMatchObject({
+      status: 'applied',
+      message: 'initial_visual_suggest_applied_degraded',
+    });
+    expect(result.actionResults[0].output).toMatchObject({
+      fallbackUsed: true,
+    });
+    expect(colorInterpreter).toHaveBeenCalledTimes(2);
+    expect(colorInterpreter.mock.calls[0][1].strictMode).toBe(true);
+    expect(colorInterpreter.mock.calls[1][1].strictMode).toBe(false);
+  });
+
+  test('grading.apply_visual_suggest degrades gracefully when strict and relaxed both fail', async () => {
+    const colorInterpreter = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 502,
+        payload: {
+          error: {
+            code: 'MODEL_CHAIN_FAILED',
+            message: 'strict_model_chain_failed:model_chain_failed:provider request timeout',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 502,
+        payload: {
+          error: {
+            code: 'UPSTREAM_UNAVAILABLE',
+            message: 'upstream temporarily unavailable',
+          },
+        },
+      });
+
+    const service = buildService({colorInterpreter});
+    const result = await service.execute({
+      userId: 'u3-fallback-2',
+      planId: 'plan-grade-fallback-2',
+      grantedScopes: ['grading:write'],
+      actions: [
+        {
+          actionId: 'g-timeout-2',
+          domain: 'grading',
+          operation: 'apply_visual_suggest',
+          args: {
+            locale: 'zh-CN',
+            currentParams: {
+              basic: {},
+              colorBalance: {},
+              pro: {},
+            },
+            image: {
+              mimeType: 'image/jpeg',
+              width: 1280,
+              height: 720,
+              base64: Buffer.from('grading-fallback-image-2').toString('base64'),
+            },
+          },
+          riskLevel: 'low',
+          requiresConfirmation: false,
+          requiredScopes: ['grading:write'],
+        },
+      ],
+    });
+
+    expect(result.status).toBe('applied');
+    expect(result.failedActions).toHaveLength(0);
+    expect(result.actionResults[0]).toMatchObject({
+      status: 'applied',
+      message: 'initial_visual_suggest_degraded',
+    });
+    expect(result.actionResults[0].output).toMatchObject({
+      fallbackUsed: true,
+    });
+    expect(colorInterpreter).toHaveBeenCalledTimes(2);
+  });
   test('convert.start_task validates args and creates modeling task', async () => {
     const modelingService = {
       createTask: jest.fn(async () => ({taskId: 'task-123', status: 'queued'})),
@@ -144,8 +301,19 @@ describe('agent execution real adapters', () => {
       ],
     });
 
-    expect(ok.status).toBe('applied');
+    expect(ok.status).toBe('waiting_async_result');
     expect(modelingService.createTask).toHaveBeenCalledTimes(1);
+    expect(ok.workflowRun).toMatchObject({
+      status: 'waiting_async_result',
+    });
+    expect(ok.resultCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'task_running',
+          artifact: expect.objectContaining({taskId: 'task-123'}),
+        }),
+      ]),
+    );
 
     const invalid = await service.execute({
       userId: 'u4',
@@ -190,6 +358,84 @@ describe('agent execution real adapters', () => {
     expect(result.actionResults[0].status).toBe('client_required');
     expect(result.actionResults[0].errorCode).toBe('client_required');
     expect(result.failedActions).toHaveLength(0);
+    expect(result.resultCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'client_action',
+        }),
+      ]),
+    );
+    expect(result.toolCalls[0]).toMatchObject({
+      actionId: 'n1',
+      serverId: 'app-core',
+      toolName: 'navigation.navigate_tab',
+      status: 'client_required',
+      errorCode: 'client_required',
+      retryCount: 0,
+    });
+    expect(result.recoverySuggestions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: expect.any(String),
+          label: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  test('client-owned tools are routed through MCP dispatcher with result cards', async () => {
+    const service = buildService();
+    const result = await service.execute({
+      userId: 'u8',
+      planId: 'plan-client-tools-1',
+      grantedScopes: ['app:*'],
+      actions: [
+        {
+          actionId: 'p1',
+          domain: 'permission',
+          operation: 'request',
+          args: {permission: 'notifications'},
+          riskLevel: 'low',
+          requiresConfirmation: false,
+          requiredScopes: ['app:read'],
+        },
+        {
+          actionId: 'f1',
+          domain: 'file',
+          operation: 'write',
+          args: {fileName: 'demo.glb', target: 'downloads'},
+          riskLevel: 'low',
+          requiresConfirmation: false,
+          requiredScopes: ['app:read'],
+        },
+      ],
+    });
+
+    expect(result.status).toBe('client_required');
+    expect(result.toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actionId: 'p1',
+          toolName: 'permission.request',
+          errorCode: 'client_required',
+        }),
+        expect.objectContaining({
+          actionId: 'f1',
+          toolName: 'file.write',
+          errorCode: 'client_required',
+        }),
+      ]),
+    );
+    expect(result.resultCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'permission_required',
+        }),
+        expect.objectContaining({
+          kind: 'file_saved',
+        }),
+      ]),
+    );
   });
 
   test('allowConfirmActions executes medium-risk action instead of pending', async () => {
@@ -221,8 +467,59 @@ describe('agent execution real adapters', () => {
       ],
     });
 
-    expect(result.status).toBe('applied');
+    expect(result.status).toBe('waiting_async_result');
     expect(result.pendingActions).toHaveLength(0);
     expect(modelingService.createTask).toHaveBeenCalledTimes(1);
   });
+
+  test('downstream actions stay blocked until dependency is really finished', async () => {
+    const communityRepo = {
+      createDraft: jest.fn(async () => ({id: 'd-2'})),
+    };
+    const modelingService = {
+      createTask: jest.fn(async () => ({taskId: 'task-234', status: 'processing'})),
+    };
+    const service = buildService({communityRepo, modelingService});
+    const result = await service.execute({
+      userId: 'u7',
+      planId: 'plan-deps-1',
+      allowConfirmActions: true,
+      grantedScopes: ['convert:write', 'community:write'],
+      actions: [
+        {
+          actionId: 'c1',
+          domain: 'convert',
+          operation: 'start_task',
+          args: {
+            image: {
+              mimeType: 'image/jpeg',
+              fileName: 'agent.jpg',
+              base64: Buffer.from('dep-image').toString('base64'),
+            },
+          },
+          riskLevel: 'medium',
+          requiresConfirmation: true,
+          requiredScopes: ['convert:write'],
+        },
+        {
+          actionId: 'p1',
+          domain: 'community',
+          operation: 'create_draft',
+          args: {title: 'blocked'},
+          dependsOn: ['c1'],
+          riskLevel: 'low',
+          requiresConfirmation: false,
+          requiredScopes: ['community:write'],
+        },
+      ],
+    });
+
+    expect(result.status).toBe('waiting_async_result');
+    expect(communityRepo.createDraft).not.toHaveBeenCalled();
+    expect(result.actionResults.map(item => item.status)).toEqual([
+      'waiting_async_result',
+      'blocked',
+    ]);
+  });
 });
+

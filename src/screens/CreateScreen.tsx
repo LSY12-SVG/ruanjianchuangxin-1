@@ -19,13 +19,25 @@ import {
   Skia,
   type SkImage,
 } from '@shopify/react-native-skia';
-import {useImagePicker} from '../hooks/useImagePicker';
-import {defaultColorGradingParams, type ColorGradingParams} from '../types/colorGrading';
+import {useImagePicker, type ImagePickerResult} from '../hooks/useImagePicker';
+import {
+  BUILTIN_PRESETS,
+  defaultColorGradingParams,
+  type ColorGradingParams,
+  type ColorPreset,
+} from '../types/colorGrading';
 import {buildVoiceImageContext} from '../voice/imageContext';
 import {parseLocalVoiceCommand} from '../voice/localParser';
 import {applyVoiceInterpretation, formatInterpretationSummary} from '../voice/paramApplier';
-import {createSpeechRecognizer, requestRecordAudioPermission} from '../voice/speechRecognizer';
+import {createSpeechRecognizer} from '../voice/speechRecognizer';
 import {useAgentExecutionContextStore} from '../agent/executionContextStore';
+import {
+  buildCurrentPageSummary,
+  resumePendingAgentWorkflow,
+  toResultStatusText,
+} from '../agent/dualEntryOrchestrator';
+import {useAgentWorkflowContinuationStore} from '../agent/workflowContinuationStore';
+import {useAgentClientNavigationBridge} from '../agent/clientNavigationBridge';
 import {
   colorApi,
   formatApiErrorMessage,
@@ -38,6 +50,7 @@ import {PageHero} from '../components/app/PageHero';
 import {HERO_CREATE} from '../assets/design';
 import {canvasText, canvasUi, cardSurfaceBlue, glassShadow} from '../theme/canvasDesign';
 import {buildPreviewColorMatrix} from '../colorEngine/previewColorMatrix';
+import {requestClientPermission} from '../permissions/clientPermissionBroker';
 
 type CreateMode = 'voice' | 'pro';
 type VoiceInputPhase = 'idle' | 'listening' | 'parsing' | 'error';
@@ -105,19 +118,23 @@ const formatVoiceTranscribeError = (error: unknown): string => {
   return normalizeSpeechErrorMessage(fallback);
 };
 
-const CREATE_PRESETS: Array<{
-  name: string;
-  exposure: number;
-  contrast: number;
-  temperature: number;
-  saturation: number;
-  vibrance: number;
-}> = [
-  {name: '电影胶片', exposure: 0.2, contrast: 18, temperature: 16, saturation: 6, vibrance: 14},
-  {name: '赛博朋克', exposure: 0.08, contrast: 26, temperature: -14, saturation: 20, vibrance: 26},
-  {name: '日系清新', exposure: 0.26, contrast: -8, temperature: 10, saturation: -10, vibrance: 8},
-  {name: '复古胶卷', exposure: 0.12, contrast: -16, temperature: 18, saturation: -14, vibrance: -6},
-];
+const cloneColorGradingParams = (source: ColorGradingParams): ColorGradingParams => ({
+  basic: {...source.basic},
+  colorBalance: {...source.colorBalance},
+  pro: {
+    curves: {
+      master: [...source.pro.curves.master] as ColorGradingParams['pro']['curves']['master'],
+      r: [...source.pro.curves.r] as ColorGradingParams['pro']['curves']['r'],
+      g: [...source.pro.curves.g] as ColorGradingParams['pro']['curves']['g'],
+      b: [...source.pro.curves.b] as ColorGradingParams['pro']['curves']['b'],
+    },
+    wheels: {
+      shadows: {...source.pro.wheels.shadows},
+      midtones: {...source.pro.wheels.midtones},
+      highlights: {...source.pro.wheels.highlights},
+    },
+  },
+});
 
 const sanitizeBase64 = (raw?: string): string =>
   String(raw || '').replace(/^data:image\/\w+;base64,/, '');
@@ -196,7 +213,6 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   const [recording, setRecording] = useState(false);
   const [voicePhase, setVoicePhase] = useState<VoiceInputPhase>('idle');
   const [segmentationSummary, setSegmentationSummary] = useState('');
-  const [showPresets, setShowPresets] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<string[]>([]);
   const [locale] = useState('zh-CN');
@@ -209,24 +225,51 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   const runVoiceRefineRef = useRef<(text: string) => Promise<void>>(async () => undefined);
   const parseWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingParseRef = useRef(false);
+  const resumeCycleKeyRef = useRef('');
 
   const colorCapability = capabilities.find(item => item.module === 'color');
+  const createPresets = useMemo(() => BUILTIN_PRESETS, []);
   const setAgentColorContext = useAgentExecutionContextStore(state => state.setColorContext);
+  const storedColorContext = useAgentExecutionContextStore(state => state.colorContext);
+  const modelingImageContext = useAgentExecutionContextStore(state => state.modelingImageContext);
+  const pendingWorkflow = useAgentWorkflowContinuationStore(state => state.pendingWorkflow);
+  const navigateToTab = useAgentClientNavigationBridge(state => state.navigateToTab);
 
   const {selectedImage, pickFromGallery, pickFromCamera, clearImage} = useImagePicker({
     onImageError: message => setErrorText(message),
   });
 
+  const effectiveSelectedImage = useMemo<ImagePickerResult | null>(() => {
+    if (selectedImage?.success) {
+      return selectedImage;
+    }
+    const storedImage = storedColorContext?.image;
+    const storedBase64 = sanitizeBase64(storedImage?.base64);
+    if (!storedImage || !storedBase64) {
+      return null;
+    }
+    const mimeType = String(storedImage.mimeType || 'image/jpeg');
+    return {
+      success: true,
+      uri: `data:${mimeType};base64,${storedBase64}`,
+      width: Number(storedImage.width || 0) || undefined,
+      height: Number(storedImage.height || 0) || undefined,
+      fileName: 'agent-context-image.jpg',
+      type: mimeType,
+      base64: storedBase64,
+    };
+  }, [selectedImage, storedColorContext]);
+
   useEffect(() => {
-    const base64 = sanitizeBase64(selectedImage?.base64);
-    if (!selectedImage?.success || !base64) {
+    const base64 = sanitizeBase64(effectiveSelectedImage?.base64);
+    if (!effectiveSelectedImage?.success || !base64) {
       setSkImage(null);
       return;
     }
     const data = Skia.Data.fromBase64(base64);
     const nextImage = data ? Skia.Image.MakeImageFromEncoded(data) : null;
     setSkImage(nextImage || null);
-  }, [selectedImage]);
+  }, [effectiveSelectedImage]);
 
   useEffect(() => {
     const nextUri = selectedImage?.success ? String(selectedImage.uri || '') : '';
@@ -244,21 +287,108 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   }, [selectedImage]);
 
   const imageContext = useMemo(
-    () => buildVoiceImageContext(selectedImage, skImage),
-    [selectedImage, skImage],
+    () => buildVoiceImageContext(effectiveSelectedImage, skImage),
+    [effectiveSelectedImage, skImage],
   );
 
   const requestContext = useMemo(
     () => toColorRequestContext(locale, params, imageContext),
     [imageContext, locale, params],
   );
+  const pendingCreateGuide = useMemo(
+    () =>
+      pendingWorkflow?.missingContextGuides.find(item => item.targetTab === 'create') || null,
+    [pendingWorkflow],
+  );
 
   useEffect(() => {
-    setAgentColorContext(requestContext ? {...requestContext} : null);
+    if (!requestContext) {
+      return;
+    }
+    setAgentColorContext({...requestContext});
   }, [requestContext, setAgentColorContext]);
+
+  useEffect(() => {
+    const isWaitingContext = pendingWorkflow?.workflowRun?.status === 'waiting_context';
+    if (!requestContext || !pendingWorkflow || !isWaitingContext) {
+      return;
+    }
+    const resumeKey = [
+      pendingWorkflow.plan.planId,
+      pendingWorkflow.latestExecuteResult?.executionId || 'root',
+      pendingCreateGuide?.operation || 'create-context',
+      requestContext.image.base64 ? `${requestContext.image.base64.length}` : 'missing',
+    ].join(':');
+    if (resumeCycleKeyRef.current === resumeKey) {
+      return;
+    }
+    resumeCycleKeyRef.current = resumeKey;
+
+    let cancelled = false;
+    const resume = async () => {
+      try {
+        setSummary('已检测到补图，正在自动继续 Agent 工作流...');
+        const cycle = await resumePendingAgentWorkflow({
+          context: {
+            currentTab: 'create',
+            colorContext: requestContext,
+            modelingImageContext,
+            latestExecuteResult: pendingWorkflow.latestExecuteResult,
+          },
+          clientHandlers: {
+            navigateToTab,
+            summarizeCurrentPage: () =>
+              buildCurrentPageSummary({
+                currentTab: 'create',
+                colorContext: requestContext,
+                modelingImageContext,
+                latestPlan: pendingWorkflow.plan,
+                latestExecuteResult: pendingWorkflow.latestExecuteResult,
+              }),
+          },
+        });
+        if (!cancelled && cycle?.executeResult) {
+          setSummary(`工作流续跑状态：${toResultStatusText(cycle.executeResult.status)}`);
+          if (cycle.executeResult.status === 'failed') {
+            const failedMessage =
+              cycle.executeResult.actionResults.find(item => item.status === 'failed')?.message ||
+              '续跑失败';
+            setErrorText(failedMessage);
+          } else {
+            setErrorText('');
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setErrorText(formatApiErrorMessage(error, '自动续跑失败'));
+        }
+      }
+    };
+    resume().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    modelingImageContext,
+    navigateToTab,
+    pendingCreateGuide?.operation,
+    pendingWorkflow,
+    requestContext,
+  ]);
   const previewColorMatrix = useMemo(() => buildPreviewColorMatrix(params), [params]);
   const isPreviewOriginal = useMemo(() => isNeutralPreviewParams(params), [params]);
   const useSkiaPreview = Boolean(skImage && previewWidth > 1 && !isPreviewOriginal);
+  const previewHeight = useMemo(() => {
+    const sourceWidth = Number(effectiveSelectedImage?.width || 0);
+    const sourceHeight = Number(effectiveSelectedImage?.height || 0);
+    if (previewWidth <= 1 || sourceWidth <= 0 || sourceHeight <= 0) {
+      return 240;
+    }
+    const ratio = sourceWidth / sourceHeight;
+    const fittedHeight = previewWidth / ratio;
+    return Math.max(180, Math.min(420, Math.round(fittedHeight)));
+  }, [effectiveSelectedImage?.height, effectiveSelectedImage?.width, previewWidth]);
 
   const applyInterpret = (interpretation: InterpretResponse, prefix: string) => {
     const next = applyVoiceInterpretation(params, interpretation);
@@ -549,9 +679,9 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
       if (recording) {
         return;
       }
-      const granted = await requestRecordAudioPermission();
-      if (!granted) {
-        setErrorText('录音权限未开启');
+      const permission = await requestClientPermission('microphone');
+      if (!permission.granted) {
+        setErrorText(permission.message || '录音权限未开启');
         return;
       }
       if (!recognizerRef.current.pressing) {
@@ -644,23 +774,15 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
     setSummary(`手动调色: ${label} -> ${formatted}`);
   };
 
-  const applyPreset = (preset: (typeof CREATE_PRESETS)[number]) => {
-    setParams(prev => ({
-      ...prev,
-      basic: {
-        ...prev.basic,
-        exposure: preset.exposure,
-        contrast: preset.contrast,
-      },
-      colorBalance: {
-        ...prev.colorBalance,
-        temperature: preset.temperature,
-        saturation: preset.saturation,
-        vibrance: preset.vibrance,
-      },
-    }));
+  const applyPreset = (preset: ColorPreset) => {
+    setParams(cloneColorGradingParams(preset.params));
+    setSummary(`已应用预设: ${preset.name}`);
     setHistoryEntries(prev => [`${new Date().toLocaleTimeString()} 预设:${preset.name}`, ...prev].slice(0, 8));
-    setShowPresets(false);
+  };
+
+  const handleClearImage = () => {
+    clearImage();
+    setAgentColorContext(null);
   };
 
   return (
@@ -672,6 +794,19 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
         variant="warm"
         overlayStrength="normal"
       />
+      {pendingCreateGuide ? (
+        <View style={styles.agentGuideBar}>
+          <View style={styles.agentGuideHead}>
+            <Icon name="flash" size={14} color="#A34A3C" />
+            <Text style={styles.agentGuideTitle}>Agent 等待补图</Text>
+          </View>
+          <Text style={styles.agentGuideText}>{pendingCreateGuide.message}</Text>
+          <Pressable style={styles.secondaryBtn} onPress={() => pickFromGallery()}>
+            <Icon name="images" size={15} color="#3B2F29" />
+            <Text style={styles.secondaryBtnText}>上传图片继续</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={styles.modeRow}>
         <Pressable
@@ -689,33 +824,27 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
       </View>
 
       <View style={styles.toolsRow}>
-        <Pressable style={styles.toolChip} onPress={() => setShowPresets(prev => !prev)}>
-          <Icon name="layers" size={14} color="#3B2F29" />
-          <Text style={styles.toolChipText}>预设</Text>
-        </Pressable>
         <Pressable style={styles.toolChip} onPress={() => setShowHistory(prev => !prev)}>
           <Icon name="time" size={14} color="#3B2F29" />
           <Text style={styles.toolChipText}>历史</Text>
         </Pressable>
       </View>
 
-      {showPresets ? (
-        <View style={styles.card}>
-          <View style={styles.sectionHead}>
-            <View style={styles.sectionIconBadge}>
-              <Icon name="color-palette" size={13} color="#A34A3C" />
-            </View>
-            <Text style={styles.sectionTitle}>风格预设</Text>
+      <View style={styles.card}>
+        <View style={styles.sectionHead}>
+          <View style={styles.sectionIconBadge}>
+            <Icon name="color-palette" size={13} color="#A34A3C" />
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetRow}>
-            {CREATE_PRESETS.map(item => (
-              <Pressable key={item.name} style={styles.presetChip} onPress={() => applyPreset(item)}>
-                <Text style={styles.presetChipText}>{item.name}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <Text style={styles.sectionTitle}>风格预设</Text>
         </View>
-      ) : null}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetRow}>
+          {createPresets.map(item => (
+            <Pressable key={item.id} style={styles.presetChip} onPress={() => applyPreset(item)}>
+              <Text style={styles.presetChipText}>{item.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
 
       {showHistory ? (
         <View style={styles.card}>
@@ -738,7 +867,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
       ) : null}
 
       <View style={styles.card}>
-        {!selectedImage?.success ? (
+        {!effectiveSelectedImage?.success ? (
           <View style={styles.uploadWrap}>
             <View style={styles.sectionHead}>
               <View style={styles.sectionIconBadge}>
@@ -759,15 +888,26 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
           </View>
         ) : (
           <View>
-            <View style={styles.previewFrame} onLayout={onPreviewLayout}>
+            <View style={styles.previewFrame} onLayout={onPreviewLayout} testID="create-preview-frame">
               {useSkiaPreview ? (
-                <Canvas style={styles.preview}>
-                  <SkiaImage image={skImage} x={0} y={0} width={previewWidth} height={220} fit="cover">
+                <Canvas style={[styles.preview, {height: previewHeight}]} testID="create-preview-canvas">
+                  <SkiaImage
+                    image={skImage}
+                    x={0}
+                    y={0}
+                    width={previewWidth}
+                    height={previewHeight}
+                    fit="contain">
                     <ColorMatrix matrix={previewColorMatrix} />
                   </SkiaImage>
                 </Canvas>
               ) : (
-                <RNImage source={{uri: selectedImage.uri}} style={styles.preview} />
+                <RNImage
+                  testID="create-preview-image"
+                  source={{uri: effectiveSelectedImage?.uri || ''}}
+                  style={[styles.preview, {height: previewHeight}]}
+                  resizeMode="contain"
+                />
               )}
             </View>
             <Text style={styles.metaText}>
@@ -778,7 +918,7 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
                 <Icon name="sparkles" size={16} color="#FFF6F2" />
                 <Text style={styles.primaryBtnText}>{loading ? '处理中...' : 'AI首轮'}</Text>
               </Pressable>
-              <Pressable style={styles.secondaryBtn} onPress={clearImage}>
+              <Pressable style={styles.secondaryBtn} onPress={handleClearImage}>
                 <Icon name="refresh" size={16} color="#3B2F29" />
                 <Text style={styles.secondaryBtnText}>重选</Text>
               </Pressable>
@@ -917,6 +1057,7 @@ const styles = StyleSheet.create({
   toolsRow: {
     flexDirection: 'row',
     gap: 8,
+    justifyContent: 'flex-end',
   },
   toolChip: {
     ...canvasUi.chip,
@@ -955,6 +1096,26 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
+  agentGuideBar: {
+    ...cardSurfaceBlue,
+    ...glassShadow,
+    padding: 12,
+    gap: 10,
+  },
+  agentGuideHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  agentGuideTitle: {
+    ...canvasText.bodyStrong,
+    color: '#3B2F29',
+  },
+  agentGuideText: {
+    ...canvasText.body,
+    color: 'rgba(109,90,80,0.86)',
+    lineHeight: 18,
+  },
   uploadWrap: {
     alignItems: 'center',
     gap: 12,
@@ -966,14 +1127,14 @@ const styles = StyleSheet.create({
   },
   preview: {
     width: '100%',
-    height: 220,
-    overflow: 'hidden',
   },
   previewFrame: {
     width: '100%',
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#E7D7CC',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   previewActions: {
     flexDirection: 'row',

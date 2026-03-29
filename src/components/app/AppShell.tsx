@@ -17,6 +17,8 @@ import {AgentScreen} from '../../screens/AgentScreen';
 import {CommunityScreen} from '../../screens/CommunityScreen';
 import {VISION_THEME} from '../../theme/visionTheme';
 import {HaruFloatingAgent} from '../assistant/HaruFloatingAgent';
+import {AgentAuthDialog} from '../assistant/AgentAuthDialog';
+import {useAgentClientNavigationBridge} from '../../agent/clientNavigationBridge';
 
 const PAGE_GRADIENT = VISION_THEME.gradients.page;
 
@@ -34,6 +36,7 @@ export const AppShell: React.FC = () => {
   const [healthError, setHealthError] = useState('');
   const [moduleStates, setModuleStates] = useState<ModuleHealthItem[]>(defaultModuleStates);
   const [capabilities, setCapabilities] = useState<ModuleCapabilityItem[]>([]);
+  const setBridgeNavigateToTab = useAgentClientNavigationBridge(state => state.setNavigateToTab);
   const screenAnim = useRef(new Animated.Value(1)).current;
   const ambientShift = useRef(new Animated.Value(0)).current;
 
@@ -65,6 +68,10 @@ export const AppShell: React.FC = () => {
     }, 12000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setBridgeNavigateToTab(setActiveTab);
+  }, [setBridgeNavigateToTab, setActiveTab]);
 
   useEffect(() => {
     screenAnim.setValue(0.75);
@@ -179,6 +186,7 @@ export const AppShell: React.FC = () => {
         bottomInset={insets.bottom}
         onNavigateTab={setActiveTab}
       />
+      <AgentAuthDialog />
       <BottomTabBar activeTab={activeTab} onChangeTab={setActiveTab} bottomInset={insets.bottom} />
     </LinearGradient>
   );

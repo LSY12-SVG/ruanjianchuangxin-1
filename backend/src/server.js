@@ -24,6 +24,14 @@ let communityModule = null;
 
 const requiredModuleNames = ['color', 'modeling', 'agent', 'community'];
 
+const collectAgentModelConfig = () => ({
+  summaryModel:
+    process.env.AGENT_PLAN_SUMMARY_MODEL || process.env.MODEL_NAME || process.env.MODEL_PRIMARY_NAME || '',
+  plannerModel: process.env.AGENT_PLANNER_MODEL || '',
+  plannerBaseUrl: process.env.AGENT_PLANNER_BASE_URL || '',
+  plannerTimeoutMs: Number(process.env.AGENT_PLANNER_TIMEOUT_MS || 0) || null,
+});
+
 const mountedModules = () =>
   [colorModule, modelingModule, agentModule, communityModule].filter(Boolean);
 
@@ -68,6 +76,9 @@ const mountModules = async () => {
     getModelingConfig: () => modelingModule?.config || null,
   });
   app.use('/v1/modules/agent', agentModule.router);
+  if (typeof agentModule?.init === 'function') {
+    await agentModule.init();
+  }
 
   communityModule = await createCommunityGatewayModule({
     authMiddleware: accountModule?.authMiddleware,
@@ -138,6 +149,7 @@ const startServer = async () => {
         service: 'visiongenie-modules-gateway',
         ok: health.ok,
         missingModules: health.missingModules,
+        agentModels: collectAgentModelConfig(),
       }),
     );
   });

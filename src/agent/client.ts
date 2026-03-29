@@ -38,6 +38,20 @@ const isUsableDevHost = (hostname: string): boolean => {
   return normalized.includes('.');
 };
 
+const isLanHost = (hostname: string): boolean => {
+  const normalized = hostname.trim().toLowerCase();
+  if (
+    !normalized ||
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '10.0.2.2' ||
+    normalized === '10.0.3.2'
+  ) {
+    return false;
+  }
+  return isIpv4Host(normalized);
+};
+
 const timeoutFetch = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -77,11 +91,21 @@ const resolveBases = (override?: string): string[] => {
     return [trimmed.replace(/\/$/, '')];
   }
   const set = new Set<string>();
+  const scriptBase = buildBaseFromScriptURL();
+  if (scriptBase) {
+    try {
+      const hostname = new URL(scriptBase).hostname || '';
+      if (isLanHost(hostname)) {
+        set.add(scriptBase);
+      }
+    } catch {
+      // ignore invalid dev host
+    }
+  }
   set.add(DEFAULT_AGENT_BASE);
   set.add('http://localhost:8787');
   set.add('http://10.0.2.2:8787');
   set.add('http://10.0.3.2:8787');
-  const scriptBase = buildBaseFromScriptURL();
   if (scriptBase) {
     set.add(scriptBase);
   }
