@@ -21,8 +21,9 @@ export const interpretWithCloud = async (
   request: InterpretRequest,
   endpoint?: string,
 ): Promise<CloudInterpretResult> => {
+  const isInitialSuggest = request.mode === 'initial_visual_suggest';
   const servicePath =
-    request.mode === 'initial_visual_suggest'
+    isInitialSuggest
       ? '/v1/modules/color/initial-suggest'
       : '/v1/modules/color/voice-refine';
   const payload = {
@@ -39,10 +40,10 @@ export const interpretWithCloud = async (
     explicitEndpoint: endpoint,
     method: 'POST',
     body: payload,
-    timeoutMs: 8000,
+    timeoutMs: isInitialSuggest ? 18000 : 12000,
     retries: 1,
     healthTimeoutMs: 700,
-    totalBudgetMs: 9500,
+    totalBudgetMs: isInitialSuggest ? 22000 : 15000,
   });
 
   if (!cloudResult.ok) {

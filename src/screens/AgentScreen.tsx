@@ -18,6 +18,11 @@ import {
   type AgentStrategyMetrics,
 } from '../modules/api';
 import {PageHero} from '../components/app/PageHero';
+import {
+  AgentWorkflowProgress,
+  toWorkflowActionLabel,
+  toWorkflowRequiredContextLabel,
+} from '../components/agent/AgentWorkflowProgress';
 import {HERO_AGENT} from '../assets/design';
 import {canvasText, canvasUi, cardSurfaceViolet, glassShadow} from '../theme/canvasDesign';
 import {useAgentExecutionContextStore} from '../agent/executionContextStore';
@@ -121,6 +126,22 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
 
   const agentCapability = capabilities.find(item => item.module === 'agent');
 
+  useEffect(() => {
+    if (!pendingWorkflow) {
+      return;
+    }
+    setPlan(pendingWorkflow.plan);
+    setExecuteResult(pendingWorkflow.latestExecuteResult);
+    setMissingContextGuides(pendingWorkflow.missingContextGuides);
+    if (pendingWorkflow.missingContextGuides.length > 0) {
+      setErrorText(prev => prev || buildMissingContextHintText(pendingWorkflow.missingContextGuides));
+      return;
+    }
+    if (pendingWorkflow.latestExecuteResult?.status !== 'failed') {
+      setErrorText('');
+    }
+  }, [pendingWorkflow]);
+
   const planStatusText = useMemo(() => {
     if (!plan) {
       return '等待生成计划';
@@ -133,38 +154,6 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
     }
     return meta.join(' · ');
   }, [plan]);
-
-  const executeProgress = useMemo(() => {
-    if (!executeResult || !executeResult.actionResults.length) {
-      return 0;
-    }
-    const completed = executeResult.actionResults.filter(
-      item => item.status === 'applied',
-    ).length;
-    return Math.round((completed / executeResult.actionResults.length) * 100);
-  }, [executeResult]);
-
-  const workflowProgressText = useMemo(() => {
-    const total = Number(executeResult?.workflowState?.totalSteps || 0);
-    if (!executeResult || total <= 0) {
-      return '';
-    }
-    const current = Math.max(0, Number(executeResult.workflowState?.currentStep || 0));
-    return `${Math.min(Math.max(current, 0), total)}/${total}`;
-  }, [executeResult]);
-
-  const toContextLabel = (key: string | null | undefined): string => {
-    if (key === 'context.color.image') {
-      return '调色图片';
-    }
-    if (key === 'context.modeling.image') {
-      return '建模图片';
-    }
-    if (key === 'context.community.draftId') {
-      return '社区草稿';
-    }
-    return key || '-';
-  };
 
   const resultSummaryText = useMemo(() => {
     if (!executeResult) {
@@ -240,46 +229,6 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
       default:
         return riskLevel || '-';
     }
-  };
-
-  const toActionLabel = (action: AgentPlanResponse['actions'][number]): string => {
-    const key = `${action.domain}.${action.operation}`;
-    if (key === 'navigation.navigate_tab') {
-      const tabRaw = String(action.args?.tab || '').trim().toLowerCase();
-      const routeRaw = String(action.args?.route || '').trim().toLowerCase();
-      if (tabRaw === 'community') {
-        return '前往社区页';
-      }
-      if (routeRaw.includes('model')) {
-        return '前往建模页';
-      }
-      if (routeRaw.includes('grading') || tabRaw === 'home') {
-        return '前往调色页';
-      }
-      if (tabRaw === 'agent') {
-        return '前往助手页';
-      }
-      return '执行页面跳转';
-    }
-    if (key === 'grading.apply_visual_suggest') {
-      return '执行首轮智能调色';
-    }
-    if (key === 'convert.start_task') {
-      return '启动 2D 转 3D 建模';
-    }
-    if (key === 'community.create_draft') {
-      return '创建社区草稿';
-    }
-    if (key === 'community.publish_draft') {
-      return '发布社区草稿';
-    }
-    if (key === 'app.summarize_current_page') {
-      return '总结当前页面';
-    }
-    if (key === 'settings.apply_patch') {
-      return '应用设置变更';
-    }
-    return `${action.domain}.${action.operation}`;
   };
 
   const applyCycleResult = useCallback(
@@ -391,6 +340,16 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
       setErrorText(voiceErrorText);
     }
   }, [voiceErrorText]);
+
+  useEffect(() => {
+    if (
+      executeResult?.status === 'applied' ||
+      executeResult?.status === 'failed' ||
+      executeResult?.status === 'cancelled'
+    ) {
+      setMissingContextGuides([]);
+    }
+  }, [executeResult]);
 
   useEffect(() => {
     loadStrategyMetrics().catch(() => undefined);
@@ -938,7 +897,7 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
               <View key={action.actionId} style={styles.stepCard}>
                 <View style={styles.stepHead}>
                   <Text style={styles.stepIndex}>#{index + 1}</Text>
-                  <Text style={styles.stepDomain}>{toActionLabel(action)}</Text>
+                  <Text style={styles.stepDomain}>{toWorkflowActionLabel(action)}</Text>
                 </View>
                 <Text style={styles.stepMeta}>
                   风险: {toRiskText(action.riskLevel)} | 需确认:{' '}
@@ -976,44 +935,25 @@ export const AgentScreen: React.FC<AgentScreenProps> = ({
           </View>
           <Text style={styles.sectionTitle}>执行结果</Text>
         </View>
-        {executeResult ? (
-          <View style={styles.progressWrap}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, {width: `${executeProgress}%`}]} />
-            </View>
-            <Text style={styles.progressText}>{executeProgress}%</Text>
-          </View>
-        ) : null}
+        {plan || executeResult ? <AgentWorkflowProgress plan={plan} executeResult={executeResult} /> : null}
         {executeResult ? (
           <View style={styles.stepWrap}>
+            {resultSummaryText ? <Text style={styles.metaText}>{resultSummaryText}</Text> : null}
             <Text style={styles.metaText}>状态: {toResultStatusText(executeResult.status)}</Text>
             {executeResult.workflowRun ? (
               <Text style={styles.metaText}>
                 运行态: {toWorkflowRunStatusText(executeResult.workflowRun.status)}
               </Text>
             ) : null}
-            {resultSummaryText ? <Text style={styles.metaText}>{resultSummaryText}</Text> : null}
-            {workflowProgressText ? (
-              <Text style={styles.metaText}>链路进度: {workflowProgressText}</Text>
-            ) : null}
-            {typeof executeResult.completionScore === 'number' ? (
-              <Text style={styles.metaText}>完成度: {Math.round(executeResult.completionScore * 100)}%</Text>
-            ) : null}
             {executeResult.workflowState?.nextRequiredContext ? (
               <Text style={styles.metaText}>
-                下一步需要: {toContextLabel(executeResult.workflowState.nextRequiredContext)}
+                下一步需要: {toWorkflowRequiredContextLabel(executeResult.workflowState.nextRequiredContext)}
               </Text>
             ) : null}
             {executeResult.clientHandledActions?.length ? (
               <Text style={styles.metaText}>
                 客户端补执行: {executeResult.clientHandledActions.length} 项
               </Text>
-            ) : null}
-            {executeResult.auditId ? (
-              <Text style={styles.metaText}>审计追踪: {executeResult.auditId}</Text>
-            ) : null}
-            {executeResult.traceId ? (
-              <Text style={styles.metaText}>链路追踪: {executeResult.traceId}</Text>
             ) : null}
             {executeResult.workflowRun?.runId ? (
               <View style={styles.stepCard}>
@@ -1206,24 +1146,6 @@ const styles = StyleSheet.create({
   },
   stepWrap: {
     gap: 9,
-  },
-  progressWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  progressTrack: {
-    ...canvasUi.progressTrack,
-    flex: 1,
-  },
-  progressFill: {
-    ...canvasUi.progressFill,
-  },
-  progressText: {
-    ...canvasText.caption,
-    color: '#A34A3C',
-    minWidth: 32,
-    textAlign: 'right',
   },
   stepCard: {
     ...canvasUi.subtleCard,

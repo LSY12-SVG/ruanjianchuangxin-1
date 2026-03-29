@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const {Buffer} = require('node:buffer');
 const {
   refreshModelHealth,
   getRuntimeSnapshot,
@@ -35,7 +36,7 @@ const readBooleanEnv = (name, fallback) => {
   return false;
 };
 
-const initialSuggestStrictMode = readBooleanEnv('COLOR_INITIAL_STRICT_MODE', false);
+const initialSuggestStrictMode = readBooleanEnv('COLOR_INITIAL_STRICT_MODE', true);
 const voiceStrictMode = readBooleanEnv('COLOR_VOICE_STRICT_MODE', false);
 const autoGradeStrictMode = readBooleanEnv('COLOR_AUTOGRADE_STRICT_MODE', true);
 

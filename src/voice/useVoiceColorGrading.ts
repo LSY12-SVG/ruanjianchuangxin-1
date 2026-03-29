@@ -331,7 +331,7 @@ export const useVoiceColorGrading = ({
           transcript: text,
           currentParams: paramsRef.current,
           locale,
-          image: imageContext.image,
+          image: imageContext.cloudPayloads.refine,
           imageStats: imageContext.imageStats,
         },
         cloudEndpoint,
@@ -480,28 +480,31 @@ export const useVoiceColorGrading = ({
           transcript: '',
           currentParams: paramsRef.current,
           locale,
-          image: imageContext.image,
+          image: imageContext.cloudPayloads.fast,
           imageStats: imageContext.imageStats,
           sceneHints: ['initial_visual_pass'],
         },
         cloudEndpoint,
       );
 
-      const interpretation =
-        cloud.response || buildStyleFallback('清新明亮', cloud.fallbackReason, cloud.cloudState);
       setCloudState(cloud.cloudState);
       setFallbackReason(cloud.fallbackReason);
       setCloudEndpointState(cloud.endpoint);
       setCloudLatencyMs(cloud.latencyMs);
       setCloudRetrying(cloud.retrying);
       setNextRecoveryAction(cloud.nextRecoveryAction);
-      if (!cloud.response) {
+      const interpretation =
+        cloud.response && !cloud.response.fallbackUsed ? cloud.response : null;
+
+      if (!interpretation) {
+        setVisualState('visual_error');
         setLastError(
-          `视觉云端暂不可用（${describeCloudFallbackReason(cloud.fallbackReason)}），已降级本地模板；${describeRecoveryAction(cloud.nextRecoveryAction)}。`,
+          `视觉首轮需要真实图像理解结果，当前未获得可用模型响应（${describeCloudFallbackReason(cloud.fallbackReason)}）；${describeRecoveryAction(cloud.nextRecoveryAction)}。`,
         );
+        return;
       }
 
-      if (!interpretation || interpretation.actions.length === 0) {
+      if (interpretation.actions.length === 0) {
         setVisualState('visual_error');
         setLastError('视觉模型未返回有效首轮建议。');
         return;
@@ -517,7 +520,7 @@ export const useVoiceColorGrading = ({
       setVisualState('visual_applied');
     } catch {
       setVisualState('visual_error');
-      setLastError('视觉首轮建议失败，可直接语音继续修改。');
+      setLastError('视觉首轮建议失败，当前未获得真实图像理解结果，请稍后重试。');
     }
   }, [applyInterpretation, cloudEndpoint, getImageContext, locale]);
 

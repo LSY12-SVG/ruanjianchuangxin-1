@@ -1,4 +1,5 @@
 const {readFile} = require('node:fs/promises');
+const {Buffer} = require('node:buffer');
 
 const SYSTEM_PROMPT = [
   '你是移动端图片智能调色解析器。',
@@ -16,6 +17,15 @@ const SYSTEM_PROMPT = [
   'set_param 用 value，adjust_param 用 delta。',
   '返回字段必须包含: actions, confidence, reasoning_summary, fallback_used, needsConfirmation, message, source, analysis_summary, applied_profile。',
   '并尽量补充: scene_profile, scene_confidence, quality_risk_flags(数组), recommended_intensity(soft|normal|strong)。',
+].join('\n');
+
+const INITIAL_VISUAL_PROMPT = [
+  'Analyze this photo for first-pass mobile color grading.',
+  'Return JSON only with keys: scene, style, intensity, confidence, analysis, risks, adjustments.',
+  'style: cinematic_cool|cinematic_warm|portrait_clean|vintage_fade|moody_dark|fresh_bright.',
+  'intensity: soft|normal|strong.',
+  'adjustments: object with numeric deltas using only exposure, brightness, contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance, saturation.',
+  'Keep adjustments safe and concise. Keep portrait skin natural. No markdown.',
 ].join('\n');
 
 const requestWithTimeout = async (url, options, timeoutMs) => {
@@ -85,6 +95,167 @@ const classifyBadRequestCode = message => {
   return 'HTTP_400';
 };
 
+const pickDefined = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const normalizeInterpretPayload = (payload, mode) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return payload;
+  }
+
+  const normalized = {
+    ...payload,
+    fallback_used: false,
+    needsConfirmation:
+      typeof payload.needsConfirmation === 'boolean' ? payload.needsConfirmation : false,
+    source: payload.source === 'fallback' ? 'fallback' : 'cloud',
+  };
+
+  const inferredRiskFlags = Array.isArray(payload.quality_risk_flags)
+    ? payload.quality_risk_flags
+    : Array.isArray(payload.qualityRiskFlags)
+      ? payload.qualityRiskFlags
+      : Array.isArray(payload.risks)
+        ? payload.risks
+        : typeof payload.risks === 'string' && payload.risks.trim()
+          ? payload.risks
+              .split(/[;,，。]/)
+              .map(item => item.trim())
+              .filter(Boolean)
+        : [];
+  if (!normalized.quality_risk_flags && inferredRiskFlags.length > 0) {
+    normalized.quality_risk_flags = inferredRiskFlags;
+  }
+
+  const inferredProfile = pickDefined(
+    payload.applied_profile,
+    payload.appliedProfile,
+    payload.style,
+    payload.scene_profile,
+    payload.sceneProfile,
+  );
+  if (!normalized.applied_profile && typeof inferredProfile === 'string') {
+    normalized.applied_profile = inferredProfile;
+  }
+
+  const inferredSceneProfile = pickDefined(payload.scene_profile, payload.sceneProfile, payload.scene);
+  if (!normalized.scene_profile && typeof inferredSceneProfile === 'string') {
+    normalized.scene_profile = inferredSceneProfile;
+  }
+
+  const inferredSceneConfidence = pickDefined(
+    payload.scene_confidence,
+    payload.sceneConfidence,
+    payload.confidence,
+  );
+  if (
+    normalized.scene_confidence === undefined &&
+    typeof inferredSceneConfidence === 'number' &&
+    Number.isFinite(inferredSceneConfidence)
+  ) {
+    normalized.scene_confidence = inferredSceneConfidence;
+  }
+
+  const inferredAnalysisSummary = pickDefined(
+    payload.analysis_summary,
+    payload.analysisSummary,
+    payload.analysis,
+  );
+  if (!normalized.analysis_summary && typeof inferredAnalysisSummary === 'string') {
+    normalized.analysis_summary = inferredAnalysisSummary;
+  }
+
+  const inferredReasoningSummary = pickDefined(
+    payload.reasoning_summary,
+    payload.reasoningSummary,
+    payload.reasoning,
+  );
+  if (!normalized.reasoning_summary && typeof inferredReasoningSummary === 'string') {
+    normalized.reasoning_summary = inferredReasoningSummary;
+  }
+
+  const inferredMessage = pickDefined(payload.message, payload.summary);
+  if (!normalized.message && typeof inferredMessage === 'string') {
+    normalized.message = inferredMessage;
+  }
+
+  if (
+    mode === 'initial_visual_suggest' &&
+    !Array.isArray(normalized.actions) &&
+    Array.isArray(payload.suggestions)
+  ) {
+    normalized.actions = payload.suggestions;
+  }
+
+  if (
+    mode === 'initial_visual_suggest' &&
+    !Array.isArray(normalized.actions) &&
+    payload.adjustments &&
+    typeof payload.adjustments === 'object' &&
+    !Array.isArray(payload.adjustments)
+  ) {
+    const adjustmentActions = Object.entries(payload.adjustments)
+      .map(([target, delta]) => {
+        const numericDelta = Number(delta);
+        if (!Number.isFinite(numericDelta) || numericDelta === 0) {
+          return null;
+        }
+        return {
+          action: 'adjust_param',
+          target,
+          delta: numericDelta,
+        };
+      })
+      .filter(Boolean);
+
+    normalized.actions = adjustmentActions;
+  }
+
+  if (
+    mode === 'initial_visual_suggest' &&
+    typeof payload.style === 'string' &&
+    payload.style.trim()
+  ) {
+    const styleAction = {
+      action: 'apply_style',
+      target: 'style',
+      style: payload.style.trim(),
+      strength: 1,
+    };
+    normalized.actions = Array.isArray(normalized.actions)
+      ? [styleAction, ...normalized.actions]
+      : [styleAction];
+  }
+
+  if (
+    mode === 'initial_visual_suggest' &&
+    !normalized.message &&
+    typeof normalized.analysis_summary === 'string' &&
+    normalized.analysis_summary.trim()
+  ) {
+      normalized.message = '已获得云端首轮调色建议';
+  }
+
+  if (mode === 'initial_visual_suggest') {
+    const inferredIntensity = pickDefined(
+      payload.recommended_intensity,
+      payload.recommendedIntensity,
+      payload.intensity,
+    );
+    if (!normalized.recommended_intensity && typeof inferredIntensity === 'string') {
+      normalized.recommended_intensity = inferredIntensity;
+    }
+  }
+
+  return normalized;
+};
+
 const interpretWithOpenAICompat = async (request, options = {}) => {
   const apiKey = process.env.MODEL_API_KEY;
   const baseUrl = process.env.MODEL_BASE_URL;
@@ -103,14 +274,22 @@ const interpretWithOpenAICompat = async (request, options = {}) => {
     request.mode === 'initial_visual_suggest' || request.mode === 'voice_refine'
       ? request.mode
       : 'voice_refine';
-  const textPayload = {
-    mode,
-    transcript: request.transcript || '',
-    locale: request.locale,
-    sceneHints: request.sceneHints || [],
-    imageStats: request.imageStats || null,
-    currentParams: request.currentParams,
-  };
+  const isInitialMode = mode === 'initial_visual_suggest';
+  const textPayload = isInitialMode
+    ? {
+        mode,
+        locale: request.locale,
+        imageStats: request.imageStats || null,
+        sceneHints: Array.isArray(request.sceneHints) ? request.sceneHints.slice(0, 4) : [],
+      }
+    : {
+        mode,
+        transcript: request.transcript || '',
+        locale: request.locale,
+        sceneHints: request.sceneHints || [],
+        imageStats: request.imageStats || null,
+        currentParams: request.currentParams,
+      };
   const userContent = [
     {
       type: 'text',
@@ -122,16 +301,18 @@ const interpretWithOpenAICompat = async (request, options = {}) => {
       type: 'image_url',
       image_url: {
         url: `data:${request.image.mimeType};base64,${request.image.base64}`,
+        ...(isInitialMode ? {detail: 'low'} : {}),
       },
     });
   }
   const requestBodyBase = {
     model,
     temperature: 0.1,
+    max_tokens: isInitialMode ? 500 : 900,
     messages: [
       {
         role: 'system',
-        content: SYSTEM_PROMPT,
+        content: isInitialMode ? INITIAL_VISUAL_PROMPT : SYSTEM_PROMPT,
       },
       {
         role: 'user',
@@ -200,7 +381,7 @@ const interpretWithOpenAICompat = async (request, options = {}) => {
   }
 
   try {
-    return parseJsonSafe(content);
+    return normalizeInterpretPayload(parseJsonSafe(content), mode);
   } catch {
     throw createProviderError('provider response is not valid JSON', 'INVALID_JSON');
   }

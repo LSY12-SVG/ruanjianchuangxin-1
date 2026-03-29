@@ -17,6 +17,10 @@ import {markRuleIgnored, markRuleShown, shouldTriggerRule} from '../../assistant
 import {type FloatingAssistantTab} from '../../assistant/quickActions';
 import {assistantTriggerRules} from '../../assistant/rules';
 import {reduceAssistantUiState} from '../../assistant/stateMachine';
+import {
+  AgentWorkflowProgress,
+  toWorkflowRequiredContextLabel,
+} from '../agent/AgentWorkflowProgress';
 import type {
   AssistantPanelVisualConfig,
   AssistantScenePage,
@@ -169,6 +173,23 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
         : [],
     [latestExecuteResult],
   );
+
+  useEffect(() => {
+    if (!pendingWorkflow) {
+      return;
+    }
+    setLatestPlan(pendingWorkflow.plan);
+    setLatestHydratedActions(pendingWorkflow.plan.actions);
+    setLatestExecuteResult(pendingWorkflow.latestExecuteResult);
+    setMissingContextGuides(pendingWorkflow.missingContextGuides);
+    if (pendingWorkflow.missingContextGuides.length > 0) {
+      setErrorText(prev => prev || buildMissingContextHintText(pendingWorkflow.missingContextGuides));
+      return;
+    }
+    if (pendingWorkflow.latestExecuteResult?.status !== 'failed') {
+      setErrorText('');
+    }
+  }, [pendingWorkflow]);
 
   const {agentAvailable, agentAvailabilityKnown} = useMemo(() => {
     const agentCapability = capabilities.find(item => item.module === 'agent');
@@ -1109,70 +1130,15 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
     </View>
   );
 
-  const toRequiredContextText = useCallback((value: string | null | undefined) => {
-    if (value === 'context.color.image') {
-      return '调色图片';
+  const workflowDisplayPlan = useMemo(() => {
+    if (!latestPlan) {
+      return null;
     }
-    if (value === 'context.modeling.image') {
-      return '建模图片';
-    }
-    if (value === 'context.community.draftId') {
-      return '社区草稿';
-    }
-    return value || '';
-  }, []);
-
-  const workflowProgressText = useMemo(() => {
-    const total = Number(latestExecuteResult?.workflowState?.totalSteps || 0);
-    if (!latestExecuteResult || total <= 0) {
-      return '';
-    }
-    const current = Number(latestExecuteResult.workflowState?.currentStep || 0);
-    return `链路进度 ${Math.min(Math.max(current, 0), total)}/${total}`;
-  }, [latestExecuteResult]);
-
-  const combinedResultText = useMemo(() => {
-    if (!latestExecuteResult) {
-      return '';
-    }
-    const clientHandledCount = latestExecuteResult.clientHandledActions?.length || 0;
-    const appliedCount = latestExecuteResult.actionResults.filter(item => item.status === 'applied').length;
-    const serverAppliedCount = Math.max(0, appliedCount - clientHandledCount);
-    if (serverAppliedCount > 0 && clientHandledCount > 0) {
-      return `服务端已执行 ${serverAppliedCount} 项，客户端补执行 ${clientHandledCount} 项`;
-    }
-    if (clientHandledCount > 0) {
-      return `客户端补执行 ${clientHandledCount} 项`;
-    }
-    return '';
-  }, [latestExecuteResult]);
-
-  const mcpSummaryText = useMemo(() => {
-    if (!latestExecuteResult?.toolCalls?.length) {
-      return '';
-    }
-    const first = latestExecuteResult.toolCalls[0];
-    const total = latestExecuteResult.toolCalls.length;
-    if (!first) {
-      return '';
-    }
-    return `MCP 调用 ${total} 次，首个工具 ${first.serverId}/${first.toolName}`;
-  }, [latestExecuteResult]);
-
-  const resultCardSummaries = useMemo(
-    () =>
-      Array.isArray(latestExecuteResult?.resultCards)
-        ? latestExecuteResult.resultCards.slice(0, 2).map(card => `${card.title}：${card.summary}`)
-        : [],
-    [latestExecuteResult],
-  );
-
-  const completionScoreText = useMemo(() => {
-    if (typeof latestExecuteResult?.completionScore !== 'number') {
-      return '';
-    }
-    return `完成度 ${Math.round(latestExecuteResult.completionScore * 100)}%`;
-  }, [latestExecuteResult]);
+    return {
+      ...latestPlan,
+      actions: latestHydratedActions.length ? latestHydratedActions : latestPlan.actions,
+    };
+  }, [latestHydratedActions, latestPlan]);
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
@@ -1358,24 +1324,22 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
             </View>
           </View>
 
-          {(statusText || errorText || pendingActionIds.length > 0 || missingContextGuides.length > 0) && (
+          {(workflowDisplayPlan || latestExecuteResult || statusText || errorText || pendingActionIds.length > 0 || missingContextGuides.length > 0) && (
             <View style={styles.feedbackBar}>
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
               {!errorText && statusText ? <Text style={styles.statusText}>{statusText}</Text> : null}
+              {workflowDisplayPlan || latestExecuteResult ? (
+                <AgentWorkflowProgress
+                  plan={workflowDisplayPlan}
+                  executeResult={latestExecuteResult}
+                  actionsOverride={workflowDisplayPlan?.actions}
+                  compact
+                  accent="dark"
+                />
+              ) : null}
               {latestExecuteResult && !errorText ? (
                 <Text style={styles.statusText}>执行状态: {toResultStatusText(latestExecuteResult.status)}</Text>
               ) : null}
-              {combinedResultText ? <Text style={styles.statusText}>{combinedResultText}</Text> : null}
-              {mcpSummaryText ? <Text style={styles.statusText}>{mcpSummaryText}</Text> : null}
-              {resultCardSummaries.map((line, index) => (
-                <Text key={`${line}:${index}`} style={styles.statusText}>
-                  {line}
-                </Text>
-              ))}
-              {latestExecuteResult?.auditId ? (
-                <Text style={styles.statusText}>审计追踪: {latestExecuteResult.auditId}</Text>
-              ) : null}
-              {workflowProgressText ? <Text style={styles.statusText}>{workflowProgressText}</Text> : null}
               {latestExecuteResult?.workflowRun?.runId ? (
                 <Pressable
                   style={styles.contextJumpBtn}
@@ -1389,7 +1353,7 @@ export const HaruFloatingAgent: React.FC<HaruFloatingAgentProps> = ({
               ) : null}
               {latestExecuteResult?.workflowState?.nextRequiredContext ? (
                 <Text style={styles.statusText}>
-                  下一步需要: {toRequiredContextText(latestExecuteResult.workflowState.nextRequiredContext)}
+                  下一步需要: {toWorkflowRequiredContextLabel(latestExecuteResult.workflowState.nextRequiredContext)}
                 </Text>
               ) : null}
               {missingContextGuides[0] ? (

@@ -29,11 +29,11 @@ const resolveInterpretRuntimeOptions = mode => {
   return {
     mode,
     timeoutMs: isFast
-      ? toNumber(process.env.INTERPRET_FAST_TIMEOUT_MS, 2600)
-      : toNumber(process.env.INTERPRET_VOICE_TIMEOUT_MS, 4500),
+      ? toNumber(process.env.INTERPRET_FAST_TIMEOUT_MS, 15000)
+      : toNumber(process.env.INTERPRET_VOICE_TIMEOUT_MS, 7000),
     totalBudgetMs: isFast
-      ? toNumber(process.env.INTERPRET_FAST_BUDGET_MS, 3600)
-      : toNumber(process.env.INTERPRET_VOICE_BUDGET_MS, 8000),
+      ? toNumber(process.env.INTERPRET_FAST_BUDGET_MS, 20000)
+      : toNumber(process.env.INTERPRET_VOICE_BUDGET_MS, 14000),
     modelChain: buildModelChain(true),
   };
 };

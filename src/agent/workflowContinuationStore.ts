@@ -72,6 +72,7 @@ export const useAgentWorkflowContinuationStore = create<AgentWorkflowContinuatio
       name: 'visiongenie.agent.workflow',
       storage: createJSONStorage(() => mmkvStorage),
       partialize: state => ({
+        pendingWorkflow: state.pendingWorkflow,
         persistedRunRef: state.persistedRunRef,
       }),
     },

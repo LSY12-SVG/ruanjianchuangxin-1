@@ -270,7 +270,7 @@ describe('dualEntryOrchestrator', () => {
     expect(normalized.actionResults[0].status).toBe('applied');
   });
 
-  it('picks an image and stores model context for file.pick client action', async () => {
+  it('picks an image and stores shared contexts for file.pick client action', async () => {
     const navigateToTab = jest.fn();
     const result: AgentExecuteResponse = {
       executionId: 'e-pick',
@@ -301,6 +301,7 @@ describe('dualEntryOrchestrator', () => {
     expect(useAgentExecutionContextStore.getState().modelingImageContext?.image.fileName).toBe(
       'agent.jpg',
     );
+    expect(useAgentExecutionContextStore.getState().colorContext?.image.base64).toBe('ZmFrZQ==');
   });
 
   it('opens login prompt and resumes auth client action when login succeeds', async () => {
@@ -552,6 +553,81 @@ describe('dualEntryOrchestrator', () => {
     expect(secondCycle.executeResult?.status).toBe('applied');
   });
 
+  it('reuses the grading image for convert actions when modeling context is missing', async () => {
+    const plan: AgentPlanResponse = {
+      planId: 'p-shared-image',
+      plannerSource: 'cloud',
+      estimatedSteps: 2,
+      reasoningSummary: 'shared workflow',
+      actions: [
+        createAction({
+          actionId: 'a1',
+          domain: 'grading',
+          operation: 'apply_visual_suggest',
+        }),
+        createAction({
+          actionId: 'a2',
+          domain: 'convert',
+          operation: 'start_task',
+        }),
+      ],
+    };
+
+    agentApi.executePlan.mockResolvedValueOnce({
+      executionId: 'exec-shared-image',
+      planId: plan.planId,
+      status: 'applied',
+      actionResults: [
+        {
+          status: 'applied',
+          message: 'grading_ok',
+          action: plan.actions[0],
+        },
+        {
+          status: 'applied',
+          message: 'convert_ok',
+          action: plan.actions[1],
+        },
+      ],
+    });
+
+    await executeAgentPlanCycle({
+      plan,
+      context: {
+        currentTab: 'create',
+        colorContext: {
+          locale: 'zh-CN',
+          currentParams: {} as never,
+          image: {
+            mimeType: 'image/jpeg',
+            width: 1440,
+            height: 960,
+            base64: 'ZmFrZS1zaGFyZWQ=',
+          },
+          imageStats: {} as never,
+        },
+        modelingImageContext: null,
+        latestExecuteResult: null,
+      },
+      clientHandlers: {
+        navigateToTab: () => undefined,
+        summarizeCurrentPage: () => '',
+      },
+    });
+
+    expect(agentApi.executePlan).toHaveBeenCalledTimes(1);
+    const [, hydratedActions] = agentApi.executePlan.mock.calls[0];
+    expect(hydratedActions[1].args).toEqual({
+      image: {
+        mimeType: 'image/jpeg',
+        fileName: 'agent-shared-image.jpg',
+        base64: 'ZmFrZS1zaGFyZWQ=',
+        width: 1440,
+        height: 960,
+      },
+    });
+  });
+
   it('replays blocked dependent actions after client-required navigation is handled', async () => {
     const plan: AgentPlanResponse = {
       planId: 'p-nav-followup',
@@ -785,6 +861,8 @@ describe('dualEntryOrchestrator', () => {
             mimeType: 'image/jpeg',
             fileName: 'agent.jpg',
             base64: 'ZmFrZQ==',
+            width: 100,
+            height: 100,
           },
         },
         latestExecuteResult: firstCycle.executeResult,
@@ -798,11 +876,33 @@ describe('dualEntryOrchestrator', () => {
     expect(agentApi.resumeWorkflowRun).toHaveBeenCalledWith('e-async-1', {
       allowConfirmActions: false,
       contextPatch: {
+        colorContext: expect.objectContaining({
+          locale: 'zh-CN',
+          currentParams: expect.any(Object),
+          image: {
+            mimeType: 'image/jpeg',
+            width: 100,
+            height: 100,
+            base64: 'ZmFrZQ==',
+          },
+          imageStats: {
+            lumaMean: 0,
+            lumaStd: 0,
+            highlightClipPct: 0,
+            shadowClipPct: 0,
+            saturationMean: 0,
+            skinPct: 0,
+            skyPct: 0,
+            greenPct: 0,
+          },
+        }),
         modelingImageContext: {
           image: {
             mimeType: 'image/jpeg',
             fileName: 'agent.jpg',
             base64: 'ZmFrZQ==',
+            width: 100,
+            height: 100,
           },
         },
       },
@@ -923,6 +1023,15 @@ describe('dualEntryOrchestrator', () => {
           },
           imageStats: {},
         },
+        modelingImageContext: {
+          image: {
+            mimeType: 'image/jpeg',
+            fileName: 'agent-shared-image.jpg',
+            base64: 'ZmFrZQ==',
+            width: 120,
+            height: 80,
+          },
+        },
       },
     });
     expect(resumed?.executeResult?.status).toBe('applied');
@@ -957,6 +1066,31 @@ describe('dualEntryOrchestrator', () => {
         },
         modelingImageContext: null,
       }),
+    ).toBe(true);
+    expect(
+      areMissingContextGuidesResolved(
+        [
+          {
+            operation: 'convert.start_task' as const,
+            targetTab: 'model' as const,
+            message: '缺少建模图片上下文，请先到建模页选择图片。',
+          },
+        ],
+        {
+          colorContext: {
+            locale: 'zh-CN',
+            currentParams: {} as never,
+            image: {
+              mimeType: 'image/jpeg',
+              width: 10,
+              height: 10,
+              base64: 'ZmFrZQ==',
+            },
+            imageStats: {} as never,
+          },
+          modelingImageContext: null,
+        },
+      ),
     ).toBe(true);
   });
 });

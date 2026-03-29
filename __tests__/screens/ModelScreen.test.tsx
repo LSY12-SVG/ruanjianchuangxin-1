@@ -1,6 +1,7 @@
 import React from 'react';
 import TestRenderer, {act} from 'react-test-renderer';
 import {ModelScreen} from '../../src/screens/ModelScreen';
+import {useAgentWorkflowContinuationStore} from '../../src/agent/workflowContinuationStore';
 
 jest.mock('../../src/assets/design', () => ({
   HERO_MODEL: 1,
@@ -201,6 +202,8 @@ describe('ModelScreen behaviors', () => {
     modelingApi.uploadCaptureFrame.mockReset();
     modelingApi.generateCapture.mockReset();
     modelingApi.getModelAsset.mockReset();
+    useAgentWorkflowContinuationStore.getState().clearPendingWorkflow();
+    useAgentWorkflowContinuationStore.getState().setPersistedRunRef(null);
     modelingApi.createJob.mockResolvedValue({
       taskId: 'job-1',
       status: 'processing',
@@ -257,6 +260,41 @@ describe('ModelScreen behaviors', () => {
     expect(renderer.root.findByProps({testID: 'job-upload-preview-image'}).props.source).toEqual({
       uri: 'file:///tmp/preview.jpg',
     });
+  });
+
+  it('renders pending guide message instead of crashing on object child', async () => {
+    useAgentWorkflowContinuationStore.getState().setPendingWorkflow({
+      plan: {
+        planId: 'plan-model-1',
+        reasoningSummary: 'pending model',
+        estimatedSteps: 1,
+        plannerSource: 'cloud',
+        actions: [],
+      } as never,
+      latestExecuteResult: null,
+      missingContextGuides: [
+        {
+          operation: 'convert.start_task',
+          targetTab: 'model',
+          message: '缺少建模图片上下文，已为你跳转到建模页。请上传图片后将自动继续工作流。',
+        },
+      ],
+      workflowRun: {
+        runId: 'run-model-1',
+        status: 'waiting_context',
+        currentStep: 1,
+        totalSteps: 1,
+        nextRequiredContext: 'context.modeling.image',
+        blockedReason: 'waiting_context',
+        updatedAt: new Date().toISOString(),
+        waitingActionId: 'a1',
+        pendingTask: null,
+      },
+    });
+
+    await renderScreen();
+    expect(renderedText()).toContain('缺少建模图片上下文');
+    expect(renderedText()).toContain('上传图片继续工作流');
   });
 
   it('auto-renders model preview when job moves from processing to succeeded', async () => {

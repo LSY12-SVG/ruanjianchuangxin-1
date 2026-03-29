@@ -3,6 +3,7 @@ import TestRenderer, {act} from 'react-test-renderer';
 import {TextInput} from 'react-native';
 import {AgentScreen} from '../../src/screens/AgentScreen';
 import {useAgentExecutionContextStore} from '../../src/agent/executionContextStore';
+import {useAgentWorkflowContinuationStore} from '../../src/agent/workflowContinuationStore';
 
 jest.mock('../../src/assets/design', () => ({
   HERO_AGENT: 1,
@@ -203,6 +204,8 @@ describe('AgentScreen action args injection', () => {
       colorContext: null,
       modelingImageContext: null,
     });
+    useAgentWorkflowContinuationStore.getState().clearPendingWorkflow();
+    useAgentWorkflowContinuationStore.getState().setPersistedRunRef(null);
     navigateTabMock.mockReset();
   });
 
@@ -298,6 +301,58 @@ describe('AgentScreen action args injection', () => {
     expect(text).toContain('执行前缺少上下文');
     expect(agentApi.executePlan).not.toHaveBeenCalled();
   }, 15000);
+
+  it('hydrates pending workflow from store after screen remount', async () => {
+    useAgentWorkflowContinuationStore.getState().setPendingWorkflow({
+      plan: {
+        ...basePlan,
+        reasoningSummary: 'pending workflow',
+      } as never,
+      latestExecuteResult: {
+        executionId: 'exec-pending',
+        planId: 'plan-agent-1',
+        status: 'client_required',
+        workflowRun: {
+          runId: 'run-pending',
+          status: 'waiting_context',
+          currentStep: 1,
+          totalSteps: 2,
+          nextRequiredContext: 'context.color.image',
+          blockedReason: 'waiting_context',
+          updatedAt: new Date().toISOString(),
+          waitingActionId: 'a1',
+          pendingTask: null,
+        },
+        actionResults: [],
+      } as never,
+      missingContextGuides: [
+        {
+          operation: 'grading.apply_visual_suggest',
+          targetTab: 'create',
+          message: '缺少调色图片上下文，已为你跳转到调色页。请上传图片后将自动继续工作流。',
+        },
+      ],
+      workflowRun: {
+        runId: 'run-pending',
+        status: 'waiting_context',
+        currentStep: 1,
+        totalSteps: 2,
+        nextRequiredContext: 'context.color.image',
+        blockedReason: 'waiting_context',
+        updatedAt: new Date().toISOString(),
+        waitingActionId: 'a1',
+        pendingTask: null,
+      },
+    });
+
+    await renderScreen();
+    await flushMicrotasks();
+
+    const text = stringifyNodeText(renderer.toJSON());
+    expect(text).toContain('pending workflow');
+    expect(text).toContain('等待补充上下文');
+    expect(text).toContain('去调色页补图');
+  });
 
   it('renders result cards when execute response includes them', async () => {
     agentApi.executePlan.mockResolvedValueOnce({

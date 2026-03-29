@@ -226,6 +226,8 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
   const parseWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingParseRef = useRef(false);
   const resumeCycleKeyRef = useRef('');
+  const skImageSourceKeyRef = useRef('');
+  const syncedColorContextKeyRef = useRef('');
 
   const colorCapability = capabilities.find(item => item.module === 'color');
   const createPresets = useMemo(() => BUILTIN_PRESETS, []);
@@ -260,16 +262,39 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
     };
   }, [selectedImage, storedColorContext]);
 
+  const effectiveImageKey = useMemo(() => {
+    if (!effectiveSelectedImage?.success) {
+      return '';
+    }
+    return [
+      sanitizeBase64(effectiveSelectedImage.base64),
+      effectiveSelectedImage.type || '',
+      effectiveSelectedImage.width || 0,
+      effectiveSelectedImage.height || 0,
+    ].join(':');
+  }, [
+    effectiveSelectedImage?.success,
+    effectiveSelectedImage?.base64,
+    effectiveSelectedImage?.type,
+    effectiveSelectedImage?.width,
+    effectiveSelectedImage?.height,
+  ]);
+
   useEffect(() => {
     const base64 = sanitizeBase64(effectiveSelectedImage?.base64);
     if (!effectiveSelectedImage?.success || !base64) {
+      skImageSourceKeyRef.current = '';
       setSkImage(null);
+      return;
+    }
+    if (skImageSourceKeyRef.current === effectiveImageKey) {
       return;
     }
     const data = Skia.Data.fromBase64(base64);
     const nextImage = data ? Skia.Image.MakeImageFromEncoded(data) : null;
+    skImageSourceKeyRef.current = effectiveImageKey;
     setSkImage(nextImage || null);
-  }, [effectiveSelectedImage]);
+  }, [effectiveImageKey, effectiveSelectedImage?.base64, effectiveSelectedImage?.success]);
 
   useEffect(() => {
     const nextUri = selectedImage?.success ? String(selectedImage.uri || '') : '';
@@ -303,8 +328,20 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
 
   useEffect(() => {
     if (!requestContext) {
+      syncedColorContextKeyRef.current = '';
       return;
     }
+    const nextContextKey = [
+      requestContext.image.base64,
+      requestContext.image.mimeType,
+      requestContext.image.width,
+      requestContext.image.height,
+      JSON.stringify(requestContext.currentParams),
+    ].join(':');
+    if (syncedColorContextKeyRef.current === nextContextKey) {
+      return;
+    }
+    syncedColorContextKeyRef.current = nextContextKey;
     setAgentColorContext({...requestContext});
   }, [requestContext, setAgentColorContext]);
 
@@ -801,10 +838,6 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
             <Text style={styles.agentGuideTitle}>Agent 等待补图</Text>
           </View>
           <Text style={styles.agentGuideText}>{pendingCreateGuide.message}</Text>
-          <Pressable style={styles.secondaryBtn} onPress={() => pickFromGallery()}>
-            <Icon name="images" size={15} color="#3B2F29" />
-            <Text style={styles.secondaryBtnText}>上传图片继续</Text>
-          </Pressable>
         </View>
       ) : null}
 
@@ -873,16 +906,22 @@ export const CreateScreen: React.FC<CreateScreenProps> = ({capabilities}) => {
               <View style={styles.sectionIconBadge}>
                 <Icon name="images" size={13} color="#A34A3C" />
               </View>
-              <Text style={styles.uploadTitle}>上传图片开始调色</Text>
+              <Text style={styles.uploadTitle}>
+                {pendingCreateGuide ? '上传图片继续工作流' : '上传图片开始调色'}
+              </Text>
             </View>
             <View style={styles.actionRow}>
               <Pressable style={styles.primaryBtn} onPress={() => pickFromGallery()}>
                 <Icon name="images" size={16} color="#FFF6F2" />
-                <Text style={styles.primaryBtnText}>相册选择</Text>
+                <Text style={styles.primaryBtnText}>
+                  {pendingCreateGuide ? '相册选择并继续' : '相册选择'}
+                </Text>
               </Pressable>
               <Pressable style={styles.secondaryBtn} onPress={() => pickFromCamera()}>
                 <Icon name="camera" size={16} color="#3B2F29" />
-                <Text style={styles.secondaryBtnText}>拍照导入</Text>
+                <Text style={styles.secondaryBtnText}>
+                  {pendingCreateGuide ? '拍照导入并继续' : '拍照导入'}
+                </Text>
               </Pressable>
             </View>
           </View>

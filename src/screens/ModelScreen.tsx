@@ -148,6 +148,7 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
   const [errorText, setErrorText] = useState('');
   const [agentHintText, setAgentHintText] = useState('');
   const resumeCycleKeyRef = useRef('');
+  const syncedModelingImageKeyRef = useRef('');
   const setModelingImageContext = useAgentExecutionContextStore(
     state => state.setModelingImageContext,
   );
@@ -187,13 +188,27 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
       .replace(/^data:[^;]+;base64,/, '')
       .trim();
     if (!selected?.success || !normalizedBase64) {
+      syncedModelingImageKeyRef.current = '';
       return;
     }
+    const nextImageKey = [
+      normalizedBase64,
+      selected.type || 'image/jpeg',
+      selected.fileName || 'agent-model.jpg',
+      selected.width || 0,
+      selected.height || 0,
+    ].join(':');
+    if (syncedModelingImageKeyRef.current === nextImageKey) {
+      return;
+    }
+    syncedModelingImageKeyRef.current = nextImageKey;
     setModelingImageContext({
       image: {
         mimeType: selected.type || 'image/jpeg',
         fileName: selected.fileName || 'agent-model.jpg',
         base64: normalizedBase64,
+        width: selected.width,
+        height: selected.height,
       },
     });
   }, [jobPicker.selectedImage, setModelingImageContext]);
@@ -496,10 +511,6 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
             <Text style={styles.agentGuideTitle}>Agent 等待补图</Text>
           </View>
           <Text style={styles.agentGuideText}>{pendingModelGuide.message}</Text>
-          <Pressable style={styles.secondaryBtn} onPress={() => jobPicker.pickFromGallery()}>
-            <Icon name="images" size={15} color="#3B2F29" />
-            <Text style={styles.secondaryBtnText}>上传图片继续</Text>
-          </Pressable>
         </View>
       ) : null}
 
@@ -510,8 +521,12 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
               <Icon name="add" size={18} color="#FFF6F2" />
             </View>
             <View style={styles.newTaskCopy}>
-              <Text style={styles.newTaskTitle}>创建新任务</Text>
-              <Text style={styles.newTaskSub}>上传图片，AI 自动生成 3D 模型</Text>
+              <Text style={styles.newTaskTitle}>
+                {pendingModelGuide ? '上传图片继续工作流' : '创建新任务'}
+              </Text>
+              <Text style={styles.newTaskSub}>
+                {pendingModelGuide ? pendingModelGuide.message : '上传图片，AI 自动生成 3D 模型'}
+              </Text>
             </View>
           </Pressable>
           <View style={styles.sectionHead}>
@@ -523,7 +538,9 @@ export const ModelScreen: React.FC<ModelScreenProps> = ({capabilities}) => {
           <View style={styles.actionRow}>
             <Pressable style={styles.secondaryBtn} onPress={() => jobPicker.pickFromGallery()}>
               <Icon name="image" size={15} color="#3B2F29" />
-              <Text style={styles.secondaryBtnText}>选图</Text>
+              <Text style={styles.secondaryBtnText}>
+                {pendingModelGuide ? '选图并继续' : '选图'}
+              </Text>
             </Pressable>
             <Pressable style={styles.primaryBtn} onPress={createJob} disabled={loading}>
               <Icon name="send" size={15} color="#FFF6F2" />

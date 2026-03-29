@@ -64,15 +64,16 @@ interface AgentExecuteClientHandlers {
 const buildResumeContextPatch = (
   context: Pick<AgentExecutionContextInput, 'colorContext' | 'modelingImageContext'>,
 ) => {
+  const resolvedContext = resolveSharedExecutionContexts(context);
   const patch: {
     colorContext?: AgentExecutionContextInput['colorContext'];
     modelingImageContext?: AgentExecutionContextInput['modelingImageContext'];
   } = {};
-  if (context.colorContext?.image?.base64) {
-    patch.colorContext = context.colorContext;
+  if (resolvedContext.colorContext?.image?.base64) {
+    patch.colorContext = resolvedContext.colorContext;
   }
-  if (context.modelingImageContext?.image?.base64) {
-    patch.modelingImageContext = context.modelingImageContext;
+  if (resolvedContext.modelingImageContext?.image?.base64) {
+    patch.modelingImageContext = resolvedContext.modelingImageContext;
   }
   return Object.keys(patch).length > 0 ? patch : undefined;
 };
@@ -179,6 +180,7 @@ const hydratePlanActions = (
   missingContextGuides: MissingContextGuide[];
   missingActionIds: string[];
 } => {
+  const resolvedContext = resolveSharedExecutionContexts(context);
   let missingContextGuides: MissingContextGuide[] = [];
   const missingActionIds: string[] = [];
   const latestDraftId = resolveDraftIdFromExecuteResult(context.latestExecuteResult);
@@ -187,7 +189,7 @@ const hydratePlanActions = (
       if (hasGradingArgs(action.args)) {
         return action;
       }
-      if (!context.colorContext) {
+      if (!resolvedContext.colorContext) {
         missingActionIds.push(action.actionId);
         missingContextGuides = pushMissingGuide(missingContextGuides, {
           operation: 'grading.apply_visual_suggest',
@@ -200,10 +202,10 @@ const hydratePlanActions = (
       return {
         ...action,
         args: {
-          locale: context.colorContext.locale,
-          currentParams: context.colorContext.currentParams,
-          image: context.colorContext.image,
-          imageStats: context.colorContext.imageStats,
+          locale: resolvedContext.colorContext.locale,
+          currentParams: resolvedContext.colorContext.currentParams,
+          image: resolvedContext.colorContext.image,
+          imageStats: resolvedContext.colorContext.imageStats,
         },
       };
     }
@@ -212,7 +214,7 @@ const hydratePlanActions = (
       if (hasConvertArgs(action.args)) {
         return action;
       }
-      if (!context.modelingImageContext?.image) {
+      if (!resolvedContext.modelingImageContext?.image) {
         missingActionIds.push(action.actionId);
         missingContextGuides = pushMissingGuide(missingContextGuides, {
           operation: 'convert.start_task',
@@ -225,7 +227,7 @@ const hydratePlanActions = (
       return {
         ...action,
         args: {
-          image: context.modelingImageContext.image,
+          image: resolvedContext.modelingImageContext.image,
         },
       };
     }
@@ -286,12 +288,13 @@ export const areMissingContextGuidesResolved = (
   if (!guides.length) {
     return false;
   }
+  const resolvedContext = resolveSharedExecutionContexts(context);
   return guides.every(guide => {
     if (guide.operation === 'grading.apply_visual_suggest') {
-      return Boolean(context.colorContext?.image?.base64);
+      return Boolean(resolvedContext.colorContext?.image?.base64);
     }
     if (guide.operation === 'convert.start_task') {
-      return Boolean(context.modelingImageContext?.image?.base64);
+      return Boolean(resolvedContext.modelingImageContext?.image?.base64);
     }
     return true;
   });
@@ -567,29 +570,61 @@ const inferFilePickTarget = (
   return 'create';
 };
 
-const createColorContextFromImage = (result: ImagePickerResult): ColorRequestContext | null => {
+const cloneDefaultColorParams = () => ({
+  basic: {...defaultColorGradingParams.basic},
+  colorBalance: {...defaultColorGradingParams.colorBalance},
+  pro: {
+    curves: {
+      master: [...defaultColorGradingParams.pro.curves.master],
+      r: [...defaultColorGradingParams.pro.curves.r],
+      g: [...defaultColorGradingParams.pro.curves.g],
+      b: [...defaultColorGradingParams.pro.curves.b],
+    },
+    wheels: {
+      shadows: {...defaultColorGradingParams.pro.wheels.shadows},
+      midtones: {...defaultColorGradingParams.pro.wheels.midtones},
+      highlights: {...defaultColorGradingParams.pro.wheels.highlights},
+    },
+  },
+});
+
+const createModelingImageContext = (input: {
+  mimeType?: string;
+  fileName?: string;
+  base64?: string;
+  width?: number;
+  height?: number;
+}): AgentModelingImageContext | null => {
+  const base64 = String(input.base64 || '').trim();
+  const mimeType = String(input.mimeType || '').trim();
+  if (!base64 || !mimeType) {
+    return null;
+  }
+  const width = Number(input.width || 0);
+  const height = Number(input.height || 0);
+  return {
+    image: {
+      mimeType,
+      fileName: String(input.fileName || '').trim() || 'agent-shared-image.jpg',
+      base64,
+      width: width > 0 ? width : undefined,
+      height: height > 0 ? height : undefined,
+    },
+  };
+};
+
+const createColorContextFromImage = (result: {
+  base64?: string;
+  type?: string;
+  width?: number;
+  height?: number;
+}): ColorRequestContext | null => {
   if (!result.base64 || !result.type || !result.width || !result.height) {
     return null;
   }
   return {
     locale: 'zh-CN',
-    currentParams: {
-      basic: {...defaultColorGradingParams.basic},
-      colorBalance: {...defaultColorGradingParams.colorBalance},
-      pro: {
-        curves: {
-          master: [...defaultColorGradingParams.pro.curves.master],
-          red: [...defaultColorGradingParams.pro.curves.red],
-          green: [...defaultColorGradingParams.pro.curves.green],
-          blue: [...defaultColorGradingParams.pro.curves.blue],
-        },
-        wheels: {
-          shadows: {...defaultColorGradingParams.pro.wheels.shadows},
-          midtones: {...defaultColorGradingParams.pro.wheels.midtones},
-          highlights: {...defaultColorGradingParams.pro.wheels.highlights},
-        },
-      },
-    },
+    currentParams: cloneDefaultColorParams(),
     image: {
       mimeType: result.type,
       width: result.width,
@@ -606,6 +641,61 @@ const createColorContextFromImage = (result: ImagePickerResult): ColorRequestCon
       skyPct: 0,
       greenPct: 0,
     },
+  };
+};
+
+const createModelingImageContextFromImageResult = (
+  result: Pick<ImagePickerResult, 'type' | 'fileName' | 'base64' | 'width' | 'height'>,
+): AgentModelingImageContext | null =>
+  createModelingImageContext({
+    mimeType: result.type,
+    fileName: result.fileName,
+    base64: result.base64,
+    width: result.width,
+    height: result.height,
+  });
+
+const createModelingImageContextFromColorContext = (
+  colorContext: ColorRequestContext | null,
+): AgentModelingImageContext | null => {
+  const image = colorContext?.image;
+  if (!image?.base64) {
+    return null;
+  }
+  return createModelingImageContext({
+    mimeType: image.mimeType,
+    fileName: 'agent-shared-image.jpg',
+    base64: image.base64,
+    width: image.width,
+    height: image.height,
+  });
+};
+
+const createColorContextFromModelingImageContext = (
+  modelingImageContext: AgentModelingImageContext | null,
+): ColorRequestContext | null => {
+  const image = modelingImageContext?.image;
+  if (!image?.base64 || !image?.mimeType || !image?.width || !image?.height) {
+    return null;
+  }
+  return createColorContextFromImage({
+    base64: image.base64,
+    type: image.mimeType,
+    width: image.width,
+    height: image.height,
+  });
+};
+
+const resolveSharedExecutionContexts = (
+  context: Pick<AgentExecutionContextInput, 'colorContext' | 'modelingImageContext'>,
+): Pick<AgentExecutionContextInput, 'colorContext' | 'modelingImageContext'> => {
+  const colorContext =
+    context.colorContext || createColorContextFromModelingImageContext(context.modelingImageContext);
+  const modelingImageContext =
+    context.modelingImageContext || createModelingImageContextFromColorContext(context.colorContext);
+  return {
+    colorContext,
+    modelingImageContext,
   };
 };
 
@@ -775,19 +865,14 @@ const CLIENT_REQUIRED_HANDLERS: Record<string, ClientActionHandler> = {
         },
       };
     }
-    if (targetTab === 'model') {
-      useAgentExecutionContextStore.getState().setModelingImageContext({
-        image: {
-          mimeType: picked.type || 'image/jpeg',
-          fileName: picked.fileName || 'agent-image.jpg',
-          base64: picked.base64 || '',
-        },
-      });
-    } else {
-      const colorContext = createColorContextFromImage(picked);
-      if (colorContext) {
-        useAgentExecutionContextStore.getState().setColorContext(colorContext);
-      }
+    const executionContextStore = useAgentExecutionContextStore.getState();
+    const colorContext = createColorContextFromImage(picked);
+    const modelingImageContext = createModelingImageContextFromImageResult(picked);
+    if (colorContext && !executionContextStore.colorContext?.image?.base64) {
+      executionContextStore.setColorContext(colorContext);
+    }
+    if (modelingImageContext && !executionContextStore.modelingImageContext?.image?.base64) {
+      executionContextStore.setModelingImageContext(modelingImageContext);
     }
     handlers.navigateToTab(targetTab);
     return {
